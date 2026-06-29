@@ -28,38 +28,24 @@ extern "system" {
 
 static HOTKEY_REGISTERED: AtomicBool = AtomicBool::new(false);
 
-fn app(cx: &mut RenderCx) -> Element {
-    let (count, set_count) = cx.use_state(0_i32);
+fn app(_cx: &mut RenderCx) -> Element {
     let registered = HOTKEY_REGISTERED.load(Ordering::Relaxed);
 
     vstack((
-        TitleBar::new("Shizi Demo").subtitle("Rust + WinUI 3"),
-        text_block(format!("计数: {count}")).font_size(28.0).bold(),
-        hstack((
-            button("-").on_click({
-                let s = set_count.clone();
-                move || s.call(count - 1)
-            }),
-            button("+").on_click({
-                let s = set_count.clone();
-                move || s.call(count + 1)
-            }),
-            button("重置").on_click(set_count.setter(0)),
-        ))
-        .spacing(8.0),
-        vstack((
-            text_block("关闭窗口最小化到系统托盘").font_size(14.0),
-            text_block("托盘图标双击恢复窗口").font_size(14.0),
-            text_block(if registered {
-                "全局热键 Alt+T ✓"
-            } else {
-                "热键注册中..."
-            })
-            .font_size(14.0),
-        ))
-        .spacing(4.0),
+        text_block("Shizi").font_size(20.0).bold(),
+        text_block("Rust + WinUI 3 系统托盘应用").font_size(12.0),
+        text_block(" ").font_size(8.0),
+        text_block(if registered {
+            "全局热键 Alt+T ✓"
+        } else {
+            "热键注册中..."
+        })
+        .font_size(12.0),
+        text_block(" ").font_size(8.0),
+        text_block("双击托盘图标恢复窗口").font_size(11.0),
     ))
-    .spacing(12.0)
+    .spacing(4.0)
+    .padding(16.0)
     .into()
 }
 
@@ -133,7 +119,7 @@ fn setup_tray_and_hotkey() {
         thread::sleep(Duration::from_secs(2));
 
         unsafe {
-            let title: Vec<u16> = "Shizi Demo\0".encode_utf16().collect();
+            let title: Vec<u16> = "Shizi\0".encode_utf16().collect();
             let hwnd = FindWindowW(None, PCWSTR::from_raw(title.as_ptr()));
             let hwnd = match hwnd {
                 Ok(h) if h.0 != std::ptr::null_mut() => h,
@@ -162,7 +148,7 @@ fn setup_tray_and_hotkey() {
                 hIcon: icon.unwrap(),
                 ..Default::default()
             };
-            let tip: Vec<u16> = "Shizi Demo\0".encode_utf16().collect();
+            let tip: Vec<u16> = "Shizi\0".encode_utf16().collect();
             let tip_len = tip.len().min(128);
             nid.szTip[..tip_len].copy_from_slice(&tip[..tip_len]);
 
@@ -176,5 +162,8 @@ fn setup_tray_and_hotkey() {
 
 fn main() -> Result<()> {
     setup_tray_and_hotkey();
-    App::new().title("Shizi Demo").render(app)
+    App::new()
+        .title("Shizi")
+        .inner_size(320.0, 220.0)
+        .render(app)
 }
