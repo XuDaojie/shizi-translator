@@ -1,6 +1,8 @@
 ## 项目介绍
 
-<!-- 填写项目简介、目标、技术栈 -->
+这是一个基于大模型的翻译软件，灵感来自 macOS 端的 Bob 以及 Windows 端的 Pot（后者衍生自 macOS 端的 Pot）。
+
+项目目标并非做一个体验更好的 Pot，而是开发一个体验更好的 Windows 端大模型翻译软件，用于替代 Pot，希望在体验上尽量接近 Bob。第一版优先考虑 Windows 端，基于跨平台的 Tauri 技术栈实现。
 
 ## 项目结构
 
@@ -12,7 +14,10 @@
 
 ## 开发说明
 
-<!-- 填写开发流程、注意事项 -->
+1. `AGENTS.md` 与 `CLAUDE.md` 需保持内容同步，修改任一文件后应立即同步更新另一个。
+2. Superpowers 生成 spec（设计规格）或 plan（实现计划）的 markdown 文件后，应立即将其提交到 git，无需再次询问。
+3. 自定义 skill 以 `my-` 为前缀，避免与安装的 skill 冲突（如 `/my-commit` 自动生成提交信息）。
+4. Superpowers-ZH 标记区域（`<!-- superpowers-zh:begin -->` 至 `<!-- superpowers-zh:end -->`）由 superpowers-zh 插件自动维护，日常开发不得修改。仅在执行 superpowers-zh 插件版本升级时，由升级流程自动更新该区域。
 
 ## 测试
 
@@ -46,7 +51,7 @@
 
 ## 可用 Skills
 
-Skills 位于 `.claude/skills/` 目录，每个 skill 有独立的 `SKILL.md` 文件。
+Skills 位于 `.codex/skills/` 目录，每个 skill 有独立的 `SKILL.md` 文件。
 
 - **brainstorming**: 在任何创造性工作之前必须使用此技能——创建功能、构建组件、添加功能或修改行为。在实现之前先探索用户意图、需求和设计。
 - **chinese-code-review**: 中文 review 沟通参考——话术模板、分级标注（必须修复/建议修改/仅供参考）、国内团队常见反模式应对。仅在用户显式 /chinese-code-review 时调用，不要根据上下文自动触发。
