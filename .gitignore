@@ -6,3 +6,5 @@ src-tauri/gen/
 frontend/node_modules/
 node_modules/
 .idea
+pot-desktop/
+.codegraph/
