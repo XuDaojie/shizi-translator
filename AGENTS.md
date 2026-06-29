@@ -6,11 +6,48 @@
 
 ## 项目结构
 
-<!-- 填写目录结构说明 -->
+```
+frontend/          静态前端（原生 HTML/JS/CSS，无构建步骤）
+  index.html       主窗口 UI
+  main.js          翻译框交互（当前为占位实现）
+src-tauri/         Rust 后端 + Tauri 配置
+  src/lib.rs       应用入口：托盘菜单 + 全局快捷键 + 窗口生命周期
+  src/main.rs      薄入口，调用 shizi_lib::run()
+  tauri.conf.json  窗口尺寸、标题、产品标识；frontendDist 指向 ../frontend
+  capabilities/    Tauri 权限清单（core + global-shortcut）
+pot-desktop/       参考实现（Pot 源码，仅供学习对照，不要直接修改）
+plugins.md         已安装插件/技能清单（新增或升级后必须同步）
+```
+
+Tauri 2 + 原生静态前端 —— 没有 Vite/webpack/打包步骤，前端文件被 Tauri 直接当作静态资源加载。
 
 ## 开发环境
 
-<!-- 填写运行环境要求、依赖说明 -->
+- Node.js（用于运行 `@tauri-apps/cli`）
+- Rust toolchain（stable, edition 2021）
+- Windows 端需安装 WebView2 Runtime（Windows 11 已自带）
+- 关键依赖：`tauri 2`（`tray-icon` feature）、`tauri-plugin-global-shortcut 2`
+
+## 常用命令
+
+```bash
+npm run tauri dev           # 开发模式（启动后端 + 加载 frontend/）
+npm run tauri build         # 生成 release 安装包（MSI/NSIS）
+cd src-tauri && cargo build           # 仅构建后端 debug
+cd src-tauri && cargo build --release # 仅构建后端 release（产物：src-tauri/target/release/shizi.exe）
+cd src-tauri && cargo clean           # 清理 Rust 编译缓存
+```
+
+调试运行可直接执行 `./src-tauri/target/release/shizi.exe`，或用 [.vscode/launch.json](.vscode/launch.json) 中的 F5 启动 `npm run tauri dev`。
+
+## 架构关键点
+
+- **分层结构**：
+  - **核心层**：Rust 实现，承载业务逻辑、配置管理、LLM 调用等。
+  - **UI 层**：当前分两个独立模块 —— ①**翻译弹窗** 与 ②**设置页面**（管理 API Key/URL 等配置）。两者目前都用 Tauri UI（WebView + 静态前端）实现，但**必须保持可插拔/可替换**：核心层只通过明确定义的接口（Tauri command / 事件）与 UI 通信，便于未来分别替换为其他技术方案。新增能力时不要把核心逻辑写进 UI 层，也不要让两个 UI 模块互相耦合。
+- **托盘驻留模型**：窗口的 `CloseRequested` 被拦截改为 `hide()`，应用通过托盘菜单「退出」才会真正退出；详见 [src-tauri/src/lib.rs](src-tauri/src/lib.rs)。
+- **全局快捷键**：`Alt+T` 切换主窗口显隐，由 `tauri-plugin-global-shortcut` 注册，逻辑集中在 `toggle_window`。新增快捷键时需在 `capabilities/default.json` 同步授权。
+- **前后端通信**：当前还没有 `#[tauri::command]`，前端 `main.js` 是纯占位逻辑；接入 LLM 翻译时需在 Rust 侧新增 command 并通过 `@tauri-apps/api` 的 `invoke` 调用。
 
 ## 开发说明
 
@@ -18,11 +55,16 @@
 2. Superpowers 生成 spec（设计规格）或 plan（实现计划）的 markdown 文件后，应立即将其提交到 git，无需再次询问。
 3. 自定义 skill 以 `my-` 为前缀，避免与安装的 skill 冲突（如 `/my-commit` 自动生成提交信息）。
 4. Superpowers-ZH 标记区域（`<!-- superpowers-zh:begin -->` 至 `<!-- superpowers-zh:end -->`）由 superpowers-zh 插件自动维护，日常开发不得修改。仅在执行 superpowers-zh 插件版本升级时，由升级流程自动更新该区域。
+5. **Pot 源码使用约束**：`pot-desktop/` 是参考实现，**任何时候都不要直接按照 Pot 的源码翻译代码**。涉及 Pot 源码时必须按以下四步工作流处理：
+   1. **阅读**：先阅读源码，**不要写代码**，输出：功能分析、模块分析、架构分析、数据流分析、可以借鉴的地方、建议放弃的设计。
+   2. **设计**：根据我们的目标重新设计架构，输出 *Architecture Proposal*。
+   3. **等待确认**：交付 Proposal 后停下来等用户确认，不得自行进入实现。
+   4. **编码**：确认通过后才能开始编码，且按重新设计的方案实现，不照搬 Pot 代码。
 
 
 ## 测试
 
-<!-- 填写测试命令、测试规范 -->
+项目当前尚未引入测试框架。后续 Rust 侧使用 `cargo test`，前端逻辑由 Tauri command 驱动，可在 Rust 侧覆盖。
 
 ## 协作规范
 
