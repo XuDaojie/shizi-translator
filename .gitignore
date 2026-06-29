@@ -1,1 +1,7 @@
 target/
+# Tauri
+src-tauri/target/
+src-tauri/gen/
+# src-tauri/icons/ (committed)
+frontend/node_modules/
+node_modules/

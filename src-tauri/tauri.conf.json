@@ -1,0 +1,19 @@
+{
+  "productName": "Shizi",
+  "version": "0.1.0",
+  "identifier": "com.shizi.app",
+  "build": {
+    "frontendDist": "../frontend"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Shizi - 翻译助手",
+        "width": 480,
+        "height": 360,
+        "resizable": true,
+        "center": true
+      }
+    ]
+  }
+}

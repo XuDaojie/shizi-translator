@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shizi - 翻译助手</title>
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="main.js" defer></script>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Shizi</h1>
+      <p class="subtitle">基于大语言模型的翻译助手</p>
+    </div>
+    <div class="content">
+      <div class="input-area">
+        <textarea id="inputText" placeholder="输入要翻译的文本..." rows="3"></textarea>
+      </div>
+      <div class="action-bar">
+        <button id="translateBtn">翻译</button>
+        <button id="clearBtn">清空</button>
+      </div>
+      <div class="output-area">
+        <div id="outputText" class="output-box">翻译结果将显示在这里</div>
+      </div>
+    </div>
+    <div class="footer">
+      <span>双击托盘图标恢复窗口</span>
+    </div>
+  </div>
+</body>
+</html>
