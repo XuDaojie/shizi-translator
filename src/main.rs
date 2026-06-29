@@ -6,45 +6,83 @@ use std::time::Duration;
 
 use windows::Win32::{
     Foundation::*,
+    Graphics::Dwm::*,
     UI::WindowsAndMessaging::*,
     UI::Shell::*,
+    UI::Controls::MARGINS,
 };
 use windows::core::PCWSTR;
 use windows_reactor::*;
 
 const WM_TRAYICON: u32 = WM_USER + 1;
 const WM_REG_HOTKEY: u32 = WM_USER + 2;
+const WM_RESTORE_STYLE: u32 = WM_USER + 3;
+const WM_HIDE_STYLE: u32 = WM_USER + 4;
 const WM_HOTKEY_MSG: u32 = 0x0312;
 const HOTKEY_ID: i32 = 1;
 const TRAY_ICON_ID: u32 = 1001;
 const MOD_ALT_V: u32 = 0x0001;
+const IDM_EXIT: u32 = 1001;
+const GWL_STYLE: WINDOW_LONG_PTR_INDEX = WINDOW_LONG_PTR_INDEX(-16);
 
 #[link(name = "user32")]
 extern "system" {
     fn RegisterHotKey(hWnd: HWND, id: i32, fsModifiers: u32, vk: u32) -> i32;
     fn UnregisterHotKey(hWnd: HWND, id: i32) -> i32;
     fn SendMessageW(hWnd: HWND, Msg: u32, wParam: usize, lParam: isize) -> isize;
+    fn GetWindowLongW(hWnd: HWND, nIndex: WINDOW_LONG_PTR_INDEX) -> i32;
+    fn SetWindowLongW(hWnd: HWND, nIndex: WINDOW_LONG_PTR_INDEX, dwNewLong: i32) -> i32;
+    fn CreatePopupMenu() -> HMENU;
+    fn AppendMenuW(hMenu: HMENU, uFlags: u32, uIDNewItem: usize, lpNewItem: PCWSTR) -> i32;
+    fn TrackPopupMenu(hMenu: HMENU, uFlags: u32, x: i32, y: i32, nReserved: i32, hWnd: HWND, prc: *const RECT) -> i32;
+    fn PostMessageW(hWnd: HWND, Msg: u32, wParam: usize, lParam: isize) -> i32;
+    fn GetCursorPos(lpPoint: *mut POINT) -> i32;
+    fn DestroyMenu(hMenu: HMENU) -> i32;
 }
 
 static HOTKEY_REGISTERED: AtomicBool = AtomicBool::new(false);
+static mut HWND_STORED: Option<HWND> = None;
 
-fn app(_cx: &mut RenderCx) -> Element {
+fn app(cx: &mut RenderCx) -> Element {
+    let (input, set_input) = cx.use_state(String::new());
+    let (titlebar_visible, set_titlebar_visible) = cx.use_state(false);
     let registered = HOTKEY_REGISTERED.load(Ordering::Relaxed);
 
     vstack((
-        text_block("Shizi").font_size(20.0).bold(),
-        text_block("Rust + WinUI 3 系统托盘应用").font_size(12.0),
-        text_block(" ").font_size(8.0),
+        text_box(&input)
+            .placeholder_text("输入搜索内容...")
+            .on_text_changed(move |v| set_input.call(v)),
+        Expander::new(vstack((
+            text_block("log").font_size(24.0).bold(),
+            text_block("释义: 日志").font_size(14.0),
+            text_block("n. 原木, 圆材; 正式记录, 航海日志; 对数; 观察记录; 船舶测速仪")
+                .font_size(12.0),
+        )).spacing(4.0))
+        .header("有道词典")
+        .expanded(true),
+        Expander::new(vstack((
+            text_block("log → 日志").font_size(14.0),
+        )).spacing(4.0))
+        .header("OpenAI 翻译"),
+        text_block(" ").font_size(6.0),
         text_block(if registered {
-            "全局热键 Alt+T ✓"
+            "全局热键 Alt+T"
         } else {
             "热键注册中..."
         })
-        .font_size(12.0),
-        text_block(" ").font_size(8.0),
-        text_block("双击托盘图标恢复窗口").font_size(11.0),
+        .font_size(11.0),
+        button(if titlebar_visible { "隐藏标题栏" } else { "恢复标题栏" }).on_click(move || {
+            let next = !titlebar_visible;
+            set_titlebar_visible.call(next);
+            unsafe {
+                if let Some(hwnd) = HWND_STORED {
+                    let msg = if next { WM_RESTORE_STYLE } else { WM_HIDE_STYLE };
+                    _ = PostMessageW(hwnd, msg, 0, 0);
+                }
+            }
+        }),
     ))
-    .spacing(4.0)
+    .spacing(6.0)
     .padding(16.0)
     .into()
 }
@@ -52,7 +90,21 @@ fn app(_cx: &mut RenderCx) -> Element {
 type WndProc = unsafe extern "system" fn(HWND, u32, WPARAM, LPARAM) -> LRESULT;
 
 static mut ORIGINAL_WNDPROC: Option<isize> = None;
-static mut HWND_STORED: Option<HWND> = None;
+
+unsafe fn show_tray_menu(hwnd: HWND) {
+    let menu = CreatePopupMenu();
+    if menu.0.is_null() {
+        return;
+    }
+    let exit_text: Vec<u16> = "退出\0".encode_utf16().collect();
+    AppendMenuW(menu, MF_STRING.0, IDM_EXIT as usize, PCWSTR::from_raw(exit_text.as_ptr()));
+
+    let mut pt = POINT::default();
+    GetCursorPos(&mut pt);
+    TrackPopupMenu(menu, TPM_RIGHTBUTTON.0, pt.x, pt.y, 0, hwnd, std::ptr::null());
+    PostMessageW(hwnd, WM_NULL, 0, 0);
+    DestroyMenu(menu);
+}
 
 unsafe extern "system" fn tray_wndproc(
     hwnd: HWND,
@@ -62,6 +114,10 @@ unsafe extern "system" fn tray_wndproc(
 ) -> LRESULT {
     match msg {
         WM_CLOSE => {
+            _ = ShowWindow(hwnd, SW_HIDE);
+            LRESULT(0)
+        }
+        WM_KILLFOCUS => {
             _ = ShowWindow(hwnd, SW_HIDE);
             LRESULT(0)
         }
@@ -78,10 +134,66 @@ unsafe extern "system" fn tray_wndproc(
         }
         msg if msg == WM_TRAYICON => {
             let mouse_msg = (lparam.0 as u32) & 0xFFFF;
-            if mouse_msg == 0x0203 {
-                _ = ShowWindow(hwnd, SW_SHOW);
-                _ = SetForegroundWindow(hwnd);
+            match mouse_msg {
+                0x0203 => {
+                    _ = ShowWindow(hwnd, SW_SHOW);
+                    _ = SetForegroundWindow(hwnd);
+                }
+                0x0205 => {
+                    show_tray_menu(hwnd);
+                }
+                _ => {}
             }
+            LRESULT(0)
+        }
+        WM_COMMAND => {
+            let id = (wparam.0 as u32) & 0xFFFF;
+            if id == IDM_EXIT {
+                _ = ShowWindow(hwnd, SW_HIDE);
+                let nid = NOTIFYICONDATAW {
+                    cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
+                    hWnd: hwnd,
+                    uID: TRAY_ICON_ID,
+                    uFlags: NIF_MESSAGE,
+                    uCallbackMessage: WM_TRAYICON,
+                    ..Default::default()
+                };
+                _ = Shell_NotifyIconW(NIM_DELETE, &nid);
+                UnregisterHotKey(hwnd, HOTKEY_ID);
+                PostQuitMessage(0);
+            }
+            LRESULT(0)
+        }
+        WM_RESTORE_STYLE => {
+            let style = GetWindowLongW(hwnd, GWL_STYLE);
+            let style = style | (WS_CAPTION.0 as i32) | (WS_THICKFRAME.0 as i32);
+            SetWindowLongW(hwnd, GWL_STYLE, style);
+            let pref: i32 = DWMWCP_DEFAULT.0;
+            _ = DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &pref as *const _ as *const _, std::mem::size_of::<i32>() as u32);
+            let margins = MARGINS {
+                cxLeftWidth: 0,
+                cxRightWidth: 0,
+                cyTopHeight: 0,
+                cyBottomHeight: 0,
+            };
+            _ = DwmExtendFrameIntoClientArea(hwnd, &margins);
+            _ = SetWindowPos(hwnd, Some(HWND(std::ptr::null_mut())), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+            LRESULT(0)
+        }
+        WM_HIDE_STYLE => {
+            let style = GetWindowLongW(hwnd, GWL_STYLE);
+            let style = style & !(WS_CAPTION.0 as i32) & !(WS_THICKFRAME.0 as i32);
+            SetWindowLongW(hwnd, GWL_STYLE, style);
+            let pref: i32 = DWMWCP_ROUND.0;
+            _ = DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &pref as *const _ as *const _, std::mem::size_of::<i32>() as u32);
+            let margins = MARGINS {
+                cxLeftWidth: 1,
+                cxRightWidth: 1,
+                cyTopHeight: 1,
+                cyBottomHeight: 0,
+            };
+            _ = DwmExtendFrameIntoClientArea(hwnd, &margins);
+            _ = SetWindowPos(hwnd, Some(HWND(std::ptr::null_mut())), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
             LRESULT(0)
         }
         WM_REG_HOTKEY => {
@@ -126,13 +238,29 @@ fn setup_tray_and_hotkey() {
                 _ => return,
             };
 
+            let style = GetWindowLongW(hwnd, GWL_STYLE);
+            let style = style & !(WS_CAPTION.0 as i32) & !(WS_THICKFRAME.0 as i32);
+            SetWindowLongW(hwnd, GWL_STYLE, style);
+
+            let pref: i32 = DWMWCP_ROUND.0;
+            _ = DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &pref as *const _ as *const _, std::mem::size_of::<i32>() as u32);
+
+            let margins = MARGINS {
+                cxLeftWidth: 1,
+                cxRightWidth: 1,
+                cyTopHeight: 1,
+                cyBottomHeight: 0,
+            };
+            _ = DwmExtendFrameIntoClientArea(hwnd, &margins);
+
+            HWND_STORED = Some(hwnd);
+
             let original =
                 SetWindowLongPtrW(hwnd, GWLP_WNDPROC, tray_wndproc as *const () as isize);
             if original == 0 {
                 return;
             }
             ORIGINAL_WNDPROC = Some(original);
-            HWND_STORED = Some(hwnd);
 
             let icon = LoadIconW(None, IDI_APPLICATION);
             if let Err(_) = icon {
@@ -164,6 +292,6 @@ fn main() -> Result<()> {
     setup_tray_and_hotkey();
     App::new()
         .title("Shizi")
-        .inner_size(320.0, 220.0)
+        .inner_size(320.0, 400.0)
         .render(app)
 }
