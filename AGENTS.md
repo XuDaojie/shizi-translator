@@ -1,18 +1,34 @@
 ## 项目介绍
 
-<!-- 填写项目简介、目标、技术栈 -->
+一款基于大语言模型的 Windows 桌面翻译软件，灵感来自 macOS 端的 [Bob](https://bobtranslate.com/)。
+
+- **技术栈**: Rust + WinUI 3 (windows-reactor / windows-rs)
+- **目标**: 提供全局快捷键呼出、划词翻译、截图翻译等高效翻译体验
 
 ## 项目结构
 
-<!-- 填写目录结构说明 -->
+```
+shizi/
+├── src/           # 源代码
+│   └── main.rs
+├── scripts/       # 开发/构建辅助脚本
+├── build.rs       # WinUI 构建配置
+├── app.manifest   # Windows 应用程序清单
+└── Cargo.toml
+```
 
 ## 开发环境
 
-<!-- 填写运行环境要求、依赖说明 -->
+- Windows 10/11
+- Rust 2021 edition
+- Visual Studio Build Tools（含 Windows SDK）
 
 ## 开发说明
 
-<!-- 填写开发流程、注意事项 -->
+- `cargo build` 构建项目
+- `cargo run` 运行应用
+- 全局热键 `Alt+T` 呼出窗口
+- 窗口关闭时自动最小化到系统托盘
 
 ## 测试
 
