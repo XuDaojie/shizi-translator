@@ -148,7 +148,11 @@ impl Component for TestXmlWindow {
 }
 
 fn open_test_xml_window() {
-    if let Ok(host) = ReactorHost::new_with_window_options(
+    thread_local! {
+        static TEST_HOST: std::cell::RefCell<Option<ReactorHost>> = std::cell::RefCell::new(None);
+    }
+
+    let host = ReactorHost::new_with_window_options(
         "测试窗口",
         Some(WindowSize {
             width: 480.0,
@@ -157,8 +161,31 @@ fn open_test_xml_window() {
         InnerConstraints::default(),
         Box::new(TestXmlWindow),
         |_| {},
-    ) {
+    );
+
+    if let Ok(host) = host {
         let _ = host.activate();
+
+        TEST_HOST.with(|cell| {
+            *cell.borrow_mut() = Some(host);
+        });
+
+        unsafe {
+            let title: Vec<u16> = "测试窗口\0".encode_utf16().collect();
+            if let Ok(hwnd) = FindWindowW(None, PCWSTR::from_raw(title.as_ptr())) {
+                if hwnd.0 != std::ptr::null_mut() {
+                    let style = GetWindowLongW(hwnd, GWL_STYLE);
+                    let style = style & !(WS_MINIMIZEBOX.0 as i32) & !(WS_MAXIMIZEBOX.0 as i32);
+                    SetWindowLongW(hwnd, GWL_STYLE, style);
+                    _ = SetWindowPos(
+                        hwnd,
+                        Some(HWND(std::ptr::null_mut())),
+                        0, 0, 0, 0,
+                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED,
+                    );
+                }
+            }
+        }
     }
 }
 
