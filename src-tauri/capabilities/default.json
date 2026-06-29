@@ -2,5 +2,8 @@
   "identifier": "default",
   "description": "Default capabilities",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": [
+    "core:default",
+    "global-shortcut:default"
+  ]
 }
