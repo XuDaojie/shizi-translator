@@ -38,10 +38,15 @@ extern "system" {
     fn PostMessageW(hWnd: HWND, Msg: u32, wParam: usize, lParam: isize) -> i32;
     fn GetCursorPos(lpPoint: *mut POINT) -> i32;
     fn DestroyMenu(hMenu: HMENU) -> i32;
+    fn ReleaseCapture() -> i32;
+    fn SetCapture(hWnd: HWND) -> HWND;
 }
 
 static HOTKEY_REGISTERED: AtomicBool = AtomicBool::new(false);
 static mut HWND_STORED: Option<HWND> = None;
+static mut DRAGGING: bool = false;
+static mut DRAG_LAST_X: i32 = 0;
+static mut DRAG_LAST_Y: i32 = 0;
 
 fn app(cx: &mut RenderCx) -> Element {
     let (input, set_input) = cx.use_state(String::new());
@@ -49,6 +54,43 @@ fn app(cx: &mut RenderCx) -> Element {
     let registered = HOTKEY_REGISTERED.load(Ordering::Relaxed);
 
     vstack((
+        text_block(" ")
+            .height(36.0)
+            .on_pointer_pressed(move |_: PointerEventInfo| {
+                unsafe {
+                    if let Some(_hwnd) = HWND_STORED {
+                        let mut pt = POINT::default();
+                        GetCursorPos(&mut pt);
+                        DRAGGING = false;
+                        DRAG_LAST_X = pt.x;
+                        DRAG_LAST_Y = pt.y;
+                    }
+                }
+            })
+            .on_pointer_moved({
+                move |e: PointerEventInfo| {
+                    unsafe {
+                        if DRAGGING || !e.is_left_button_pressed {
+                            return;
+                        }
+                        if let Some(hwnd) = HWND_STORED {
+                            let mut pt = POINT::default();
+                            GetCursorPos(&mut pt);
+                            let dy = (pt.y - DRAG_LAST_Y).abs();
+                            if dy > 5 {
+                                DRAGGING = true;
+                                SetCapture(hwnd);
+                            }
+                        }
+                    }
+                }
+            })
+            .on_pointer_released(move |_: PointerEventInfo| {
+                unsafe {
+                    DRAGGING = false;
+                    ReleaseCapture();
+                }
+            }),
         text_box(&input)
             .placeholder_text("输入搜索内容...")
             .on_text_changed(move |v| set_input.call(v)),
@@ -81,10 +123,43 @@ fn app(cx: &mut RenderCx) -> Element {
                 }
             }
         }),
+        button("打开测试窗口").on_click(|| {
+            open_test_xml_window();
+        }),
     ))
     .spacing(6.0)
     .padding(16.0)
     .into()
+}
+
+struct TestXmlWindow;
+
+impl Component for TestXmlWindow {
+    fn render(&self, _props: &(), _cx: &mut RenderCx) -> Element {
+        let mut search = auto_suggest_box("");
+        search.placeholder_text = "搜索...".into();
+        search.modifiers.width = Some(200.0);
+
+        let mut tb = TitleBar::new("我的应用").subtitle("v1.0");
+        tb.content_element = Some(Box::new(search.into()));
+
+        vstack((tb,)).spacing(0.0).into()
+    }
+}
+
+fn open_test_xml_window() {
+    if let Ok(host) = ReactorHost::new_with_window_options(
+        "测试窗口",
+        Some(WindowSize {
+            width: 480.0,
+            height: 320.0,
+        }),
+        InnerConstraints::default(),
+        Box::new(TestXmlWindow),
+        |_| {},
+    ) {
+        let _ = host.activate();
+    }
 }
 
 type WndProc = unsafe extern "system" fn(HWND, u32, WPARAM, LPARAM) -> LRESULT;
@@ -119,6 +194,26 @@ unsafe extern "system" fn tray_wndproc(
         }
         WM_KILLFOCUS => {
             _ = ShowWindow(hwnd, SW_HIDE);
+            LRESULT(0)
+        }
+        WM_MOUSEMOVE => {
+            if DRAGGING {
+                let mut pt = POINT::default();
+                GetCursorPos(&mut pt);
+                let dx = pt.x - DRAG_LAST_X;
+                let dy = pt.y - DRAG_LAST_Y;
+                DRAG_LAST_X = pt.x;
+                DRAG_LAST_Y = pt.y;
+                let mut rect = RECT::default();
+                if GetWindowRect(hwnd, &mut rect).is_ok() {
+                    _ = SetWindowPos(hwnd, Some(HWND(std::ptr::null_mut())), rect.left + dx, rect.top + dy, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
+                }
+            }
+            LRESULT(0)
+        }
+        WM_LBUTTONUP => {
+            DRAGGING = false;
+            ReleaseCapture();
             LRESULT(0)
         }
         WM_HOTKEY_MSG => {
@@ -292,6 +387,6 @@ fn main() -> Result<()> {
     setup_tray_and_hotkey();
     App::new()
         .title("Shizi")
-        .inner_size(320.0, 400.0)
+        .inner_size(320.0, 480.0)
         .render(app)
 }
