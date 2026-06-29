@@ -1,0 +1,41 @@
+# Auto detect text files and force LF line endings for cross-platform consistency
+* text=auto eol=lf
+
+# Source code
+*.js text eol=lf
+*.ts text eol=lf
+*.vue text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.json text eol=lf
+*.json5 text eol=lf
+*.cjs text eol=lf
+*.mjs text eol=lf
+
+# Docs & config
+*.md text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+.gitignore text eol=lf
+.editorconfig text eol=lf
+
+# Shell scripts
+*.sh text eol=lf
+*.bash text eol=lf
+
+# Windows-specific
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary files - do not modify
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.gif binary
+*.svg binary
+*.woff binary
+*.woff2 binary
+*.eot binary
+*.ttf binary
+*.otf binary
