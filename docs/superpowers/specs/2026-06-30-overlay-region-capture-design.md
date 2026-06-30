@@ -118,7 +118,8 @@ impl CapturedImage {
 - 鼠标拖拽画矩形（`cursor-crosshair`），框外半透明遮罩。
 - 交互：左键拖拽选区；mouseup 提交；**Esc / 右键取消**（补 Pot 缺失的 Esc）。
 - 通信：
-  - 加载时 `invoke('get_capture_frame')` 拿整屏图（PNG data URL，Rust 侧编码一次）。
+  - 加载时 `invoke('get_capture_frame_meta')` 拿 `{width, height, scale_factor}`（JSON），`invoke('get_capture_frame_bytes')` 拿整屏 BGRA 原始字节（`tauri::ipc::Response` → `ArrayBuffer`，无 PNG 编码、无 image crate、无落盘）。
+  - 前端用 canvas 把 BGRA `ArrayBuffer` 按 `width/height` 绘制（BGRA→RGBA 逐像素交换后 `putImageData`），canvas 物理像素尺寸 = 帧尺寸，CSS 显示尺寸 = 逻辑尺寸，浏览器自动按 `scale_factor` 缩放。
   - mouseup → `invoke('submit_capture_region', {x, y, w, h})`（CSS 逻辑像素，相对 overlay 窗口左上）。
   - Esc / 右键 → `invoke('cancel_capture')`。
 
