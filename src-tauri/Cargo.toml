@@ -30,9 +30,16 @@ windows = { version = "0.58", features = [
   "Foundation_Collections",
   "Globalization",
   "Graphics_Capture",
+  "Graphics_DirectX",
+  "Graphics_DirectX_Direct3D11",
   "Graphics_Imaging",
   "Media_Ocr",
   "Storage_Streams",
+  "Win32_Graphics_Direct3D",
+  "Win32_Graphics_Direct3D11",
+  "Win32_Graphics_Dxgi",
+  "Win32_System_WinRT",
+  "Win32_System_WinRT_Direct3D11",
 ] }
 
 [dev-dependencies]
