@@ -17,6 +17,7 @@ const invoke = tauriApi?.core?.invoke;
 const listen = tauriApi?.event?.listen;
 
 let isTranslating = false;
+let currentSessionId = null;
 
 function resetOutput() {
   outputText.textContent = '翻译结果将显示在这里';
@@ -26,11 +27,28 @@ function resetOutput() {
 function setTranslating(value) {
   isTranslating = value;
   translateBtn.disabled = value;
+  clearBtn.disabled = value;
+  translateBtn.textContent = value ? '翻译中...' : '翻译';
 }
 
 function setConfigStatus(message, isError = false) {
   configStatus.textContent = message;
   configStatus.style.color = isError ? '#b42318' : '#666';
+}
+
+function scrollOutputToBottom() {
+  outputText.scrollTop = outputText.scrollHeight;
+}
+
+function getSessionId(payload) {
+  const sessionId = payload?.sessionId;
+  if (typeof sessionId === 'string') {
+    return sessionId;
+  }
+  if (sessionId && typeof sessionId === 'object') {
+    return sessionId[0] ?? sessionId['0'] ?? null;
+  }
+  return null;
 }
 
 function fillConfigForm(config) {
@@ -49,9 +67,34 @@ function readConfigForm() {
       apiKey: apiKeyInput.value.trim() || null,
       baseUrl: baseUrlInput.value.trim(),
       model: modelInput.value.trim(),
-      timeoutSeconds: Number(timeoutInput.value) || 60,
+      timeoutSeconds: Number(timeoutInput.value),
     },
   };
+}
+
+function validateConfig(config) {
+  let url;
+  try {
+    url = new URL(config.openaiCompatible.baseUrl);
+  } catch {
+    return 'Base URL 请输入有效的 http(s) 地址';
+  }
+
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return 'Base URL 请输入有效的 http(s) 地址';
+  }
+
+  if (!config.openaiCompatible.model) {
+    return 'Model 不能为空';
+  }
+
+  if (!Number.isInteger(config.openaiCompatible.timeoutSeconds)
+      || config.openaiCompatible.timeoutSeconds < 1
+      || config.openaiCompatible.timeoutSeconds > 600) {
+    return 'Timeout 秒请输入 1-600 的整数';
+  }
+
+  return null;
 }
 
 async function loadAppConfig() {
@@ -75,17 +118,26 @@ async function saveAppConfig() {
     return;
   }
 
+  const configToSave = readConfigForm();
+  const validationError = validateConfig(configToSave);
+  if (validationError) {
+    setConfigStatus(validationError, true);
+    return;
+  }
+
   saveConfigBtn.disabled = true;
+  saveConfigBtn.textContent = '保存中...';
   setConfigStatus('保存中...');
 
   try {
-    const config = await invoke('save_app_config', { config: readConfigForm() });
+    const config = await invoke('save_app_config', { config: configToSave });
     fillConfigForm(config);
     setConfigStatus('配置已保存，下一次翻译生效');
   } catch (error) {
     setConfigStatus(String(error), true);
   } finally {
     saveConfigBtn.disabled = false;
+    saveConfigBtn.textContent = '保存配置';
   }
 }
 
@@ -105,27 +157,41 @@ async function applyPendingSourceText() {
   }
 }
 
+function shouldHandleSessionEvent(payload) {
+  const sessionId = getSessionId(payload);
+  return !currentSessionId || !sessionId || sessionId === currentSessionId;
+}
+
 function renderTranslationEvent(payload) {
   switch (payload.type) {
     case 'started':
+      currentSessionId = getSessionId(payload);
       inputText.value = payload.sourceText ?? inputText.value;
       outputText.textContent = '';
       outputText.style.color = '#333';
       setTranslating(true);
       break;
     case 'delta':
+      if (!shouldHandleSessionEvent(payload)) return;
       outputText.textContent += payload.text ?? '';
       outputText.style.color = '#333';
+      scrollOutputToBottom();
       break;
     case 'finished':
+      if (!shouldHandleSessionEvent(payload)) return;
       outputText.textContent = payload.fullText ?? outputText.textContent;
       outputText.style.color = '#333';
+      currentSessionId = null;
       setTranslating(false);
+      scrollOutputToBottom();
       break;
     case 'failed':
+      if (currentSessionId && !shouldHandleSessionEvent(payload)) return;
       outputText.textContent = payload.message ?? '翻译失败';
       outputText.style.color = '#b42318';
+      currentSessionId = null;
       setTranslating(false);
+      scrollOutputToBottom();
       break;
     default:
       break;
@@ -140,8 +206,13 @@ if (listen) {
 
 window.addEventListener('focus', applyPendingSourceText);
 
+function syncSettingsButtonText() {
+  settingsBtn.textContent = settingsPanel.classList.contains('hidden') ? '设置' : '收起设置';
+}
+
 settingsBtn.addEventListener('click', () => {
   settingsPanel.classList.toggle('hidden');
+  syncSettingsButtonText();
 });
 
 saveConfigBtn.addEventListener('click', saveAppConfig);
@@ -173,12 +244,17 @@ translateBtn.addEventListener('click', async () => {
   } catch (error) {
     outputText.textContent = String(error);
     outputText.style.color = '#b42318';
+    currentSessionId = null;
     setTranslating(false);
   }
 });
 
 clearBtn.addEventListener('click', () => {
+  if (isTranslating) {
+    return;
+  }
   inputText.value = '';
+  currentSessionId = null;
   resetOutput();
   setTranslating(false);
 });
@@ -190,5 +266,6 @@ inputText.addEventListener('keydown', (e) => {
   }
 });
 
+syncSettingsButtonText();
 loadAppConfig();
 applyPendingSourceText();

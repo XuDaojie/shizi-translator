@@ -6,6 +6,7 @@ use crate::core::config::ConfigStore;
 pub struct AppState {
     pub config_store: ConfigStore,
     pending_source_text: Arc<Mutex<Option<String>>>,
+    translation_busy: Arc<Mutex<bool>>,
 }
 
 impl AppState {
@@ -13,6 +14,7 @@ impl AppState {
         Self {
             config_store,
             pending_source_text: Arc::new(Mutex::new(None)),
+            translation_busy: Arc::new(Mutex::new(false)),
         }
     }
 
@@ -31,6 +33,27 @@ impl AppState {
             .lock()
             .map_err(|_| "原文状态锁已损坏".to_string())?;
         Ok(pending.take())
+    }
+
+    pub fn try_begin_translation(&self) -> Result<(), String> {
+        let mut busy = self
+            .translation_busy
+            .lock()
+            .map_err(|_| "翻译状态锁已损坏".to_string())?;
+        if *busy {
+            return Err("正在翻译中，请稍后再试".to_string());
+        }
+        *busy = true;
+        Ok(())
+    }
+
+    pub fn finish_translation(&self) -> Result<(), String> {
+        let mut busy = self
+            .translation_busy
+            .lock()
+            .map_err(|_| "翻译状态锁已损坏".to_string())?;
+        *busy = false;
+        Ok(())
     }
 }
 
@@ -66,5 +89,16 @@ mod tests {
             state.take_pending_source_text().expect("再次读取待回填原文"),
             None
         );
+    }
+
+    #[test]
+    fn translation_busy_rejects_second_begin_until_finished() {
+        let state = app_state();
+
+        state.try_begin_translation().expect("开始第一次翻译");
+        assert!(state.try_begin_translation().is_err());
+
+        state.finish_translation().expect("结束翻译");
+        state.try_begin_translation().expect("结束后可再次开始");
     }
 }

@@ -45,6 +45,8 @@ pub fn start_translation_from_text(
         target_lang: config.target_lang,
     };
 
+    state.try_begin_translation()?;
+
     show_window(&app);
     thread::sleep(Duration::from_millis(120));
     emit_translation_event(
@@ -54,8 +56,12 @@ pub fn start_translation_from_text(
             source_text: request.source_text.clone(),
         },
     )
-    .map_err(|error| error.to_string())?;
+    .map_err(|error| {
+        let _ = state.finish_translation();
+        error.to_string()
+    })?;
     let app_handle = app.clone();
+    let state_for_task = state.clone();
 
     tauri::async_runtime::spawn(async move {
         let failed_session_id = request.session_id.clone();
@@ -76,6 +82,7 @@ pub fn start_translation_from_text(
                 },
             );
         }
+        let _ = state_for_task.finish_translation();
     });
 
     Ok(session_id)
@@ -83,6 +90,7 @@ pub fn start_translation_from_text(
 
 pub fn show_translation_error(app: &tauri::AppHandle, message: impl Into<String>) {
     let session_id = create_session_id().unwrap_or_else(|_| "selection-error".to_string());
+    show_window(app);
     let _ = emit_translation_event(
         app,
         TranslationEvent::Failed {
@@ -91,7 +99,6 @@ pub fn show_translation_error(app: &tauri::AppHandle, message: impl Into<String>
             retryable: false,
         },
     );
-    show_window(app);
 }
 
 #[tauri::command]
