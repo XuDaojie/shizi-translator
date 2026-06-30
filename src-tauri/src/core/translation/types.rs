@@ -39,7 +39,7 @@ impl TranslationInput {
 }
 
 #[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase", tag = "type")]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase", tag = "type")]
 pub enum TranslationEvent {
     Started {
         session_id: TranslationSessionId,
@@ -93,5 +93,21 @@ mod tests {
         };
 
         assert_eq!(request.source_text(), "hello");
+    }
+
+    #[test]
+    fn started_event_serializes_with_frontend_field_names() {
+        let event = TranslationEvent::Started {
+            session_id: TranslationSessionId("session-1".to_string()),
+            source_text: "OCR 原文".to_string(),
+        };
+
+        let payload = serde_json::to_value(event).expect("事件应可序列化");
+
+        assert_eq!(payload["type"], "started");
+        assert_eq!(payload["sessionId"], "session-1");
+        assert_eq!(payload["sourceText"], "OCR 原文");
+        assert!(payload.get("session_id").is_none());
+        assert!(payload.get("source_text").is_none());
     }
 }

@@ -34,6 +34,19 @@ pub fn start_translation_from_text(
     start_translation_from_input(TranslationInput::ManualText(text), app, state)
 }
 
+fn cache_automatic_source_text_for_popup(
+    input: &TranslationInput,
+    source_text: &str,
+    state: &AppState,
+) -> Result<(), String> {
+    match input {
+        TranslationInput::ManualText(_) => Ok(()),
+        TranslationInput::SelectedText(_) | TranslationInput::OcrText { .. } => {
+            state.set_pending_source_text(source_text.to_string())
+        }
+    }
+}
+
 pub fn start_translation_from_input(
     input: TranslationInput,
     app: tauri::AppHandle,
@@ -72,6 +85,12 @@ pub fn start_translation_from_input(
     };
 
     state.try_begin_translation()?;
+    if let Err(error) =
+        cache_automatic_source_text_for_popup(&request.input, request.source_text(), state)
+    {
+        let _ = state.finish_translation();
+        return Err(error);
+    }
 
     show_window(&app);
     thread::sleep(Duration::from_millis(120));
@@ -148,4 +167,50 @@ fn create_session_id() -> Result<String, String> {
         .duration_since(UNIX_EPOCH)
         .map_err(|_| "无法创建翻译会话".to_string())
         .map(|duration| duration.as_millis().to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::config::{AppConfig, ConfigStore};
+    use std::{
+        path::PathBuf,
+        sync::{Arc, RwLock},
+    };
+
+    fn app_state() -> AppState {
+        AppState::new(ConfigStore::from_parts_for_test(
+            PathBuf::from("unused-config.json"),
+            Arc::new(RwLock::new(AppConfig::from_env())),
+        ))
+    }
+
+    #[test]
+    fn automatic_translation_source_text_is_cached_for_popup_refill() {
+        let state = app_state();
+        let input = TranslationInput::OcrText {
+            text: " OCR 原文 ".to_string(),
+            image_id: None,
+        };
+
+        cache_automatic_source_text_for_popup(&input, "OCR 原文", &state).expect("缓存 OCR 原文");
+
+        assert_eq!(
+            state.take_pending_source_text().expect("读取待回填原文"),
+            Some("OCR 原文".to_string())
+        );
+    }
+
+    #[test]
+    fn manual_translation_source_text_is_not_cached_for_popup_refill() {
+        let state = app_state();
+        let input = TranslationInput::ManualText("手动输入".to_string());
+
+        cache_automatic_source_text_for_popup(&input, "手动输入", &state).expect("手动输入不需要缓存");
+
+        assert_eq!(
+            state.take_pending_source_text().expect("读取待回填原文"),
+            None
+        );
+    }
 }
