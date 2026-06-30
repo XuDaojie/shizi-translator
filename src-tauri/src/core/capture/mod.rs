@@ -67,6 +67,23 @@ impl CapturedImage {
     }
 }
 
+/// 把 overlay 前端回传的 CSS 逻辑像素矩形按 scale_factor 换算为物理像素。
+/// 返回 (x, y, w, h)，均向下取整。
+pub fn css_rect_to_physical(
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+    scale_factor: f64,
+) -> (u32, u32, u32, u32) {
+    (
+        (x * scale_factor) as u32,
+        (y * scale_factor) as u32,
+        (w * scale_factor) as u32,
+        (h * scale_factor) as u32,
+    )
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CapturedImageFormat {
     Bgra8,
@@ -177,5 +194,27 @@ mod tests {
             image.crop(0, 0, 2, 2),
             Err(CaptureError::ImageConversionFailed(_))
         ));
+    }
+
+    #[test]
+    fn css_rect_scales_at_1x() {
+        assert_eq!(css_rect_to_physical(10.0, 20.0, 30.0, 40.0, 1.0), (10, 20, 30, 40));
+    }
+
+    #[test]
+    fn css_rect_scales_at_1_5x() {
+        // 10*1.5=15, 20*1.5=30, 30*1.5=45, 40*1.5=60
+        assert_eq!(css_rect_to_physical(10.0, 20.0, 30.0, 40.0, 1.5), (15, 30, 45, 60));
+    }
+
+    #[test]
+    fn css_rect_scales_at_2x() {
+        assert_eq!(css_rect_to_physical(5.0, 6.0, 7.0, 8.0, 2.0), (10, 12, 14, 16));
+    }
+
+    #[test]
+    fn css_rect_floors_fractional_pixels() {
+        // 3.3*1.0=3.3 -> 3；尺寸 floor 后若为 0 由调用方 crop 拒绝
+        assert_eq!(css_rect_to_physical(3.3, 3.9, 1.6, 1.2, 1.0), (3, 3, 1, 1));
     }
 }
