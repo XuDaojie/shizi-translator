@@ -101,14 +101,23 @@ impl WindowsScreenCapture {
                 Err(_) => std::thread::sleep(Duration::from_millis(50)),
             }
         }
-        let frame = frame.ok_or_else(|| {
-            CaptureError::BackendUnavailable("未能在超时时间内获取首帧".to_string())
-        })?;
-        let result = Self::extract_bgra_from_frame(frame, size);
+        let result = Self::capture_result_from_frame(frame, size);
 
         let _ = session.Close();
         let _ = pool.Close();
-        result.map(Some)
+        result
+    }
+
+    fn capture_result_from_frame(
+        frame: Option<Direct3D11CaptureFrame>,
+        size: SizeInt32,
+    ) -> Result<Option<CapturedImage>, CaptureError> {
+        match frame {
+            Some(frame) => Self::extract_bgra_from_frame(frame, size).map(Some),
+            None => Err(CaptureError::BackendUnavailable(
+                "未能在超时时间内获取首帧".to_string(),
+            )),
+        }
     }
 
     fn extract_bgra_from_frame(
@@ -122,10 +131,8 @@ impl WindowsScreenCapture {
             .cast()
             .map_err(|error| CaptureError::ImageConversionFailed(error.to_string()))?;
 
-        let width = size.Width as u32;
-        let height = size.Height as u32;
-        let (row_len, capacity) = Self::bgra_buffer_layout(size)?;
-        let mut bytes = Vec::with_capacity(capacity);
+        let layout = Self::bgra_buffer_layout(size)?;
+        let mut bytes = Vec::with_capacity(layout.capacity);
 
         unsafe {
             let mut mapped: DXGI_MAPPED_RECT = std::mem::zeroed();
@@ -134,37 +141,45 @@ impl WindowsScreenCapture {
                 .map_err(|error| CaptureError::ImageConversionFailed(error.to_string()))?;
             let _guard = MappedSurfaceGuard::new(&dxgi_surface);
             let row_pitch = mapped.Pitch as usize;
-            Self::validate_mapped_surface(mapped.pBits, row_pitch, row_len)?;
-            for row in 0..height as usize {
-                let src = mapped.pBits.add(row * row_pitch);
-                bytes.extend_from_slice(std::slice::from_raw_parts(src, row_len));
+            Self::validate_mapped_surface(mapped.pBits, row_pitch, layout.row_len)?;
+            for row in 0..layout.height as usize {
+                let offset = row.checked_mul(row_pitch).ok_or_else(|| {
+                    CaptureError::ImageConversionFailed("映射后的截图行偏移溢出".to_string())
+                })?;
+                let src = mapped.pBits.add(offset);
+                bytes.extend_from_slice(std::slice::from_raw_parts(src, layout.row_len));
             }
         }
 
         Ok(CapturedImage {
             bytes,
-            width,
-            height,
+            width: layout.width,
+            height: layout.height,
             format: crate::core::capture::CapturedImageFormat::Bgra8,
         })
     }
 
-    fn bgra_buffer_layout(size: SizeInt32) -> Result<(usize, usize), CaptureError> {
+    fn bgra_buffer_layout(size: SizeInt32) -> Result<BgraBufferLayout, CaptureError> {
         if size.Width <= 0 || size.Height <= 0 {
             return Err(CaptureError::ImageConversionFailed(
                 "截图尺寸必须为正数".to_string(),
             ));
         }
 
-        let width = size.Width as usize;
-        let height = size.Height as usize;
-        let row_len = width.checked_mul(4).ok_or_else(|| {
+        let width = size.Width as u32;
+        let height = size.Height as u32;
+        let row_len = (width as usize).checked_mul(4).ok_or_else(|| {
             CaptureError::ImageConversionFailed("截图行字节数溢出".to_string())
         })?;
-        let capacity = row_len.checked_mul(height).ok_or_else(|| {
+        let capacity = row_len.checked_mul(height as usize).ok_or_else(|| {
             CaptureError::ImageConversionFailed("截图缓冲区大小溢出".to_string())
         })?;
-        Ok((row_len, capacity))
+        Ok(BgraBufferLayout {
+            width,
+            height,
+            row_len,
+            capacity,
+        })
     }
 
     fn validate_mapped_surface(
@@ -184,6 +199,13 @@ impl WindowsScreenCapture {
         }
         Ok(())
     }
+}
+
+struct BgraBufferLayout {
+    width: u32,
+    height: u32,
+    row_len: usize,
+    capacity: usize,
 }
 
 struct MappedSurfaceGuard<'a> {
@@ -250,10 +272,24 @@ mod tests {
             Height: 2,
         };
 
-        let (row_len, capacity) = WindowsScreenCapture::bgra_buffer_layout(size).unwrap();
+        let layout = WindowsScreenCapture::bgra_buffer_layout(size).unwrap();
 
-        assert_eq!(row_len, 12);
-        assert_eq!(capacity, 24);
+        assert_eq!(layout.width, 3);
+        assert_eq!(layout.height, 2);
+        assert_eq!(layout.row_len, 12);
+        assert_eq!(layout.capacity, 24);
+    }
+
+    #[test]
+    fn capture_result_from_frame_returns_error_when_first_frame_times_out() {
+        let size = SizeInt32 {
+            Width: 1,
+            Height: 1,
+        };
+
+        let result = WindowsScreenCapture::capture_result_from_frame(None, size);
+
+        assert!(matches!(result, Err(CaptureError::BackendUnavailable(_))));
     }
 
     #[test]
