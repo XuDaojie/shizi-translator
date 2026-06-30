@@ -50,9 +50,17 @@
     }
 
     window.addEventListener('mousedown', (e) => {
-      if (e.button !== 0) { invoke('cancel_capture'); return; } // 右键/中键取消
+      if (e.button !== 0) {
+        // 右键/中键取消：重置拖拽状态，避免后续 mouseup 误提交。
+        down = false; moving = false;
+        invoke('cancel_capture');
+        return;
+      }
       down = true; moving = false; downX = e.clientX; downY = e.clientY;
     });
+    // 抑制右键菜单与拖拽默认行为，框选交互不被打断。
+    window.addEventListener('contextmenu', (e) => e.preventDefault());
+    window.addEventListener('dragstart', (e) => e.preventDefault());
     window.addEventListener('mousemove', (e) => {
       if (!down) return;
       moving = true; updateSel(downX, downY, e.clientX, e.clientY);

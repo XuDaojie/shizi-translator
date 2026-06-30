@@ -118,6 +118,14 @@ impl WindowsScreenCapture {
     }
 
     pub async fn capture_monitor(&self) -> Result<CapturedImage, CaptureError> {
+        // D3D11/DXGI 均为同步阻塞 API（AcquireNextFrame 轮询 + thread::sleep），
+        // 整段丢到 spawn_blocking，避免卡住 tokio worker（含 translation:event 事件循环）。
+        tauri::async_runtime::spawn_blocking(Self::capture_monitor_blocking)
+            .await
+            .map_err(|join_err| CaptureError::BackendUnavailable(join_err.to_string()))?
+    }
+
+    fn capture_monitor_blocking() -> Result<CapturedImage, CaptureError> {
         let (device, context) = Self::create_d3d11_device()?;
         let (dupl, _width, _height) = Self::duplicate_cursor_output(&device)?;
 

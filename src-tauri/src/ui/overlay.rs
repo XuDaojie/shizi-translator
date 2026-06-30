@@ -1,4 +1,4 @@
-use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 
 use crate::{
     app::state::AppState,
@@ -23,6 +23,16 @@ pub fn open_overlay(app: &tauri::AppHandle) -> Result<(), String> {
         .fullscreen(true)
         .build()
         .map_err(|e| e.to_string())?;
+    // 兜底：overlay 被外部关闭或异常销毁时（非 submit/cancel 正常路径），
+    // 释放 pending_capture 帧与 capture 锁，避免锁永久占用导致后续 Alt+O 被拒。
+    let app_handle = app.clone();
+    window.on_window_event(move |event| {
+        if let WindowEvent::Destroyed = event {
+            let state: tauri::State<'_, AppState> = app_handle.state();
+            let _ = state.take_pending_capture();
+            let _ = state.finish_capture();
+        }
+    });
     let _ = window.set_focus();
     Ok(())
 }
