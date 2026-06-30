@@ -119,7 +119,7 @@ impl WindowsScreenCapture {
 
     pub async fn capture_monitor(&self) -> Result<CapturedImage, CaptureError> {
         let (device, context) = Self::create_d3d11_device()?;
-        let (dupl, width, height) = Self::duplicate_cursor_output(&device)?;
+        let (dupl, _width, _height) = Self::duplicate_cursor_output(&device)?;
 
         // AcquireNextFrame 首帧即全帧；带超时轮询。
         let mut acquired: Option<ID3D11Texture2D> = None;
@@ -139,9 +139,7 @@ impl WindowsScreenCapture {
                     break;
                 }
                 Err(_) => {
-                    unsafe {
-                        let _ = dupl.ReleaseFrame();
-                    }
+                    // AcquireNextFrame 失败时不能调 ReleaseFrame（无对应 acquire，会触发 INVALID_CALL）。
                     std::thread::sleep(Duration::from_millis(20));
                 }
             }
@@ -151,7 +149,16 @@ impl WindowsScreenCapture {
             CaptureError::BackendUnavailable("未能在超时时间内获取桌面帧".into())
         })?;
 
-        let result = Self::extract_bgra(&device, &context, &texture, width, height);
+        // 以 acquired texture 自身实际尺寸为准（rotation / DPI 切换 / 模式刚切换时可能与 dupl_desc 不一致），
+        // 覆盖 duplicate_output 返回的 dupl_desc 尺寸。
+        let mut tex_desc = D3D11_TEXTURE2D_DESC::default();
+        unsafe {
+            texture.GetDesc(&mut tex_desc);
+        }
+        let tex_width = tex_desc.Width;
+        let tex_height = tex_desc.Height;
+
+        let result = Self::extract_bgra(&device, &context, &texture, tex_width, tex_height);
         unsafe {
             let _ = dupl.ReleaseFrame();
         }
