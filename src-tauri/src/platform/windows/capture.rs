@@ -1,4 +1,4 @@
-use crate::core::capture::{CapturedImage, CaptureError};
+use crate::core::capture::{CaptureRegion, CapturedImage, CaptureError, ScreenCapture};
 use std::time::Duration;
 use windows::core::Interface;
 use windows::Foundation::IAsyncOperation;
@@ -198,6 +198,18 @@ impl WindowsScreenCapture {
             ));
         }
         Ok(())
+    }
+}
+
+#[async_trait::async_trait]
+impl ScreenCapture for WindowsScreenCapture {
+    async fn capture_region(&self, _region: CaptureRegion) -> Result<CapturedImage, CaptureError> {
+        // ponytail: 区域截图留给 DXGI/自建 overlay 阶段，MVP 仅交互式 picker
+        Err(CaptureError::UnsupportedPlatform)
+    }
+
+    async fn capture_interactive(&self) -> Result<Option<CapturedImage>, CaptureError> {
+        self.capture_full_screen().await
     }
 }
 
