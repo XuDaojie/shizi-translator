@@ -42,6 +42,14 @@ impl CapturedImage {
         }
 
         let src_row_len = (self.width as usize) * 4;
+        let expected = src_row_len
+            .checked_mul(self.height as usize)
+            .ok_or_else(|| CaptureError::ImageConversionFailed("缓冲区大小溢出".to_string()))?;
+        if self.bytes.len() < expected {
+            return Err(CaptureError::ImageConversionFailed(
+                "缓冲区与声明尺寸不匹配".to_string(),
+            ));
+        }
         let dst_row_len = (w as usize) * 4;
         let mut bytes = Vec::with_capacity(dst_row_len * h as usize);
         for row in 0..h as usize {
