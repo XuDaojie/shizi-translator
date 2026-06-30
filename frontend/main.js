@@ -89,9 +89,26 @@ async function saveAppConfig() {
   }
 }
 
+async function applyPendingSourceText() {
+  if (!invoke) {
+    return;
+  }
+
+  try {
+    const sourceText = await invoke('take_pending_source_text');
+    if (sourceText) {
+      inputText.value = sourceText;
+    }
+  } catch (error) {
+    outputText.textContent = String(error);
+    outputText.style.color = '#b42318';
+  }
+}
+
 function renderTranslationEvent(payload) {
   switch (payload.type) {
     case 'started':
+      inputText.value = payload.sourceText ?? inputText.value;
       outputText.textContent = '';
       outputText.style.color = '#333';
       setTranslating(true);
@@ -120,6 +137,8 @@ if (listen) {
     renderTranslationEvent(event.payload);
   });
 }
+
+window.addEventListener('focus', applyPendingSourceText);
 
 settingsBtn.addEventListener('click', () => {
   settingsPanel.classList.toggle('hidden');
@@ -172,3 +191,4 @@ inputText.addEventListener('keydown', (e) => {
 });
 
 loadAppConfig();
+applyPendingSourceText();

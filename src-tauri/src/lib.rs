@@ -3,16 +3,16 @@ mod core;
 mod ui;
 
 use app::{
-    shortcuts::register_global_shortcuts,
+    shortcuts::{handle_global_shortcut, register_global_shortcuts},
     state::AppState,
     tray::setup_tray,
-    window::{setup_close_to_hide, toggle_window},
+    window::setup_close_to_hide,
 };
 use core::config::ConfigStore;
 use tauri::Manager;
 use ui::{
     config::{get_app_config, save_app_config},
-    web_popup::start_translation,
+    web_popup::{start_translation, take_pending_source_text},
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -21,14 +21,13 @@ pub fn run() {
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
-                    if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                        toggle_window(app);
-                    }
+                    handle_global_shortcut(app, event);
                 })
                 .build(),
         )
         .invoke_handler(tauri::generate_handler![
             start_translation,
+            take_pending_source_text,
             get_app_config,
             save_app_config,
         ])

@@ -1,9 +1,9 @@
-use std::{sync::Arc, time::{SystemTime, UNIX_EPOCH}};
+use std::{sync::Arc, thread, time::{Duration, SystemTime, UNIX_EPOCH}};
 
-use tauri::{Emitter, Manager};
+use tauri::Emitter;
 
 use crate::{
-    app::state::AppState,
+    app::{state::AppState, window::show_window},
     core::{
         llm::{LlmProvider, MockLlmProvider, OpenAiCompatibleConfig, OpenAiCompatibleProvider},
         translation::{TranslationEvent, TranslationRequest, TranslationService, TranslationSessionId},
@@ -19,11 +19,10 @@ pub fn emit_translation_event(
     app.emit(TRANSLATION_EVENT, event)
 }
 
-#[tauri::command]
-pub async fn start_translation(
+pub fn start_translation_from_text(
     text: String,
     app: tauri::AppHandle,
-    state: tauri::State<'_, AppState>,
+    state: &AppState,
 ) -> Result<String, String> {
     let source_text = text.trim().to_string();
     if source_text.is_empty() {
@@ -39,18 +38,23 @@ pub async fn start_translation(
     };
     let translation_service = TranslationService::new(provider);
 
-    let session_id = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|_| "无法创建翻译会话".to_string())?
-        .as_millis()
-        .to_string();
-
+    let session_id = create_session_id()?;
     let request = TranslationRequest {
         session_id: TranslationSessionId(session_id.clone()),
         source_text,
         target_lang: config.target_lang,
     };
 
+    show_window(&app);
+    thread::sleep(Duration::from_millis(120));
+    emit_translation_event(
+        &app,
+        TranslationEvent::Started {
+            session_id: request.session_id.clone(),
+            source_text: request.source_text.clone(),
+        },
+    )
+    .map_err(|error| error.to_string())?;
     let app_handle = app.clone();
 
     tauri::async_runtime::spawn(async move {
@@ -74,11 +78,41 @@ pub async fn start_translation(
         }
     });
 
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.show();
-        let _ = window.unminimize();
-        let _ = window.set_focus();
-    }
-
     Ok(session_id)
+}
+
+pub fn show_translation_error(app: &tauri::AppHandle, message: impl Into<String>) {
+    let session_id = create_session_id().unwrap_or_else(|_| "selection-error".to_string());
+    let _ = emit_translation_event(
+        app,
+        TranslationEvent::Failed {
+            session_id: TranslationSessionId(session_id),
+            message: message.into(),
+            retryable: false,
+        },
+    );
+    show_window(app);
+}
+
+#[tauri::command]
+pub async fn take_pending_source_text(
+    state: tauri::State<'_, AppState>,
+) -> Result<Option<String>, String> {
+    state.take_pending_source_text()
+}
+
+#[tauri::command]
+pub async fn start_translation(
+    text: String,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    start_translation_from_text(text, app, state.inner())
+}
+
+fn create_session_id() -> Result<String, String> {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|_| "无法创建翻译会话".to_string())
+        .map(|duration| duration.as_millis().to_string())
 }

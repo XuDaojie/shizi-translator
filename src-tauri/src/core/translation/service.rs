@@ -36,11 +36,6 @@ impl TranslationService {
     where
         F: FnMut(TranslationEvent) + Send,
     {
-        emit(TranslationEvent::Started {
-            session_id: request.session_id.clone(),
-            source_text: request.source_text.clone(),
-        });
-
         let full_text = Arc::new(Mutex::new(String::new()));
         let delta_text = full_text.clone();
         let delta_session_id = request.session_id.clone();

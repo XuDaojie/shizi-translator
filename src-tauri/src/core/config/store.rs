@@ -33,6 +33,11 @@ pub struct ConfigStore {
 }
 
 impl ConfigStore {
+    #[cfg(test)]
+    pub fn from_parts_for_test(path: PathBuf, config: Arc<RwLock<AppConfig>>) -> Self {
+        Self { path, config }
+    }
+
     pub fn load(app_handle: &tauri::AppHandle) -> Result<Self, ConfigError> {
         let config_dir = app_handle
             .path()
