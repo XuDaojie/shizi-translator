@@ -74,7 +74,7 @@ translateBtn.addEventListener('click', async () => {
   setTranslating(true);
 
   try {
-    await invoke('start_mock_translation', { text });
+    await invoke('start_translation', { text });
   } catch (error) {
     outputText.textContent = String(error);
     outputText.style.color = '#b42318';

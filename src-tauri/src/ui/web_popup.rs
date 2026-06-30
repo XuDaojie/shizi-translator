@@ -1,4 +1,4 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{env, time::{SystemTime, UNIX_EPOCH}};
 
 use tauri::{Emitter, Manager};
 
@@ -17,7 +17,7 @@ pub fn emit_translation_event(
 }
 
 #[tauri::command]
-pub async fn start_mock_translation(
+pub async fn start_translation(
     text: String,
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
@@ -36,7 +36,7 @@ pub async fn start_mock_translation(
     let request = TranslationRequest {
         session_id: TranslationSessionId(session_id.clone()),
         source_text,
-        target_lang: "中文".to_string(),
+        target_lang: env::var("SHIZI_TARGET_LANG").unwrap_or_else(|_| "中文".to_string()),
     };
 
     let app_handle = app.clone();
@@ -50,13 +50,14 @@ pub async fn start_mock_translation(
             })
             .await;
 
-        if result.is_err() {
+        if let Err(error) = result {
+            let retryable = error.retryable();
             let _ = emit_translation_event(
                 &app_handle,
                 TranslationEvent::Failed {
                     session_id: failed_session_id,
-                    message: "模拟翻译失败".to_string(),
-                    retryable: false,
+                    message: error.to_string(),
+                    retryable,
                 },
             );
         }

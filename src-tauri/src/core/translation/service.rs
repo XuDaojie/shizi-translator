@@ -1,11 +1,22 @@
-use std::{sync::Arc, time::Duration};
+use std::{sync::Arc, sync::Mutex};
 
-use crate::core::llm::LlmProvider;
+use crate::core::llm::{LlmError, LlmProvider};
 
 use super::{TranslationEvent, TranslationRequest};
 
-#[derive(Debug)]
-pub struct TranslationError;
+#[derive(Debug, thiserror::Error)]
+pub enum TranslationError {
+    #[error(transparent)]
+    Llm(#[from] LlmError),
+}
+
+impl TranslationError {
+    pub fn retryable(&self) -> bool {
+        match self {
+            Self::Llm(error) => error.retryable(),
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct TranslationService {
@@ -30,17 +41,23 @@ impl TranslationService {
             source_text: request.source_text.clone(),
         });
 
-        let chunks = self.provider.stream_translate(&request);
-        let mut full_text = String::new();
+        let full_text = Arc::new(Mutex::new(String::new()));
+        let delta_text = full_text.clone();
+        let delta_session_id = request.session_id.clone();
 
-        for chunk in chunks {
-            full_text.push_str(&chunk);
-            emit(TranslationEvent::Delta {
-                session_id: request.session_id.clone(),
-                text: chunk,
-            });
-            std::thread::sleep(Duration::from_millis(180));
-        }
+        self.provider
+            .stream_translate(&request, &mut |chunk| {
+                if let Ok(mut text) = delta_text.lock() {
+                    text.push_str(&chunk);
+                }
+                emit(TranslationEvent::Delta {
+                    session_id: delta_session_id.clone(),
+                    text: chunk,
+                });
+            })
+            .await?;
+
+        let full_text = full_text.lock().map(|text| text.clone()).unwrap_or_default();
 
         emit(TranslationEvent::Finished {
             session_id: request.session_id,

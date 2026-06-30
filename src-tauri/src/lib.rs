@@ -2,7 +2,7 @@ mod app;
 mod core;
 mod ui;
 
-use std::sync::Arc;
+use std::{env, sync::Arc};
 
 use app::{
     shortcuts::register_global_shortcuts,
@@ -10,12 +10,21 @@ use app::{
     tray::setup_tray,
     window::{setup_close_to_hide, toggle_window},
 };
-use core::{llm::MockLlmProvider, translation::TranslationService};
-use ui::web_popup::start_mock_translation;
+use core::{
+    llm::{LlmProvider, MockLlmProvider, OpenAiCompatibleProvider},
+    translation::TranslationService,
+};
+use ui::web_popup::start_translation;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let translation_service = TranslationService::new(Arc::new(MockLlmProvider));
+    let provider_name = env::var("SHIZI_LLM_PROVIDER")
+        .unwrap_or_else(|_| "openai-compatible".to_string());
+    let provider: Arc<dyn LlmProvider> = match provider_name.as_str() {
+        "mock" => Arc::new(MockLlmProvider),
+        _ => Arc::new(OpenAiCompatibleProvider::from_env()),
+    };
+    let translation_service = TranslationService::new(provider);
 
     tauri::Builder::default()
         .manage(AppState::new(translation_service))
@@ -28,7 +37,7 @@ pub fn run() {
                 })
                 .build(),
         )
-        .invoke_handler(tauri::generate_handler![start_mock_translation])
+        .invoke_handler(tauri::generate_handler![start_translation])
         .setup(|app| {
             setup_tray(app)?;
             setup_close_to_hide(app);
