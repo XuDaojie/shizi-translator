@@ -90,7 +90,7 @@ impl OpenAiCompatibleProvider {
                     role: "user",
                     content: format!(
                         "请将以下文本翻译为{}：\n\n{}",
-                        request.target_lang, request.source_text
+                        request.target_lang, request.source_text()
                     ),
                 },
             ],

@@ -5,8 +5,8 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 use crate::{
     app::state::AppState,
-    core::selection::copy_selected_text,
-    ui::web_popup::{show_translation_error, start_translation_from_text},
+    core::{selection::copy_selected_text, translation::TranslationInput},
+    ui::web_popup::{show_translation_error, start_translation_from_input},
 };
 
 pub fn register_global_shortcuts(app: &tauri::App) -> Result<(), tauri_plugin_global_shortcut::Error> {
@@ -39,7 +39,7 @@ pub fn handle_global_shortcut(
             return;
         }
 
-        if let Err(error) = start_translation_from_text(selected_text, app_handle.clone(), state.inner()) {
+        if let Err(error) = start_translation_from_input(TranslationInput::SelectedText(selected_text), app_handle.clone(), state.inner()) {
             show_translation_error(&app_handle, error);
         }
     });

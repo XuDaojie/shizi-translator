@@ -6,7 +6,7 @@ use crate::{
     app::{state::AppState, window::show_window},
     core::{
         llm::{LlmProvider, MockLlmProvider, OpenAiCompatibleConfig, OpenAiCompatibleProvider},
-        translation::{TranslationEvent, TranslationRequest, TranslationService, TranslationSessionId},
+        translation::{TranslationEvent, TranslationInput, TranslationRequest, TranslationService, TranslationSessionId},
     },
 };
 
@@ -24,10 +24,26 @@ pub fn start_translation_from_text(
     app: tauri::AppHandle,
     state: &AppState,
 ) -> Result<String, String> {
-    let source_text = text.trim().to_string();
+    start_translation_from_input(TranslationInput::ManualText(text), app, state)
+}
+
+pub fn start_translation_from_input(
+    input: TranslationInput,
+    app: tauri::AppHandle,
+    state: &AppState,
+) -> Result<String, String> {
+    let source_text = input.text().trim().to_string();
     if source_text.is_empty() {
         return Err("请输入要翻译的文本".to_string());
     }
+    let input = match input {
+        TranslationInput::ManualText(_) => TranslationInput::ManualText(source_text),
+        TranslationInput::SelectedText(_) => TranslationInput::SelectedText(source_text),
+        TranslationInput::OcrText { image_id, .. } => TranslationInput::OcrText {
+            text: source_text,
+            image_id,
+        },
+    };
 
     let config = state.config_store.get().map_err(|error| error.to_string())?;
     let provider: Arc<dyn LlmProvider> = match config.provider.as_str() {
@@ -41,7 +57,7 @@ pub fn start_translation_from_text(
     let session_id = create_session_id()?;
     let request = TranslationRequest {
         session_id: TranslationSessionId(session_id.clone()),
-        source_text,
+        input,
         target_lang: config.target_lang,
     };
 
@@ -53,7 +69,7 @@ pub fn start_translation_from_text(
         &app,
         TranslationEvent::Started {
             session_id: request.session_id.clone(),
-            source_text: request.source_text.clone(),
+            source_text: request.source_text().to_string(),
         },
     )
     .map_err(|error| {

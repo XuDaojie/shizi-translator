@@ -16,7 +16,7 @@ impl LlmProvider for MockLlmProvider {
     ) -> Result<(), LlmError> {
         let chunks = [
             "[Mock 翻译] ".to_string(),
-            request.source_text.clone(),
+            request.source_text().to_string(),
             " -> ".to_string(),
             request.target_lang.clone(),
         ];
