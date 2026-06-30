@@ -61,6 +61,36 @@ src-tauri/src/ui/settings_commands.rs
 - Web 翻译弹窗通过 Tauri Event 接收统一 `TranslationEvent`。
 - 设置页管理 API Key、base URL、model、默认语言。
 
+### 当前完成状态
+
+截至当前 MVP，里程碑 1 已基本完成主链路：
+
+已完成 / 基本完成：
+
+- Rust `app` / `core` / `ui` 初始分层。
+- `TranslationRequest` / `TranslationEvent` / `LlmProvider` / `TranslationService` 基础抽象。
+- Mock provider，用于本地流式事件验证。
+- OpenAI-compatible Chat Completions 流式 provider。
+- WebView 通过 `translation:event` 接收 `Started` / `Delta` / `Finished` / `Failed` 并流式渲染。
+- 配置最小闭环：本地 JSON 配置、`get_app_config` / `save_app_config`、主窗口内嵌设置面板。
+- `Alt+T` 划词复制翻译：模拟 `Ctrl+C`、读取选中文本、触发翻译。
+- 翻译窗口交互状态收敛：busy 保护、按钮状态、事件 session 过滤、输出自动滚动。
+
+暂未完成 / 后续演进：
+
+- Anthropic / Claude 专用 provider。
+- `TranslationInput` / `TranslationMode` 的完整输入模型。
+- `Cancelled` 事件、usage/token 统计、取消/重试交互。
+- 独立设置页与独立翻译弹窗拆分。
+- OCR / 截图 / Slint 原生弹窗。
+
+当前 MVP 的实际文件结构与本计划早期命名略有差异：
+
+- 剪贴板与选区读取落在 `src-tauri/src/core/selection/clipboard.rs`、`keyboard.rs`、`mod.rs`。
+- 翻译 WebView 编排落在 `src-tauri/src/ui/web_popup.rs`。
+- 设置 commands 落在 `src-tauri/src/ui/config.rs`。
+- 当前 `TranslationEvent` 是 MVP 简化版，不含 `Cancelled` 与 `usage` 字段。
+
 ### 技术难点
 
 #### 强制划词复制

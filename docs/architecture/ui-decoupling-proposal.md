@@ -52,6 +52,32 @@ OCR 识别后直接操作窗口
 Web 前端直接拼 provider 请求
 ```
 
+## 当前 MVP 落地状态与偏差
+
+当前 MVP 已落地了目标架构中的一部分边界，但仍保留若干阶段性简化：
+
+已落地：
+
+- Rust core 已包含 `config`、`llm`、`selection`、`translation` 等模块。
+- UI 层已有 `src-tauri/src/ui/web_popup.rs` 和 `src-tauri/src/ui/config.rs`，分别承载翻译窗口编排与设置 commands。
+- 前端通过 `translation:event` 消费 `Started` / `Delta` / `Finished` / `Failed` 事件并流式渲染。
+- OpenAI-compatible provider 和 mock provider 都不直接操作前端 UI。
+- `Alt+T` 划词复制翻译已通过 `core::selection` 与共享翻译入口串通。
+
+MVP 简化点：
+
+- 尚未抽出 `TranslationPopupPort` trait；当前 `web_popup.rs` 仍同时承担 command、窗口显示、事件 emit 编排。
+- 尚未抽出 `TranslationEventSink` trait；当前通过闭包和 Tauri `emit` 完成事件投递。
+- 当前 `TranslationRequest` 仍是 `source_text + target_lang` 的简化结构，不是完整 `TranslationInput`。
+- 当前 `TranslationEvent` 不包含 `Cancelled`、`usage` 等后续字段。
+- 当前设置 UI 仍内嵌在主窗口，并不是独立设置页。
+
+后续演进：
+
+- 在拆分设置页 / 翻译弹窗前，逐步抽出 UI port 边界。
+- Slint 阶段再落地 `TranslationPopupPort` 的 Slint 实现。
+- OCR / 截图阶段再引入 `TranslationInput`，统一手动输入、划词、OCR 来源。
+
 ## 核心类型
 
 ```rust

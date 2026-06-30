@@ -8,11 +8,18 @@
 
 ```
 frontend/          静态前端（原生 HTML/JS/CSS，无构建步骤）
-  index.html       主窗口 UI
-  main.js          翻译框交互（当前为占位实现）
+  index.html       主窗口 UI：翻译输入、输出区、内嵌设置面板
+  main.js          前端交互：配置读写、翻译触发、translation:event 监听与流式渲染
+  style.css        主窗口样式
 src-tauri/         Rust 后端 + Tauri 配置
-  src/lib.rs       应用入口：托盘菜单 + 全局快捷键 + 窗口生命周期
+  src/lib.rs       应用装配入口：注册插件、commands、托盘、快捷键、窗口生命周期
   src/main.rs      薄入口，调用 shizi_lib::run()
+  src/app/         应用编排：托盘、全局快捷键、窗口控制、AppState
+  src/core/config/ 本地配置模型与 JSON 存储
+  src/core/llm/    LLM provider 抽象、mock、OpenAI-compatible 流式 provider
+  src/core/selection/ 划词复制：剪贴板文本读取、Ctrl+C 模拟
+  src/core/translation/ 翻译请求、事件与 TranslationService
+  src/ui/          Tauri commands 与 WebView 事件桥：翻译、配置
   tauri.conf.json  窗口尺寸、标题、产品标识；frontendDist 指向 ../frontend
   capabilities/    Tauri 权限清单（core + global-shortcut）
 pot-desktop/       参考实现（Pot 源码，仅供学习对照，不要直接修改）
@@ -26,7 +33,7 @@ Tauri 2 + 原生静态前端 —— 没有 Vite/webpack/打包步骤，前端文
 - Node.js（用于运行 `@tauri-apps/cli`）
 - Rust toolchain（stable, edition 2021）
 - Windows 端需安装 WebView2 Runtime（Windows 11 已自带）
-- 关键依赖：`tauri 2`（`tray-icon` feature）、`tauri-plugin-global-shortcut 2`
+- 关键依赖：`tauri 2`（`tray-icon` feature）、`tauri-plugin-global-shortcut 2`、`reqwest`、`arboard`、`enigo`
 
 ## 常用命令
 
@@ -43,11 +50,12 @@ cd src-tauri && cargo clean           # 清理 Rust 编译缓存
 ## 架构关键点
 
 - **分层结构**：
-  - **核心层**：Rust 实现，承载业务逻辑、配置管理、LLM 调用等。
-  - **UI 层**：当前分两个独立模块 —— ①**翻译弹窗** 与 ②**设置页面**（管理 API Key/URL 等配置）。两者目前都用 Tauri UI（WebView + 静态前端）实现，但**必须保持可插拔/可替换**：核心层只通过明确定义的接口（Tauri command / 事件）与 UI 通信，便于未来分别替换为其他技术方案。新增能力时不要把核心逻辑写进 UI 层，也不要让两个 UI 模块互相耦合。
-- **托盘驻留模型**：窗口的 `CloseRequested` 被拦截改为 `hide()`，应用通过托盘菜单「退出」才会真正退出；详见 [src-tauri/src/lib.rs](src-tauri/src/lib.rs)。
-- **全局快捷键**：`Alt+T` 切换主窗口显隐，由 `tauri-plugin-global-shortcut` 注册，逻辑集中在 `toggle_window`。新增快捷键时需在 `capabilities/default.json` 同步授权。
-- **前后端通信**：当前还没有 `#[tauri::command]`，前端 `main.js` 是纯占位逻辑；接入 LLM 翻译时需在 Rust 侧新增 command 并通过 `@tauri-apps/api` 的 `invoke` 调用。
+  - **核心层**：Rust 实现，承载翻译业务、配置管理、LLM provider、划词复制等能力。
+  - **UI 层**：当前仍是单 WebView 主窗口，包含翻译区与内嵌设置面板；后续目标是拆成 ①**翻译弹窗** 与 ②**设置页面** 两个可替换模块。新增能力时不要把核心逻辑写进前端，也不要让未来两个 UI 模块互相耦合。
+- **托盘驻留模型**：窗口的 `CloseRequested` 被拦截改为 `hide()`，应用通过托盘菜单「退出」才会真正退出；详见 [src-tauri/src/app/window.rs](src-tauri/src/app/window.rs) 与 [src-tauri/src/app/tray.rs](src-tauri/src/app/tray.rs)。
+- **全局快捷键**：`Alt+T` 当前用于划词复制并自动翻译，由 `tauri-plugin-global-shortcut` 注册，逻辑集中在 `src-tauri/src/app/shortcuts.rs`。新增快捷键时需在 `capabilities/default.json` 同步授权。
+- **前后端通信**：当前已有 Tauri commands：`start_translation`、`take_pending_source_text`、`get_app_config`、`save_app_config`。后端通过 `translation:event` 向前端推送 `Started` / `Delta` / `Finished` / `Failed`。
+- **配置存储**：当前设置面板将 OpenAI-compatible 配置保存到 Tauri app config dir 下的 `config.json`。API Key 在 MVP 阶段明文保存，后续产品化需迁移到系统 SecretStore。
 
 ## 开发说明
 
@@ -64,7 +72,15 @@ cd src-tauri && cargo clean           # 清理 Rust 编译缓存
 
 ## 测试
 
-项目当前尚未引入测试框架。后续 Rust 侧使用 `cargo test`，前端逻辑由 Tauri command 驱动，可在 Rust 侧覆盖。
+项目当前已有 Rust 单元测试。常用验证命令：
+
+```bash
+cd src-tauri && cargo test
+cd src-tauri && cargo build
+node --check frontend/main.js
+```
+
+前端尚未引入测试框架，当前以前端语法检查 + Tauri dev 手动验证为主。
 
 ## 协作规范
 
