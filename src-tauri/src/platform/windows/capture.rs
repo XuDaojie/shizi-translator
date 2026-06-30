@@ -324,6 +324,12 @@ mod tests {
             image.format,
             crate::core::capture::CapturedImageFormat::Bgra8
         );
-        assert_eq!(image.bytes.len(), (image.width * image.height * 4) as usize);
+        let expected_len = image
+            .width
+            .checked_mul(image.height)
+            .and_then(|pixels| pixels.checked_mul(4))
+            .map(|bytes| bytes as usize)
+            .expect("截图尺寸应可计算 BGRA 字节长度");
+        assert_eq!(image.bytes.len(), expected_len);
     }
 }
