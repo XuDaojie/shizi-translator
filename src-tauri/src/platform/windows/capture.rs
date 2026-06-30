@@ -1,5 +1,7 @@
 use crate::core::capture::{CapturedImage, CaptureError};
 use windows::core::Interface;
+use windows::Foundation::IAsyncOperation;
+use windows::Graphics::Capture::{GraphicsCaptureItem, GraphicsCapturePicker};
 use windows::Graphics::DirectX::Direct3D11::IDirect3DDevice;
 use windows::Win32::Graphics::Direct3D::{D3D_DRIVER_TYPE_HARDWARE, D3D_FEATURE_LEVEL_11_0};
 use windows::Win32::Graphics::Direct3D11::{
@@ -49,6 +51,18 @@ impl WindowsScreenCapture {
             .map_err(|error| CaptureError::ImageConversionFailed(error.to_string()))
     }
 
+    pub(crate) async fn pick_capture_item() -> Result<Option<GraphicsCaptureItem>, CaptureError> {
+        let picker = GraphicsCapturePicker::new()
+            .map_err(|error| CaptureError::BackendUnavailable(error.to_string()))?;
+        let operation: IAsyncOperation<GraphicsCaptureItem> = picker
+            .PickSingleItemAsync()
+            .map_err(|error| CaptureError::BackendUnavailable(error.to_string()))?;
+        let item = operation
+            .get()
+            .map_err(|error| CaptureError::BackendUnavailable(error.to_string()))?;
+        Ok(Some(item))
+    }
+
     pub async fn capture_full_screen(&self) -> Result<Option<CapturedImage>, CaptureError> {
         Err(CaptureError::UnsupportedPlatform)
     }
@@ -79,5 +93,11 @@ mod tests {
     #[test]
     fn create_direct3d_device_returns_device_or_error() {
         let _ = WindowsScreenCapture::create_direct3d_device();
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn pick_capture_item_can_be_invoked() {
+        let _ = WindowsScreenCapture::pick_capture_item().await;
     }
 }
