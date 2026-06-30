@@ -392,6 +392,17 @@ Tauri 官方文档说明 global shortcut 插件默认不启用危险能力，需
 
 真实单帧截图、`SoftwareBitmap` 转换和 `Windows.Media.Ocr` 接入将按下一份计划继续。
 
+## Windows OCR Spike 落地状态
+
+Windows OCR spike 已验证 `Windows.Media.Ocr` 接入路径：
+
+- 已新增 `WindowsOcrEngine`，实现 `OcrEngine` trait。
+- 已支持 `CapturedImageFormat::Rgba8` / `Bgra8` 到 Windows OCR 输入的转换。
+- 已明确映射语言不可用、图片过大、格式不支持和 OCR 空文本错误。
+- 已添加默认忽略的 Windows OCR 集成测试，用于人工验证真实 WinRT OCR 调用路径。
+
+真实截图获取、OCR 快捷键和端到端截图翻译仍留给后续切片。
+
 ## 风险与待验证清单
 
 - Windows OCR 语言包缺失时的错误形态。
