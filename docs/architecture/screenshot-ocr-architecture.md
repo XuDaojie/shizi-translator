@@ -403,6 +403,20 @@ Windows OCR spike 已验证 `Windows.Media.Ocr` 接入路径：
 
 真实截图获取、OCR 快捷键和端到端截图翻译仍留给后续切片。
 
+## 全屏单帧截图 Spike 落地状态
+
+全屏单帧截图 spike 已验证 `Windows.Graphics.Capture` 接入路径：
+
+- 已新增 `WindowsScreenCapture::capture_full_screen()`，用于通过系统 picker 获取一帧屏幕图像。
+- 已完成 D3D11 设备创建与 `IDirect3DDevice` 桥接。
+- 已实现 `GraphicsCapturePicker` 选择入口。
+- 已使用 `Direct3D11CaptureFramePool::CreateFreeThreaded` 获取单帧。
+- 已从 `IDXGISurface` 读取 BGRA 像素，并转换为 `CapturedImageFormat::Bgra8`。
+- 已补充 `Map` / `Unmap` 资源守卫、尺寸校验、row pitch 校验和首帧超时资源释放。
+- 已添加默认忽略的 Windows 集成测试，用于人工验证全屏单帧截图链路。
+
+尚未完成：将 `WindowsScreenCapture` 接入 `ScreenCapture` trait、串联 OCR、快捷键和翻译弹窗。
+
 ## 风险与待验证清单
 
 - Windows OCR 语言包缺失时的错误形态。
