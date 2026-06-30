@@ -4,3 +4,4 @@ pub mod llm;
 pub mod ocr;
 pub mod selection;
 pub mod translation;
+pub mod ocr_translation;
