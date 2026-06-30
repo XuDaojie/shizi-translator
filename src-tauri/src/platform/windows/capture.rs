@@ -309,7 +309,21 @@ mod tests {
 
     #[tokio::test]
     #[ignore]
-    async fn capture_full_screen_can_be_invoked() {
-        let _ = WindowsScreenCapture.capture_full_screen().await;
+    async fn capture_full_screen_returns_bgra_image_when_user_picks_display() {
+        if !WindowsScreenCapture::is_supported() {
+            return;
+        }
+
+        let image = WindowsScreenCapture
+            .capture_full_screen()
+            .await
+            .expect("截图链路应成功")
+            .expect("用户应选择显示器");
+
+        assert_eq!(
+            image.format,
+            crate::core::capture::CapturedImageFormat::Bgra8
+        );
+        assert_eq!(image.bytes.len(), (image.width * image.height * 4) as usize);
     }
 }
