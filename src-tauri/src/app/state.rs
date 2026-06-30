@@ -55,6 +55,13 @@ impl AppState {
         *busy = false;
         Ok(())
     }
+
+    pub fn is_translation_busy(&self) -> bool {
+        self.translation_busy
+            .lock()
+            .map(|busy| *busy)
+            .unwrap_or(false)
+    }
 }
 
 #[cfg(test)]
@@ -100,5 +107,18 @@ mod tests {
 
         state.finish_translation().expect("结束翻译");
         state.try_begin_translation().expect("结束后可再次开始");
+    }
+
+    #[test]
+    fn is_translation_busy_reflects_begin_and_finish() {
+        let state = app_state();
+
+        assert!(!state.is_translation_busy(), "初始不应处于 busy");
+
+        state.try_begin_translation().expect("开始翻译");
+        assert!(state.is_translation_busy(), "begin 后应处于 busy");
+
+        state.finish_translation().expect("结束翻译");
+        assert!(!state.is_translation_busy(), "finish 后应退出 busy");
     }
 }
