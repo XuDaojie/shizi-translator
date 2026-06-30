@@ -1,5 +1,6 @@
 mod app;
 mod core;
+mod platform;
 mod ui;
 
 use app::{
