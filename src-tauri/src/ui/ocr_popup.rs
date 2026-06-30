@@ -13,10 +13,18 @@ pub async fn start_translation_from_ocr(app: tauri::AppHandle, state: AppState) 
         return;
     }
 
+    // capture 独立锁：挡住 OCR/recognize 期间二次 Alt+O 覆盖 pending_capture。
+    // 持锁到 submit_capture_region / cancel_capture 释放；本函数每条失败路径都须 finish_capture。
+    if let Err(message) = state.try_begin_capture() {
+        show_translation_error(&app, message);
+        return;
+    }
+
     // 先抓整屏帧（overlay 显示前拍完，避免把 overlay 截进图里）
     let frame = match capture_screen().await {
         Ok(frame) => frame,
         Err(error) => {
+            let _ = state.finish_capture();
             show_translation_error(&app, friendly_ocr_error(OcrTranslationError::Capture(error)));
             return;
         }
@@ -29,13 +37,15 @@ pub async fn start_translation_from_ocr(app: tauri::AppHandle, state: AppState) 
         .unwrap_or(1.0);
 
     if let Err(error) = state.set_pending_capture(frame, scale) {
+        let _ = state.finish_capture();
         show_translation_error(&app, error);
         return;
     }
 
-    // overlay 自身承载交互，不需要主窗口可见
+    // overlay 自身承载交互，不需要主窗口可见。成功打开后保留 capture 锁，等 submit/cancel 释放。
     if let Err(error) = open_overlay(&app) {
         let _ = state.take_pending_capture();
+        let _ = state.finish_capture();
         show_translation_error(&app, format!("无法打开截图窗口：{error}"));
     }
 }

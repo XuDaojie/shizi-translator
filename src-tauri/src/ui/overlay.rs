@@ -54,6 +54,9 @@ pub async fn cancel_capture(
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
     let _ = state.take_pending_capture();
+    // 释放 capture 锁。幂等：若 submit 已 take 走帧并释放过，此处再清无害。
+    // 若 cancel 自己 take 走帧，则此处负责释放 start_translation_from_ocr 占的锁。
+    let _ = state.finish_capture();
     close_overlay(&app);
     Ok(())
 }
@@ -73,18 +76,28 @@ pub async fn submit_capture_region(
     close_overlay(&app);
 
     let Some((frame, scale)) = state.take_pending_capture()? else {
-        return Ok(()); // 帧已被取消/消费，静默
+        // 帧已被取消/消费（cancel 或前一次 submit 已 take 并释放 capture 锁），静默。
+        return Ok(());
     };
     let region = css_rect_to_physical(x, y, w, h, scale);
     if region.2 == 0 || region.3 == 0 {
-        return Ok(()); // 选区过小，静默
+        // 选区过小：take 已成功，须释放 start_translation_from_ocr 占的 capture 锁。
+        let _ = state.finish_capture();
+        return Ok(());
     }
 
-    let app_state = state.inner().clone();
-    match recognize_region(&frame, region, OcrHints::default()).await {
-        Ok(None) => {}
+    // recognize 期间持锁，挡住二次 Alt+O 覆盖新帧。
+    let result = recognize_region(&frame, region, OcrHints::default()).await;
+    // recognize 完成，释放 capture 锁；后续 start_translation_from_input 由 translation_busy 接管。
+    let _ = state.finish_capture();
+
+    let app_state = state.inner();
+    match result {
+        // recognize_cropped_for_translation 永不返回 Ok(None)（空文本走 Err(EmptyResult)）；
+        // 此分支若被触达即契约违反，报错而非静默吞掉。
+        Ok(None) => show_translation_error(&app, "未识别到文本"),
         Ok(Some(input)) => {
-            if let Err(error) = start_translation_from_input(input, app.clone(), &app_state) {
+            if let Err(error) = start_translation_from_input(input, app.clone(), app_state) {
                 show_translation_error(&app, error);
             }
         }

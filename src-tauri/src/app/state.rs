@@ -8,6 +8,10 @@ pub struct AppState {
     pub config_store: ConfigStore,
     pending_source_text: Arc<Mutex<Option<String>>>,
     translation_busy: Arc<Mutex<bool>>,
+    // capture 流程独立锁：从 start_translation_from_ocr 抓帧到 submit/cancel 释放，
+    // 期间挡住二次 Alt+O 覆盖 pending_capture。与 translation_busy 解耦——
+    // translation_busy 在 start_translation_from_input 末尾才置位，无法保护 OCR/recognize 窗口。
+    capture_in_progress: Arc<Mutex<bool>>,
     // overlay 截图链路：抓到的整屏帧 + 显示器 scale_factor，等待框选裁剪。
     pending_capture: Arc<Mutex<Option<(CapturedImage, f64)>>>,
 }
@@ -18,6 +22,7 @@ impl AppState {
             config_store,
             pending_source_text: Arc::new(Mutex::new(None)),
             translation_busy: Arc::new(Mutex::new(false)),
+            capture_in_progress: Arc::new(Mutex::new(false)),
             pending_capture: Arc::new(Mutex::new(None)),
         }
     }
@@ -65,6 +70,30 @@ impl AppState {
             .lock()
             .map(|busy| *busy)
             .unwrap_or(false)
+    }
+
+    /// 占住 capture 锁。overlay 截图链路从抓帧到 submit/cancel 期间持锁，
+    /// 挡住二次 Alt+O 覆盖 pending_capture。失败表示已有 capture 在进行。
+    pub fn try_begin_capture(&self) -> Result<(), String> {
+        let mut busy = self
+            .capture_in_progress
+            .lock()
+            .map_err(|_| "截图状态锁已损坏".to_string())?;
+        if *busy {
+            return Err("正在截图或识别中，请稍后再试".to_string());
+        }
+        *busy = true;
+        Ok(())
+    }
+
+    /// 释放 capture 锁。幂等：对已清位再清无害。submit/cancel 各分支均调此释放。
+    pub fn finish_capture(&self) -> Result<(), String> {
+        let mut busy = self
+            .capture_in_progress
+            .lock()
+            .map_err(|_| "截图状态锁已损坏".to_string())?;
+        *busy = false;
+        Ok(())
     }
 
     pub fn set_pending_capture(&self, frame: CapturedImage, scale_factor: f64) -> Result<(), String> {
@@ -209,5 +238,30 @@ mod tests {
 
         state.finish_translation().expect("结束翻译");
         assert!(!state.is_translation_busy(), "finish 后应退出 busy");
+    }
+
+    #[test]
+    fn try_begin_capture_rejects_second_begin_until_finished() {
+        let state = app_state();
+
+        state.try_begin_capture().expect("开始第一次截图");
+        assert!(
+            state.try_begin_capture().is_err(),
+            "capture 进行中应拒绝二次 begin"
+        );
+
+        state.finish_capture().expect("结束截图");
+        state.try_begin_capture().expect("结束后可再次开始");
+        state.finish_capture().expect("再次结束");
+    }
+
+    #[test]
+    fn finish_capture_is_idempotent() {
+        let state = app_state();
+
+        state.try_begin_capture().expect("开始截图");
+        state.finish_capture().expect("第一次释放");
+        // 对已清位再清应无害（cancel/submit 各分支可能重复释放）。
+        state.finish_capture().expect("幂等释放");
     }
 }
