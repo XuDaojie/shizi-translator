@@ -104,11 +104,11 @@ impl WindowsScreenCapture {
         let frame = frame.ok_or_else(|| {
             CaptureError::BackendUnavailable("未能在超时时间内获取首帧".to_string())
         })?;
-        let image = Self::extract_bgra_from_frame(frame, size)?;
+        let result = Self::extract_bgra_from_frame(frame, size);
 
         let _ = session.Close();
         let _ = pool.Close();
-        Ok(Some(image))
+        result.map(Some)
     }
 
     fn extract_bgra_from_frame(
@@ -124,20 +124,21 @@ impl WindowsScreenCapture {
 
         let width = size.Width as u32;
         let height = size.Height as u32;
-        let row_len = (width as usize) * 4;
-        let mut bytes = Vec::with_capacity(row_len * height as usize);
+        let (row_len, capacity) = Self::bgra_buffer_layout(size)?;
+        let mut bytes = Vec::with_capacity(capacity);
 
         unsafe {
             let mut mapped: DXGI_MAPPED_RECT = std::mem::zeroed();
             dxgi_surface
                 .Map(&mut mapped, DXGI_MAP_READ)
                 .map_err(|error| CaptureError::ImageConversionFailed(error.to_string()))?;
+            let _guard = MappedSurfaceGuard::new(&dxgi_surface);
             let row_pitch = mapped.Pitch as usize;
+            Self::validate_mapped_surface(mapped.pBits, row_pitch, row_len)?;
             for row in 0..height as usize {
                 let src = mapped.pBits.add(row * row_pitch);
                 bytes.extend_from_slice(std::slice::from_raw_parts(src, row_len));
             }
-            let _ = dxgi_surface.Unmap();
         }
 
         Ok(CapturedImage {
@@ -146,6 +147,60 @@ impl WindowsScreenCapture {
             height,
             format: crate::core::capture::CapturedImageFormat::Bgra8,
         })
+    }
+
+    fn bgra_buffer_layout(size: SizeInt32) -> Result<(usize, usize), CaptureError> {
+        if size.Width <= 0 || size.Height <= 0 {
+            return Err(CaptureError::ImageConversionFailed(
+                "截图尺寸必须为正数".to_string(),
+            ));
+        }
+
+        let width = size.Width as usize;
+        let height = size.Height as usize;
+        let row_len = width.checked_mul(4).ok_or_else(|| {
+            CaptureError::ImageConversionFailed("截图行字节数溢出".to_string())
+        })?;
+        let capacity = row_len.checked_mul(height).ok_or_else(|| {
+            CaptureError::ImageConversionFailed("截图缓冲区大小溢出".to_string())
+        })?;
+        Ok((row_len, capacity))
+    }
+
+    fn validate_mapped_surface(
+        bits: *mut u8,
+        row_pitch: usize,
+        row_len: usize,
+    ) -> Result<(), CaptureError> {
+        if bits.is_null() {
+            return Err(CaptureError::ImageConversionFailed(
+                "映射后的截图像素指针为空".to_string(),
+            ));
+        }
+        if row_pitch < row_len {
+            return Err(CaptureError::ImageConversionFailed(
+                "映射后的截图行跨度小于行字节数".to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+struct MappedSurfaceGuard<'a> {
+    surface: &'a IDXGISurface,
+}
+
+impl<'a> MappedSurfaceGuard<'a> {
+    fn new(surface: &'a IDXGISurface) -> Self {
+        Self { surface }
+    }
+}
+
+impl Drop for MappedSurfaceGuard<'_> {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = self.surface.Unmap();
+        }
     }
 }
 
@@ -174,6 +229,46 @@ mod tests {
     #[test]
     fn create_direct3d_device_returns_device_or_error() {
         let _ = WindowsScreenCapture::create_direct3d_device();
+    }
+
+    #[test]
+    fn bgra_buffer_layout_rejects_non_positive_size() {
+        let size = SizeInt32 {
+            Width: 0,
+            Height: 1,
+        };
+
+        let result = WindowsScreenCapture::bgra_buffer_layout(size);
+
+        assert!(matches!(result, Err(CaptureError::ImageConversionFailed(_))));
+    }
+
+    #[test]
+    fn bgra_buffer_layout_calculates_row_and_capacity() {
+        let size = SizeInt32 {
+            Width: 3,
+            Height: 2,
+        };
+
+        let (row_len, capacity) = WindowsScreenCapture::bgra_buffer_layout(size).unwrap();
+
+        assert_eq!(row_len, 12);
+        assert_eq!(capacity, 24);
+    }
+
+    #[test]
+    fn validate_mapped_surface_rejects_null_bits() {
+        let result = WindowsScreenCapture::validate_mapped_surface(std::ptr::null_mut(), 4, 4);
+
+        assert!(matches!(result, Err(CaptureError::ImageConversionFailed(_))));
+    }
+
+    #[test]
+    fn validate_mapped_surface_rejects_short_row_pitch() {
+        let mut byte = 0_u8;
+        let result = WindowsScreenCapture::validate_mapped_surface(&mut byte, 3, 4);
+
+        assert!(matches!(result, Err(CaptureError::ImageConversionFailed(_))));
     }
 
     #[tokio::test]
