@@ -1,5 +1,6 @@
 use std::sync::{Arc, Mutex};
 
+use crate::core::capture::CapturedImage;
 use crate::core::config::ConfigStore;
 
 #[derive(Clone)]
@@ -7,6 +8,8 @@ pub struct AppState {
     pub config_store: ConfigStore,
     pending_source_text: Arc<Mutex<Option<String>>>,
     translation_busy: Arc<Mutex<bool>>,
+    // overlay 截图链路：抓到的整屏帧 + 显示器 scale_factor，等待框选裁剪。
+    pending_capture: Arc<Mutex<Option<(CapturedImage, f64)>>>,
 }
 
 impl AppState {
@@ -15,6 +18,7 @@ impl AppState {
             config_store,
             pending_source_text: Arc::new(Mutex::new(None)),
             translation_busy: Arc::new(Mutex::new(false)),
+            pending_capture: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -61,6 +65,39 @@ impl AppState {
             .lock()
             .map(|busy| *busy)
             .unwrap_or(false)
+    }
+
+    pub fn set_pending_capture(&self, frame: CapturedImage, scale_factor: f64) -> Result<(), String> {
+        let mut slot = self
+            .pending_capture
+            .lock()
+            .map_err(|_| "截图帧状态锁已损坏".to_string())?;
+        *slot = Some((frame, scale_factor));
+        Ok(())
+    }
+
+    pub fn pending_capture_meta(&self) -> Result<Option<(u32, u32, f64)>, String> {
+        let slot = self
+            .pending_capture
+            .lock()
+            .map_err(|_| "截图帧状态锁已损坏".to_string())?;
+        Ok(slot.as_ref().map(|(frame, scale)| (frame.width, frame.height, *scale)))
+    }
+
+    pub fn pending_capture_bytes(&self) -> Result<Option<Vec<u8>>, String> {
+        let slot = self
+            .pending_capture
+            .lock()
+            .map_err(|_| "截图帧状态锁已损坏".to_string())?;
+        Ok(slot.as_ref().map(|(frame, _)| frame.bytes.clone()))
+    }
+
+    pub fn take_pending_capture(&self) -> Result<Option<(CapturedImage, f64)>, String> {
+        let mut slot = self
+            .pending_capture
+            .lock()
+            .map_err(|_| "截图帧状态锁已损坏".to_string())?;
+        Ok(slot.take())
     }
 }
 
@@ -109,6 +146,29 @@ mod tests {
 
         state.finish_translation().expect("结束翻译");
         state.try_begin_translation().expect("结束后可再次开始");
+    }
+
+    #[test]
+    fn pending_capture_frame_round_trips() {
+        use crate::core::capture::{CapturedImage, CapturedImageFormat};
+        let state = app_state();
+        let frame = CapturedImage {
+            bytes: vec![1, 2, 3, 4],
+            width: 1,
+            height: 1,
+            format: CapturedImageFormat::Bgra8,
+        };
+
+        state.set_pending_capture(frame.clone(), 1.5).expect("写入截图帧");
+
+        let meta = state.pending_capture_meta().expect("读取 meta").expect("应有 meta");
+        assert_eq!(meta, (1, 1, 1.5));
+
+        let taken = state.take_pending_capture().expect("取出帧").expect("应有帧");
+        assert_eq!(taken.0, frame);
+        assert_eq!(taken.1, 1.5);
+
+        assert!(state.take_pending_capture().expect("再次取出").is_none());
     }
 
     #[test]
