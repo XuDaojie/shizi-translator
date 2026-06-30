@@ -8,16 +8,26 @@ use windows::Graphics::Capture::{
 use windows::Graphics::DirectX::Direct3D11::{IDirect3DDevice, IDirect3DSurface};
 use windows::Graphics::DirectX::DirectXPixelFormat;
 use windows::Graphics::SizeInt32;
+use windows::Win32::Foundation::HWND;
 use windows::Win32::Graphics::Direct3D::{D3D_DRIVER_TYPE_HARDWARE, D3D_FEATURE_LEVEL_11_0};
 use windows::Win32::Graphics::Direct3D11::{
     D3D11CreateDevice, ID3D11Device, D3D11_CREATE_DEVICE_BGRA_SUPPORT,
 };
 use windows::Win32::Graphics::Dxgi::{IDXGIDevice, IDXGISurface, DXGI_MAPPED_RECT, DXGI_MAP_READ};
 use windows::Win32::System::WinRT::Direct3D11::CreateDirect3D11DeviceFromDXGIDevice;
+use windows::Win32::UI::Shell::IInitializeWithWindow;
 
-pub struct WindowsScreenCapture;
+pub struct WindowsScreenCapture {
+    // ponytail: 存 isize 而非 HWND，让结构体满足 Send+Sync（ScreenCapture trait 要求）。
+    // HWND 是裸指针不可跨线程；用时转回 HWND。
+    owner_hwnd: isize,
+}
 
 impl WindowsScreenCapture {
+    pub fn new(owner_hwnd: isize) -> Self {
+        Self { owner_hwnd }
+    }
+
     pub fn is_supported() -> bool {
         windows::Graphics::Capture::GraphicsCaptureSession::IsSupported().unwrap_or(false)
     }
@@ -56,9 +66,18 @@ impl WindowsScreenCapture {
             .map_err(|error| CaptureError::ImageConversionFailed(error.to_string()))
     }
 
-    pub(crate) async fn pick_capture_item() -> Result<Option<GraphicsCaptureItem>, CaptureError> {
+    pub(crate) async fn pick_capture_item(&self) -> Result<Option<GraphicsCaptureItem>, CaptureError> {
         let picker = GraphicsCapturePicker::new()
             .map_err(|error| CaptureError::BackendUnavailable(error.to_string()))?;
+        // 桌面应用必须为 picker 关联 owner window handle，否则 PickSingleItemAsync 会失败。
+        let owner = HWND(self.owner_hwnd as *mut core::ffi::c_void);
+        unsafe {
+            picker
+                .cast::<IInitializeWithWindow>()
+                .map_err(|error| CaptureError::BackendUnavailable(error.to_string()))?
+                .Initialize(owner)
+                .map_err(|error| CaptureError::BackendUnavailable(error.to_string()))?;
+        }
         let operation: IAsyncOperation<GraphicsCaptureItem> = picker
             .PickSingleItemAsync()
             .map_err(|error| CaptureError::BackendUnavailable(error.to_string()))?;
@@ -69,7 +88,7 @@ impl WindowsScreenCapture {
     }
 
     pub async fn capture_full_screen(&self) -> Result<Option<CapturedImage>, CaptureError> {
-        let Some(item) = Self::pick_capture_item().await? else {
+        let Some(item) = Self::pick_capture_item(self).await? else {
             return Ok(None);
         };
 
@@ -251,6 +270,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn windows_screen_capture_is_send_sync_for_trait() {
+        // ScreenCapture: Send + Sync；owner 句柄必须用 isize 而非 HWND（裸指针不可跨线程）。
+        fn assert_send_sync<T: ScreenCapture + Send + Sync>() {}
+        assert_send_sync::<WindowsScreenCapture>();
+    }
+
+    #[test]
+    fn windows_screen_capture_stores_owner_hwnd() {
+        let capture = WindowsScreenCapture::new(0x1234);
+        assert_eq!(capture.owner_hwnd, 0x1234);
+    }
+
+    #[test]
     fn graphics_capture_probe_returns_boolean() {
         let _supported: bool = WindowsGraphicsCaptureProbe::is_supported();
     }
@@ -326,7 +358,10 @@ mod tests {
             return;
         }
 
-        let image = WindowsScreenCapture
+        // 人工验证：owner_hwnd 在真实应用中由 Tauri 窗口提供；
+        // 此 ignored 测试用 0 句柄，picker 可能因无 owner 而失败，仅用于本地手动调试。
+        let capture = WindowsScreenCapture::new(0);
+        let image = capture
             .capture_full_screen()
             .await
             .expect("截图链路应成功")

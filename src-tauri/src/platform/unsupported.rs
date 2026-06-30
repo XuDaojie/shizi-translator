@@ -15,6 +15,7 @@ impl GraphicsCaptureProbe {
 
 pub async fn capture_and_recognize(
     _hints: OcrHints,
+    _owner_hwnd: isize,
 ) -> Result<Option<TranslationInput>, OcrTranslationError> {
     Err(OcrTranslationError::Capture(CaptureError::UnsupportedPlatform))
 }
@@ -30,7 +31,7 @@ mod tests {
 
     #[tokio::test]
     async fn capture_and_recognize_unsupported_on_non_windows() {
-        let error = capture_and_recognize(OcrHints::default())
+        let error = capture_and_recognize(OcrHints::default(), 0)
             .await
             .expect_err("非 windows 平台应返回错误");
 

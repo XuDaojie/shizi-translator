@@ -8,6 +8,7 @@ use crate::{
 };
 
 use crate::core::ocr::OcrHints;
+use tauri::Manager;
 
 pub async fn start_translation_from_ocr(app: tauri::AppHandle, state: AppState) {
     // ponytail: OCR 阶段不持有 translation_busy；picker 模态天然串行，
@@ -18,7 +19,14 @@ pub async fn start_translation_from_ocr(app: tauri::AppHandle, state: AppState) 
         return;
     }
 
-    match capture_and_recognize(OcrHints::default()).await {
+    // GraphicsCapturePicker 在桌面应用中需要 owner window handle，否则 PickSingleItemAsync 失败。
+    let owner_hwnd = app
+        .get_webview_window("main")
+        .and_then(|window| window.hwnd().ok())
+        .map(|hwnd| hwnd.0 as isize)
+        .unwrap_or(0);
+
+    match capture_and_recognize(OcrHints::default(), owner_hwnd).await {
         Ok(None) => {} // 用户取消截图，静默
         Ok(Some(input)) => {
             if let Err(error) = start_translation_from_input(input, app.clone(), &state) {
@@ -36,8 +44,12 @@ fn friendly_ocr_error(error: OcrTranslationError) -> String {
         }
         OcrTranslationError::Capture(CaptureError::NoCaptureTarget) => "未选择截图区域或窗口".to_string(),
         OcrTranslationError::Capture(CaptureError::PermissionDenied) => "无法访问屏幕捕获权限".to_string(),
-        OcrTranslationError::Capture(CaptureError::BackendUnavailable(_)) => "截图失败，请稍后重试".to_string(),
-        OcrTranslationError::Capture(CaptureError::ImageConversionFailed(_)) => "截图图像转换失败".to_string(),
+        OcrTranslationError::Capture(CaptureError::BackendUnavailable(detail)) => {
+            format!("截图失败，请稍后重试（{detail}）")
+        }
+        OcrTranslationError::Capture(CaptureError::ImageConversionFailed(detail)) => {
+            format!("截图图像转换失败（{detail}）")
+        }
         OcrTranslationError::Ocr(OcrError::EngineUnavailable) => "系统 OCR 能力不可用".to_string(),
         OcrTranslationError::Ocr(OcrError::LanguageUnavailable(_)) => "缺少 OCR 语言包".to_string(),
         OcrTranslationError::Ocr(OcrError::ImageTooLarge) => "截图区域过大，请缩小区域".to_string(),
@@ -84,7 +96,7 @@ mod tests {
             friendly_ocr_error(OcrTranslationError::Capture(CaptureError::BackendUnavailable(
                 "boom".to_string()
             ))),
-            "截图失败，请稍后重试"
+            "截图失败，请稍后重试（boom）"
         );
     }
 }
