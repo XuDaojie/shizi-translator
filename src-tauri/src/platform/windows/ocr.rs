@@ -219,4 +219,19 @@ mod tests {
         validate_image_dimensions(10, 10, 10).expect("边长不超过限制应通过");
     }
 
+    #[tokio::test]
+    #[ignore]
+    async fn windows_ocr_engine_can_be_called_with_generated_bitmap() {
+        if !WindowsOcrEngine::is_available() {
+            return;
+        }
+
+        let image = image(CapturedImageFormat::Bgra8, vec![255; 32 * 32 * 4], 32, 32);
+        let result = WindowsOcrEngine
+            .recognize(image, OcrHints::default())
+            .await;
+
+        assert!(matches!(result, Ok(_) | Err(OcrError::EmptyResult)));
+    }
+
 }
