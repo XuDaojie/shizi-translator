@@ -164,11 +164,38 @@ mod tests {
         let meta = state.pending_capture_meta().expect("读取 meta").expect("应有 meta");
         assert_eq!(meta, (1, 1, 1.5));
 
+        assert_eq!(state.pending_capture_bytes().expect("读取 bytes").as_deref(), Some(&[1, 2, 3, 4][..]));
+
         let taken = state.take_pending_capture().expect("取出帧").expect("应有帧");
         assert_eq!(taken.0, frame);
         assert_eq!(taken.1, 1.5);
 
         assert!(state.take_pending_capture().expect("再次取出").is_none());
+    }
+
+    #[test]
+    fn pending_capture_overwrites_previous() {
+        use crate::core::capture::{CapturedImage, CapturedImageFormat};
+        let state = app_state();
+        let first = CapturedImage {
+            bytes: vec![9, 9, 9, 9],
+            width: 1,
+            height: 1,
+            format: CapturedImageFormat::Bgra8,
+        };
+        let second = CapturedImage {
+            bytes: vec![7, 7, 7, 7],
+            width: 2,
+            height: 2,
+            format: CapturedImageFormat::Bgra8,
+        };
+
+        state.set_pending_capture(first, 1.0).expect("写入第一帧");
+        state.set_pending_capture(second.clone(), 2.0).expect("覆盖第二帧");
+
+        let taken = state.take_pending_capture().expect("取出").expect("应有帧");
+        assert_eq!(taken.0, second);
+        assert_eq!(taken.1, 2.0);
     }
 
     #[test]
