@@ -63,9 +63,7 @@ impl OpenAiCompatibleAppConfig {
     }
 
     pub fn normalized(mut self) -> Self {
-        self.api_key = self
-            .api_key
-            .and_then(non_empty_string);
+        self.api_key = self.api_key.and_then(non_empty_string);
         self.base_url = normalize_string(self.base_url, DEFAULT_BASE_URL);
         self.model = normalize_string(self.model, DEFAULT_MODEL);
         if self.timeout_seconds == 0 {

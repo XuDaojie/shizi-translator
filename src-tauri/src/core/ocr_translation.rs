@@ -41,7 +41,7 @@ where
 mod tests {
     use super::*;
     use crate::core::{
-        capture::{CaptureError, CapturedImage, CapturedImageFormat, CaptureRegion, ScreenCapture},
+        capture::{CaptureError, CaptureRegion, CapturedImage, CapturedImageFormat, ScreenCapture},
         ocr::{OcrEngine, OcrHints, OcrResult},
     };
 
@@ -51,10 +51,11 @@ mod tests {
 
     #[async_trait::async_trait]
     impl ScreenCapture for FakeCapture {
-        async fn capture_region(&self, _region: CaptureRegion) -> Result<CapturedImage, CaptureError> {
-            self.image
-                .clone()
-                .ok_or(CaptureError::NoCaptureTarget)
+        async fn capture_region(
+            &self,
+            _region: CaptureRegion,
+        ) -> Result<CapturedImage, CaptureError> {
+            self.image.clone().ok_or(CaptureError::NoCaptureTarget)
         }
 
         async fn capture_interactive(&self) -> Result<Option<CapturedImage>, CaptureError> {
@@ -93,8 +94,12 @@ mod tests {
     #[tokio::test]
     async fn workflow_returns_ocr_translation_input() {
         let input = recognize_capture_for_translation(
-            &FakeCapture { image: Some(image()) },
-            &FakeOcr { text: " Hello ".to_string() },
+            &FakeCapture {
+                image: Some(image()),
+            },
+            &FakeOcr {
+                text: " Hello ".to_string(),
+            },
             OcrHints::default(),
         )
         .await
@@ -108,7 +113,9 @@ mod tests {
     async fn workflow_returns_none_when_user_cancels_capture() {
         let input = recognize_capture_for_translation(
             &FakeCapture { image: None },
-            &FakeOcr { text: "Hello".to_string() },
+            &FakeOcr {
+                text: "Hello".to_string(),
+            },
             OcrHints::default(),
         )
         .await
@@ -120,13 +127,20 @@ mod tests {
     #[tokio::test]
     async fn workflow_rejects_empty_ocr_text() {
         let error = recognize_capture_for_translation(
-            &FakeCapture { image: Some(image()) },
-            &FakeOcr { text: "  ".to_string() },
+            &FakeCapture {
+                image: Some(image()),
+            },
+            &FakeOcr {
+                text: "  ".to_string(),
+            },
             OcrHints::default(),
         )
         .await
         .expect_err("空 OCR 文本应返回错误");
 
-        assert!(matches!(error, OcrTranslationError::Ocr(crate::core::ocr::OcrError::EmptyResult)));
+        assert!(matches!(
+            error,
+            OcrTranslationError::Ocr(crate::core::ocr::OcrError::EmptyResult)
+        ));
     }
 }

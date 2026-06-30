@@ -1,4 +1,7 @@
-use std::{thread, time::{Duration, Instant, SystemTime, UNIX_EPOCH}};
+use std::{
+    thread,
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+};
 
 mod clipboard;
 mod keyboard;

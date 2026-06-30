@@ -13,5 +13,10 @@ pub async fn capture_and_recognize(
     hints: OcrHints,
     owner_hwnd: isize,
 ) -> Result<Option<TranslationInput>, OcrTranslationError> {
-    recognize_capture_for_translation(&WindowsScreenCapture::new(owner_hwnd), &WindowsOcrEngine, hints).await
+    recognize_capture_for_translation(
+        &WindowsScreenCapture::new(owner_hwnd),
+        &WindowsOcrEngine,
+        hints,
+    )
+    .await
 }

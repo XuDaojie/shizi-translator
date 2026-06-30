@@ -90,7 +90,8 @@ impl OpenAiCompatibleProvider {
                     role: "user",
                     content: format!(
                         "请将以下文本翻译为{}：\n\n{}",
-                        request.target_lang, request.source_text()
+                        request.target_lang,
+                        request.source_text()
                     ),
                 },
             ],
@@ -103,12 +104,21 @@ impl OpenAiCompatibleProvider {
         let body = response.text().await.unwrap_or_default();
         let message = serde_json::from_str::<ApiErrorEnvelope>(&body)
             .map(|error| error.error.message)
-            .unwrap_or_else(|_| format!("HTTP {}: {}", status, body.chars().take(500).collect::<String>()));
+            .unwrap_or_else(|_| {
+                format!(
+                    "HTTP {}: {}",
+                    status,
+                    body.chars().take(500).collect::<String>()
+                )
+            });
 
         if retryable {
             LlmError::Http(message)
         } else {
-            LlmError::Api { message, retryable: false }
+            LlmError::Api {
+                message,
+                retryable: false,
+            }
         }
     }
 

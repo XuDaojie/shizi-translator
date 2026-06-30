@@ -1,4 +1,8 @@
-use std::{sync::Arc, thread, time::{Duration, SystemTime, UNIX_EPOCH}};
+use std::{
+    sync::Arc,
+    thread,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
 use tauri::Emitter;
 
@@ -6,7 +10,10 @@ use crate::{
     app::{state::AppState, window::show_window},
     core::{
         llm::{LlmProvider, MockLlmProvider, OpenAiCompatibleConfig, OpenAiCompatibleProvider},
-        translation::{TranslationEvent, TranslationInput, TranslationRequest, TranslationService, TranslationSessionId},
+        translation::{
+            TranslationEvent, TranslationInput, TranslationRequest, TranslationService,
+            TranslationSessionId,
+        },
     },
 };
 
@@ -45,7 +52,10 @@ pub fn start_translation_from_input(
         },
     };
 
-    let config = state.config_store.get().map_err(|error| error.to_string())?;
+    let config = state
+        .config_store
+        .get()
+        .map_err(|error| error.to_string())?;
     let provider: Arc<dyn LlmProvider> = match config.provider.as_str() {
         "mock" => Arc::new(MockLlmProvider),
         _ => Arc::new(OpenAiCompatibleProvider::new(OpenAiCompatibleConfig::from(

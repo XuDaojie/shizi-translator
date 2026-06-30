@@ -56,7 +56,8 @@ pub enum OcrError {
 
 #[async_trait::async_trait]
 pub trait OcrEngine: Send + Sync {
-    async fn recognize(&self, image: CapturedImage, hints: OcrHints) -> Result<OcrResult, OcrError>;
+    async fn recognize(&self, image: CapturedImage, hints: OcrHints)
+        -> Result<OcrResult, OcrError>;
 }
 
 #[cfg(test)]

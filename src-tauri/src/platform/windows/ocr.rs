@@ -47,7 +47,11 @@ pub fn validate_raw_image(image: &CapturedImage) -> Result<(), OcrError> {
 
 #[async_trait::async_trait]
 impl OcrEngine for WindowsOcrEngine {
-    async fn recognize(&self, image: CapturedImage, hints: OcrHints) -> Result<OcrResult, OcrError> {
+    async fn recognize(
+        &self,
+        image: CapturedImage,
+        hints: OcrHints,
+    ) -> Result<OcrResult, OcrError> {
         validate_raw_image(&image)?;
         validate_image_dimensions(
             image.width,
@@ -77,18 +81,31 @@ fn create_engine(hints: OcrHints) -> Result<windows::Media::Ocr::OcrEngine, OcrE
     let mut last_unavailable = None;
     for language in hints.preferred_languages {
         match windows::Globalization::Language::CreateLanguage(&language.clone().into()) {
-            Ok(language_obj) => match windows::Media::Ocr::OcrEngine::IsLanguageSupported(&language_obj) {
-                Ok(true) => {
-                    return windows::Media::Ocr::OcrEngine::TryCreateFromLanguage(&language_obj)
+            Ok(language_obj) => {
+                match windows::Media::Ocr::OcrEngine::IsLanguageSupported(&language_obj) {
+                    Ok(true) => {
+                        return windows::Media::Ocr::OcrEngine::TryCreateFromLanguage(
+                            &language_obj,
+                        )
                         .map_err(|_| OcrError::EngineUnavailable);
+                    }
+                    _ => {
+                        last_unavailable = Some(
+                            language_obj
+                                .LanguageTag()
+                                .map(|s| s.to_string())
+                                .unwrap_or_default(),
+                        )
+                    }
                 }
-                _ => last_unavailable = Some(language_obj.LanguageTag().map(|s| s.to_string()).unwrap_or_default()),
-            },
+            }
             Err(_) => last_unavailable = Some(language),
         }
     }
 
-    Err(OcrError::LanguageUnavailable(last_unavailable.unwrap_or_default()))
+    Err(OcrError::LanguageUnavailable(
+        last_unavailable.unwrap_or_default(),
+    ))
 }
 
 fn captured_image_to_software_bitmap(image: CapturedImage) -> Result<SoftwareBitmap, OcrError> {
@@ -100,11 +117,14 @@ fn captured_image_to_software_bitmap(image: CapturedImage) -> Result<SoftwareBit
             .flat_map(|px| [px[2], px[1], px[0], px[3]])
             .collect(),
         CapturedImageFormat::Png => {
-            return Err(OcrError::ImageConversionFailed("暂不支持 PNG OCR 输入".to_string()))
+            return Err(OcrError::ImageConversionFailed(
+                "暂不支持 PNG OCR 输入".to_string(),
+            ))
         }
     };
 
-    let writer = DataWriter::new().map_err(|error| OcrError::ImageConversionFailed(error.to_string()))?;
+    let writer =
+        DataWriter::new().map_err(|error| OcrError::ImageConversionFailed(error.to_string()))?;
     writer
         .WriteBytes(&bgra_bytes)
         .map_err(|error| OcrError::ImageConversionFailed(error.to_string()))?;
@@ -163,7 +183,10 @@ fn convert_result(result: windows::Media::Ocr::OcrResult) -> Result<OcrResult, O
             });
         }
 
-        lines.push(OcrLine { text: line_text, words });
+        lines.push(OcrLine {
+            text: line_text,
+            words,
+        });
     }
 
     Ok(OcrResult {
@@ -181,8 +204,18 @@ mod tests {
         ocr::OcrError,
     };
 
-    fn image(format: CapturedImageFormat, bytes: Vec<u8>, width: u32, height: u32) -> CapturedImage {
-        CapturedImage { bytes, width, height, format }
+    fn image(
+        format: CapturedImageFormat,
+        bytes: Vec<u8>,
+        width: u32,
+        height: u32,
+    ) -> CapturedImage {
+        CapturedImage {
+            bytes,
+            width,
+            height,
+            format,
+        }
     }
 
     #[test]
@@ -227,11 +260,8 @@ mod tests {
         }
 
         let image = image(CapturedImageFormat::Bgra8, vec![255; 32 * 32 * 4], 32, 32);
-        let result = WindowsOcrEngine
-            .recognize(image, OcrHints::default())
-            .await;
+        let result = WindowsOcrEngine.recognize(image, OcrHints::default()).await;
 
         assert!(matches!(result, Ok(_) | Err(OcrError::EmptyResult)));
     }
-
 }

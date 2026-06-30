@@ -66,8 +66,14 @@ mod tests {
 
     #[test]
     fn translation_input_text_returns_inner_text() {
-        assert_eq!(TranslationInput::ManualText("manual".to_string()).text(), "manual");
-        assert_eq!(TranslationInput::SelectedText("selected".to_string()).text(), "selected");
+        assert_eq!(
+            TranslationInput::ManualText("manual".to_string()).text(),
+            "manual"
+        );
+        assert_eq!(
+            TranslationInput::SelectedText("selected".to_string()).text(),
+            "selected"
+        );
         assert_eq!(
             TranslationInput::OcrText {
                 text: "ocr".to_string(),

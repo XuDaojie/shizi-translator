@@ -52,7 +52,10 @@ impl TranslationService {
             })
             .await?;
 
-        let full_text = full_text.lock().map(|text| text.clone()).unwrap_or_default();
+        let full_text = full_text
+            .lock()
+            .map(|text| text.clone())
+            .unwrap_or_default();
 
         emit(TranslationEvent::Finished {
             session_id: request.session_id,

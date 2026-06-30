@@ -1,7 +1,5 @@
 use crate::core::{
-    capture::CaptureError,
-    ocr::OcrHints,
-    ocr_translation::OcrTranslationError,
+    capture::CaptureError, ocr::OcrHints, ocr_translation::OcrTranslationError,
     translation::TranslationInput,
 };
 
@@ -17,17 +15,15 @@ pub async fn capture_and_recognize(
     _hints: OcrHints,
     _owner_hwnd: isize,
 ) -> Result<Option<TranslationInput>, OcrTranslationError> {
-    Err(OcrTranslationError::Capture(CaptureError::UnsupportedPlatform))
+    Err(OcrTranslationError::Capture(
+        CaptureError::UnsupportedPlatform,
+    ))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::{
-        capture::CaptureError,
-        ocr::OcrHints,
-        ocr_translation::OcrTranslationError,
-    };
+    use crate::core::{capture::CaptureError, ocr::OcrHints, ocr_translation::OcrTranslationError};
 
     #[tokio::test]
     async fn capture_and_recognize_unsupported_on_non_windows() {

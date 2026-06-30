@@ -93,7 +93,9 @@ mod tests {
             Some("hello".to_string())
         );
         assert_eq!(
-            state.take_pending_source_text().expect("再次读取待回填原文"),
+            state
+                .take_pending_source_text()
+                .expect("再次读取待回填原文"),
             None
         );
     }

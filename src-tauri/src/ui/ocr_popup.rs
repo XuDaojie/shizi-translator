@@ -1,13 +1,11 @@
 use crate::{
     app::state::AppState,
-    core::{
-        capture::CaptureError, ocr::OcrError, ocr_translation::OcrTranslationError,
-    },
+    core::{capture::CaptureError, ocr::OcrError, ocr_translation::OcrTranslationError},
     platform::capture_and_recognize,
     ui::web_popup::{show_translation_error, start_translation_from_input},
 };
 
-use crate::core::ocr::OcrHints;
+use crate::{app::window::show_window, core::ocr::OcrHints};
 use tauri::Manager;
 
 pub async fn start_translation_from_ocr(app: tauri::AppHandle, state: AppState) {
@@ -18,6 +16,9 @@ pub async fn start_translation_from_ocr(app: tauri::AppHandle, state: AppState) 
         show_translation_error(&app, "正在翻译中，请稍后再试");
         return;
     }
+
+    // GraphicsCapturePicker 在桌面应用中需要可见 owner window handle，否则 picker 可能不显示。
+    show_window(&app);
 
     // GraphicsCapturePicker 在桌面应用中需要 owner window handle，否则 PickSingleItemAsync 失败。
     let owner_hwnd = app
@@ -42,8 +43,12 @@ fn friendly_ocr_error(error: OcrTranslationError) -> String {
         OcrTranslationError::Capture(CaptureError::UnsupportedPlatform) => {
             "当前平台暂不支持截图 OCR".to_string()
         }
-        OcrTranslationError::Capture(CaptureError::NoCaptureTarget) => "未选择截图区域或窗口".to_string(),
-        OcrTranslationError::Capture(CaptureError::PermissionDenied) => "无法访问屏幕捕获权限".to_string(),
+        OcrTranslationError::Capture(CaptureError::NoCaptureTarget) => {
+            "未选择截图区域或窗口".to_string()
+        }
+        OcrTranslationError::Capture(CaptureError::PermissionDenied) => {
+            "无法访问屏幕捕获权限".to_string()
+        }
         OcrTranslationError::Capture(CaptureError::BackendUnavailable(detail)) => {
             format!("截图失败，请稍后重试（{detail}）")
         }
@@ -54,8 +59,12 @@ fn friendly_ocr_error(error: OcrTranslationError) -> String {
         OcrTranslationError::Ocr(OcrError::LanguageUnavailable(_)) => "缺少 OCR 语言包".to_string(),
         OcrTranslationError::Ocr(OcrError::ImageTooLarge) => "截图区域过大，请缩小区域".to_string(),
         OcrTranslationError::Ocr(OcrError::EmptyResult) => "未识别到文本".to_string(),
-        OcrTranslationError::Ocr(OcrError::ImageConversionFailed(_)) => "OCR 图像转换失败".to_string(),
-        OcrTranslationError::Ocr(OcrError::UnsupportedPlatform) => "当前平台暂不支持截图 OCR".to_string(),
+        OcrTranslationError::Ocr(OcrError::ImageConversionFailed(_)) => {
+            "OCR 图像转换失败".to_string()
+        }
+        OcrTranslationError::Ocr(OcrError::UnsupportedPlatform) => {
+            "当前平台暂不支持截图 OCR".to_string()
+        }
     }
 }
 
@@ -75,7 +84,9 @@ mod tests {
     #[test]
     fn friendly_error_maps_unsupported_platform() {
         assert_eq!(
-            friendly_ocr_error(OcrTranslationError::Capture(CaptureError::UnsupportedPlatform)),
+            friendly_ocr_error(OcrTranslationError::Capture(
+                CaptureError::UnsupportedPlatform
+            )),
             "当前平台暂不支持截图 OCR"
         );
     }
@@ -93,9 +104,9 @@ mod tests {
     #[test]
     fn friendly_error_maps_backend_unavailable() {
         assert_eq!(
-            friendly_ocr_error(OcrTranslationError::Capture(CaptureError::BackendUnavailable(
-                "boom".to_string()
-            ))),
+            friendly_ocr_error(OcrTranslationError::Capture(
+                CaptureError::BackendUnavailable("boom".to_string())
+            )),
             "截图失败，请稍后重试（boom）"
         );
     }

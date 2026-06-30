@@ -1,4 +1,4 @@
-use crate::core::capture::{CaptureRegion, CapturedImage, CaptureError, ScreenCapture};
+use crate::core::capture::{CaptureError, CaptureRegion, CapturedImage, ScreenCapture};
 use std::time::Duration;
 use windows::core::Interface;
 use windows::Foundation::IAsyncOperation;
@@ -11,10 +11,15 @@ use windows::Graphics::SizeInt32;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Graphics::Direct3D::{D3D_DRIVER_TYPE_HARDWARE, D3D_FEATURE_LEVEL_11_0};
 use windows::Win32::Graphics::Direct3D11::{
-    D3D11CreateDevice, ID3D11Device, D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+    D3D11CreateDevice, D3D11_CPU_ACCESS_READ, D3D11_MAP_READ, D3D11_MAPPED_SUBRESOURCE,
+    D3D11_TEXTURE2D_DESC, D3D11_USAGE_STAGING, ID3D11Device, ID3D11DeviceContext,
+    ID3D11Texture2D, D3D11_CREATE_DEVICE_BGRA_SUPPORT,
 };
-use windows::Win32::Graphics::Dxgi::{IDXGIDevice, IDXGISurface, DXGI_MAPPED_RECT, DXGI_MAP_READ};
-use windows::Win32::System::WinRT::Direct3D11::CreateDirect3D11DeviceFromDXGIDevice;
+use windows::Win32::Graphics::Dxgi::IDXGIDevice;
+use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SAMPLE_DESC};
+use windows::Win32::System::WinRT::Direct3D11::{
+    CreateDirect3D11DeviceFromDXGIDevice, IDirect3DDxgiInterfaceAccess,
+};
 use windows::Win32::UI::Shell::IInitializeWithWindow;
 
 pub struct WindowsScreenCapture {
@@ -66,7 +71,9 @@ impl WindowsScreenCapture {
             .map_err(|error| CaptureError::ImageConversionFailed(error.to_string()))
     }
 
-    pub(crate) async fn pick_capture_item(&self) -> Result<Option<GraphicsCaptureItem>, CaptureError> {
+    pub(crate) async fn pick_capture_item(
+        &self,
+    ) -> Result<Option<GraphicsCaptureItem>, CaptureError> {
         let picker = GraphicsCapturePicker::new()
             .map_err(|error| CaptureError::BackendUnavailable(error.to_string()))?;
         // 桌面应用必须为 picker 关联 owner window handle，否则 PickSingleItemAsync 会失败。
@@ -81,10 +88,21 @@ impl WindowsScreenCapture {
         let operation: IAsyncOperation<GraphicsCaptureItem> = picker
             .PickSingleItemAsync()
             .map_err(|error| CaptureError::BackendUnavailable(error.to_string()))?;
-        let item = operation
-            .get()
-            .map_err(|error| CaptureError::BackendUnavailable(error.to_string()))?;
+        let item = match operation.get() {
+            Ok(item) => item,
+            Err(error) => return Self::map_picker_result_error(error),
+        };
         Ok(Some(item))
+    }
+
+    fn map_picker_result_error(
+        error: windows::core::Error,
+    ) -> Result<Option<GraphicsCaptureItem>, CaptureError> {
+        if error.code().is_ok() {
+            Ok(None)
+        } else {
+            Err(CaptureError::BackendUnavailable(error.to_string()))
+        }
     }
 
     pub async fn capture_full_screen(&self) -> Result<Option<CapturedImage>, CaptureError> {
@@ -146,36 +164,94 @@ impl WindowsScreenCapture {
         let surface: IDirect3DSurface = frame
             .Surface()
             .map_err(|error| CaptureError::ImageConversionFailed(error.to_string()))?;
-        let dxgi_surface: IDXGISurface = surface
-            .cast()
-            .map_err(|error| CaptureError::ImageConversionFailed(error.to_string()))?;
-
+        let texture = Self::texture_from_direct3d_surface(&surface)?;
         let layout = Self::bgra_buffer_layout(size)?;
-        let mut bytes = Vec::with_capacity(layout.capacity);
+        let staging = Self::copy_texture_to_staging(&texture, layout.width, layout.height)?;
 
         unsafe {
-            let mut mapped: DXGI_MAPPED_RECT = std::mem::zeroed();
-            dxgi_surface
-                .Map(&mut mapped, DXGI_MAP_READ)
+            let context = texture
+                .GetDevice()
+                .and_then(|device| device.GetImmediateContext())
                 .map_err(|error| CaptureError::ImageConversionFailed(error.to_string()))?;
-            let _guard = MappedSurfaceGuard::new(&dxgi_surface);
-            let row_pitch = mapped.Pitch as usize;
-            Self::validate_mapped_surface(mapped.pBits, row_pitch, layout.row_len)?;
+            let mut mapped: D3D11_MAPPED_SUBRESOURCE = std::mem::zeroed();
+            context
+                .Map(&staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))
+                .map_err(|error| CaptureError::ImageConversionFailed(error.to_string()))?;
+            let _guard = MappedTextureGuard::new(&context, &staging);
+            let row_pitch = mapped.RowPitch as usize;
+            Self::validate_mapped_surface(mapped.pData as *mut u8, row_pitch, layout.row_len)?;
+            let mut bytes = Vec::with_capacity(layout.capacity);
             for row in 0..layout.height as usize {
                 let offset = row.checked_mul(row_pitch).ok_or_else(|| {
                     CaptureError::ImageConversionFailed("映射后的截图行偏移溢出".to_string())
                 })?;
-                let src = mapped.pBits.add(offset);
+                let src = (mapped.pData as *const u8).add(offset);
                 bytes.extend_from_slice(std::slice::from_raw_parts(src, layout.row_len));
             }
-        }
 
-        Ok(CapturedImage {
-            bytes,
-            width: layout.width,
-            height: layout.height,
-            format: crate::core::capture::CapturedImageFormat::Bgra8,
-        })
+            Ok(CapturedImage {
+                bytes,
+                width: layout.width,
+                height: layout.height,
+                format: crate::core::capture::CapturedImageFormat::Bgra8,
+            })
+        }
+    }
+
+    fn texture_from_direct3d_surface(
+        surface: &IDirect3DSurface,
+    ) -> Result<ID3D11Texture2D, CaptureError> {
+        let access: IDirect3DDxgiInterfaceAccess = surface
+            .cast()
+            .map_err(|error| CaptureError::ImageConversionFailed(error.to_string()))?;
+        unsafe {
+            access
+                .GetInterface::<ID3D11Texture2D>()
+                .map_err(|error| CaptureError::ImageConversionFailed(error.to_string()))
+        }
+    }
+
+    fn copy_texture_to_staging(
+        texture: &ID3D11Texture2D,
+        width: u32,
+        height: u32,
+    ) -> Result<ID3D11Texture2D, CaptureError> {
+        unsafe {
+            let device = texture
+                .GetDevice()
+                .map_err(|error| CaptureError::ImageConversionFailed(error.to_string()))?;
+            let context = device
+                .GetImmediateContext()
+                .map_err(|error| CaptureError::ImageConversionFailed(error.to_string()))?;
+            let desc = Self::staging_texture_desc(width, height);
+            let mut staging = None;
+            device
+                .CreateTexture2D(&desc, None, Some(&mut staging))
+                .map_err(|error| CaptureError::ImageConversionFailed(error.to_string()))?;
+            let staging = staging.ok_or_else(|| {
+                CaptureError::ImageConversionFailed("CPU 可读截图纹理为空".to_string())
+            })?;
+            context.CopyResource(&staging, texture);
+            Ok(staging)
+        }
+    }
+
+    fn staging_texture_desc(width: u32, height: u32) -> D3D11_TEXTURE2D_DESC {
+        D3D11_TEXTURE2D_DESC {
+            Width: width,
+            Height: height,
+            MipLevels: 1,
+            ArraySize: 1,
+            Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+            SampleDesc: DXGI_SAMPLE_DESC {
+                Count: 1,
+                Quality: 0,
+            },
+            Usage: D3D11_USAGE_STAGING,
+            BindFlags: 0,
+            CPUAccessFlags: D3D11_CPU_ACCESS_READ.0 as u32,
+            MiscFlags: 0,
+        }
     }
 
     fn bgra_buffer_layout(size: SizeInt32) -> Result<BgraBufferLayout, CaptureError> {
@@ -187,12 +263,12 @@ impl WindowsScreenCapture {
 
         let width = size.Width as u32;
         let height = size.Height as u32;
-        let row_len = (width as usize).checked_mul(4).ok_or_else(|| {
-            CaptureError::ImageConversionFailed("截图行字节数溢出".to_string())
-        })?;
-        let capacity = row_len.checked_mul(height as usize).ok_or_else(|| {
-            CaptureError::ImageConversionFailed("截图缓冲区大小溢出".to_string())
-        })?;
+        let row_len = (width as usize)
+            .checked_mul(4)
+            .ok_or_else(|| CaptureError::ImageConversionFailed("截图行字节数溢出".to_string()))?;
+        let capacity = row_len
+            .checked_mul(height as usize)
+            .ok_or_else(|| CaptureError::ImageConversionFailed("截图缓冲区大小溢出".to_string()))?;
         Ok(BgraBufferLayout {
             width,
             height,
@@ -239,20 +315,21 @@ struct BgraBufferLayout {
     capacity: usize,
 }
 
-struct MappedSurfaceGuard<'a> {
-    surface: &'a IDXGISurface,
+struct MappedTextureGuard<'a> {
+    context: &'a ID3D11DeviceContext,
+    texture: &'a ID3D11Texture2D,
 }
 
-impl<'a> MappedSurfaceGuard<'a> {
-    fn new(surface: &'a IDXGISurface) -> Self {
-        Self { surface }
+impl<'a> MappedTextureGuard<'a> {
+    fn new(context: &'a ID3D11DeviceContext, texture: &'a ID3D11Texture2D) -> Self {
+        Self { context, texture }
     }
 }
 
-impl Drop for MappedSurfaceGuard<'_> {
+impl Drop for MappedTextureGuard<'_> {
     fn drop(&mut self) {
         unsafe {
-            let _ = self.surface.Unmap();
+            self.context.Unmap(self.texture, 0);
         }
     }
 }
@@ -306,7 +383,10 @@ mod tests {
 
         let result = WindowsScreenCapture::bgra_buffer_layout(size);
 
-        assert!(matches!(result, Err(CaptureError::ImageConversionFailed(_))));
+        assert!(matches!(
+            result,
+            Err(CaptureError::ImageConversionFailed(_))
+        ));
     }
 
     #[test]
@@ -325,6 +405,23 @@ mod tests {
     }
 
     #[test]
+    fn staging_texture_desc_is_cpu_readable_and_unbound() {
+        let desc = WindowsScreenCapture::staging_texture_desc(10, 20);
+
+        assert_eq!(desc.Width, 10);
+        assert_eq!(desc.Height, 20);
+        assert_eq!(desc.MipLevels, 1);
+        assert_eq!(desc.ArraySize, 1);
+        assert_eq!(desc.Format, DXGI_FORMAT_B8G8R8A8_UNORM);
+        assert_eq!(desc.SampleDesc.Count, 1);
+        assert_eq!(desc.SampleDesc.Quality, 0);
+        assert_eq!(desc.Usage, D3D11_USAGE_STAGING);
+        assert_eq!(desc.BindFlags, 0);
+        assert_eq!(desc.CPUAccessFlags, D3D11_CPU_ACCESS_READ.0 as u32);
+        assert_eq!(desc.MiscFlags, 0);
+    }
+
+    #[test]
     fn capture_result_from_frame_returns_error_when_first_frame_times_out() {
         let size = SizeInt32 {
             Width: 1,
@@ -340,7 +437,10 @@ mod tests {
     fn validate_mapped_surface_rejects_null_bits() {
         let result = WindowsScreenCapture::validate_mapped_surface(std::ptr::null_mut(), 4, 4);
 
-        assert!(matches!(result, Err(CaptureError::ImageConversionFailed(_))));
+        assert!(matches!(
+            result,
+            Err(CaptureError::ImageConversionFailed(_))
+        ));
     }
 
     #[test]
@@ -348,7 +448,28 @@ mod tests {
         let mut byte = 0_u8;
         let result = WindowsScreenCapture::validate_mapped_surface(&mut byte, 3, 4);
 
-        assert!(matches!(result, Err(CaptureError::ImageConversionFailed(_))));
+        assert!(matches!(
+            result,
+            Err(CaptureError::ImageConversionFailed(_))
+        ));
+    }
+
+    #[test]
+    fn successful_hresult_picker_error_is_treated_as_cancel() {
+        let result = WindowsScreenCapture::map_picker_result_error(
+            windows::core::Error::from_hresult(windows::core::HRESULT(0)),
+        );
+
+        assert!(result.expect("S_OK picker error 应视为用户取消").is_none());
+    }
+
+    #[test]
+    fn failed_hresult_picker_error_remains_backend_error() {
+        let result = WindowsScreenCapture::map_picker_result_error(
+            windows::core::Error::from_hresult(windows::core::HRESULT(0x8000_4005_u32 as i32)),
+        );
+
+        assert!(matches!(result, Err(CaptureError::BackendUnavailable(_))));
     }
 
     #[tokio::test]
