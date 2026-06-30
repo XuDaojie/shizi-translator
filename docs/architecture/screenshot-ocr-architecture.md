@@ -417,6 +417,18 @@ Windows OCR spike 已验证 `Windows.Media.Ocr` 接入路径：
 
 尚未完成：将 `WindowsScreenCapture` 接入 `ScreenCapture` trait、串联 OCR、快捷键和翻译弹窗。
 
+## 截图 OCR 端到端闭环落地状态
+
+截图 OCR 端到端最小闭环已串联完成（架构阶段 5）：
+
+- 已将 `WindowsScreenCapture` 接入 `ScreenCapture` trait（`capture_interactive` 委托 `capture_full_screen`，`capture_region` 暂返回 `UnsupportedPlatform`）。
+- 已新增 `platform::capture_and_recognize` 平台分发缝，Windows 侧串联 `WindowsScreenCapture` + `WindowsOcrEngine`，非 Windows 返回 `UnsupportedPlatform`。
+- 已新增 `ui::ocr_popup::start_translation_from_ocr`，负责 busy 预检、用户取消静默、OCR 错误文案映射，成功后复用 `start_translation_from_input`。
+- 已注册 `Alt+O` 全局快捷键并在 `handle_global_shortcut` 中按快捷键分流划词与 OCR。
+- 不新增前端代码或事件类型；OCR 前置失败统一经 `translation:event::Failed` 展示。
+
+已知简化（未在本切片修复）：`capture_full_screen` 在用户取消系统 picker 时返回 `BackendUnavailable` 而非 `Ok(None)`，用户取消当前会触发「截图失败」提示而非静默。区域截图（`capture_region`）仍未实现，留给 DXGI/自建 overlay 阶段。
+
 ## 风险与待验证清单
 
 - Windows OCR 语言包缺失时的错误形态。

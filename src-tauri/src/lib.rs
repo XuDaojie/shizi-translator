@@ -21,8 +21,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, _shortcut, event| {
-                    handle_global_shortcut(app, event);
+                .with_handler(|app, shortcut, event| {
+                    handle_global_shortcut(app, shortcut, event);
                 })
                 .build(),
         )
