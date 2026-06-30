@@ -4,7 +4,7 @@
 
 ## 插件
 
-通过 npm 等包管理器安装，可运行升级命令更新。
+通过 Claude Code plugin marketplace、npm 等方式安装，可运行对应升级命令更新。
 
 ### superpowers-zh
 
@@ -12,6 +12,14 @@
 - **功能**：AI 编程超能力中文版，提供 20 个 skills（brainstorming、TDD、code-review、systematic-debugging 等），覆盖开发全流程
 - **来源**：https://github.com/jnMetaCode/superpowers-zh
 - **升级命令**：`npx superpowers-zh@latest`
+
+### ponytail
+
+- **安装方式**：`claude plugin marketplace add DietrichGebert/ponytail` 后运行 `claude plugin install ponytail@ponytail`
+- **功能**：Claude Code 简化实现规则集，强调复用现有能力、避免过度工程化，并提供 `/ponytail`、`/ponytail-review`、`/ponytail-audit` 等命令
+- **来源**：https://github.com/DietrichGebert/ponytail
+- **作用域**：user
+- **升级命令**：`claude plugin update ponytail@ponytail`
 
 ## 技能
 
