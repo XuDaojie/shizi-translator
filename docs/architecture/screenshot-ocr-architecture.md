@@ -381,6 +381,17 @@ Tauri 官方文档说明 global shortcut 插件默认不启用危险能力，需
 - 串联 capture、OCR、`TranslationInput::OcrText` 和 `TranslationService`。
 - 前端展示最小 OCR 状态和错误提示。
 
+## 第一切片落地状态
+
+第一切片选择「Windows Graphics Capture + 最小拆分」路线：
+
+- 已引入 `TranslationInput`，手动输入与划词翻译共用统一输入模型。
+- 已新增 `ScreenCapture` 与 `OcrEngine` core 抽象。
+- 已新增 fake 可测的 OCR workflow，用于验证截图取消、OCR 空文本和 OCR 文本进入翻译输入。
+- 已新增 Windows Graphics Capture 可用性探针，用于确认当前系统是否支持后续真实截图接入。
+
+真实单帧截图、`SoftwareBitmap` 转换和 `Windows.Media.Ocr` 接入将按下一份计划继续。
+
 ## 风险与待验证清单
 
 - Windows OCR 语言包缺失时的错误形态。
