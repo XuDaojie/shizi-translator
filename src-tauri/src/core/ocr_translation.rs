@@ -1,5 +1,5 @@
 use crate::core::{
-    capture::{CaptureError, ScreenCapture},
+    capture::{CaptureError, CapturedImage, ScreenCapture},
     ocr::{OcrEngine, OcrError, OcrHints},
     translation::TranslationInput,
 };
@@ -26,6 +26,30 @@ where
     };
 
     let result = ocr.recognize(image, hints).await?;
+    let text = result.text.trim().to_string();
+    if text.is_empty() {
+        return Err(OcrError::EmptyResult.into());
+    }
+
+    Ok(Some(TranslationInput::OcrText {
+        text,
+        image_id: None,
+    }))
+}
+
+/// overlay 路径：对已抓到的整屏帧按物理像素矩形裁剪后 OCR，转成翻译输入。
+pub async fn recognize_cropped_for_translation<O>(
+    frame: &CapturedImage,
+    region: (u32, u32, u32, u32),
+    ocr: &O,
+    hints: OcrHints,
+) -> Result<Option<TranslationInput>, OcrTranslationError>
+where
+    O: OcrEngine,
+{
+    let (x, y, w, h) = region;
+    let cropped = frame.crop(x, y, w, h)?;
+    let result = ocr.recognize(cropped, hints).await?;
     let text = result.text.trim().to_string();
     if text.is_empty() {
         return Err(OcrError::EmptyResult.into());
@@ -91,6 +115,15 @@ mod tests {
         }
     }
 
+    fn bgra_4x4() -> CapturedImage {
+        CapturedImage {
+            bytes: vec![128; 4 * 4 * 4],
+            width: 4,
+            height: 4,
+            format: CapturedImageFormat::Bgra8,
+        }
+    }
+
     #[tokio::test]
     async fn workflow_returns_ocr_translation_input() {
         let input = recognize_capture_for_translation(
@@ -141,6 +174,64 @@ mod tests {
         assert!(matches!(
             error,
             OcrTranslationError::Ocr(crate::core::ocr::OcrError::EmptyResult)
+        ));
+    }
+
+    #[tokio::test]
+    async fn cropped_workflow_returns_ocr_input() {
+        let frame = bgra_4x4();
+        let input = recognize_cropped_for_translation(
+            &frame,
+            (1, 1, 2, 2),
+            &FakeOcr {
+                text: " Hi ".to_string(),
+            },
+            OcrHints::default(),
+        )
+        .await
+        .expect("裁剪 OCR workflow 应成功")
+        .expect("应返回 OCR 输入");
+
+        assert_eq!(input.text(), "Hi");
+    }
+
+    #[tokio::test]
+    async fn cropped_workflow_rejects_empty_text() {
+        let frame = bgra_4x4();
+        let error = recognize_cropped_for_translation(
+            &frame,
+            (0, 0, 2, 2),
+            &FakeOcr {
+                text: "   ".to_string(),
+            },
+            OcrHints::default(),
+        )
+        .await
+        .expect_err("空文本应报错");
+
+        assert!(matches!(
+            error,
+            OcrTranslationError::Ocr(crate::core::ocr::OcrError::EmptyResult)
+        ));
+    }
+
+    #[tokio::test]
+    async fn cropped_workflow_propagates_crop_error() {
+        let frame = bgra_4x4();
+        let error = recognize_cropped_for_translation(
+            &frame,
+            (3, 3, 5, 5),
+            &FakeOcr {
+                text: "x".to_string(),
+            },
+            OcrHints::default(),
+        )
+        .await
+        .expect_err("越界裁剪应报错");
+
+        assert!(matches!(
+            error,
+            OcrTranslationError::Capture(crate::core::capture::CaptureError::ImageConversionFailed(_))
         ));
     }
 }
