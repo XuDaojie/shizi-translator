@@ -1,12 +1,12 @@
-use crate::core::translation::TranslationService;
+use crate::core::config::ConfigStore;
 
 #[derive(Clone)]
 pub struct AppState {
-    pub translation_service: TranslationService,
+    pub config_store: ConfigStore,
 }
 
 impl AppState {
-    pub fn new(translation_service: TranslationService) -> Self {
-        Self { translation_service }
+    pub fn new(config_store: ConfigStore) -> Self {
+        Self { config_store }
     }
 }

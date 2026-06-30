@@ -1,4 +1,4 @@
-use std::{env, time::Duration};
+use std::time::Duration;
 
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -13,10 +13,12 @@ pub struct OpenAiCompatibleProvider {
     config: OpenAiCompatibleConfig,
 }
 
-struct OpenAiCompatibleConfig {
-    api_key: Option<String>,
-    base_url: String,
-    model: String,
+#[derive(Debug, Clone)]
+pub struct OpenAiCompatibleConfig {
+    pub api_key: Option<String>,
+    pub base_url: String,
+    pub model: String,
+    pub timeout_seconds: u64,
 }
 
 #[derive(Serialize)]
@@ -59,26 +61,13 @@ struct ApiError {
 }
 
 impl OpenAiCompatibleProvider {
-    pub fn from_env() -> Self {
-        let timeout_secs = env::var("SHIZI_OPENAI_TIMEOUT_SECS")
-            .ok()
-            .and_then(|value| value.parse().ok())
-            .unwrap_or(60);
-
+    pub fn new(config: OpenAiCompatibleConfig) -> Self {
         let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(timeout_secs))
+            .timeout(Duration::from_secs(config.timeout_seconds))
             .build()
             .expect("创建 HTTP client 失败");
 
-        Self {
-            client,
-            config: OpenAiCompatibleConfig {
-                api_key: env::var("SHIZI_OPENAI_API_KEY").ok(),
-                base_url: env::var("SHIZI_OPENAI_BASE_URL")
-                    .unwrap_or_else(|_| "https://api.openai.com/v1".to_string()),
-                model: env::var("SHIZI_OPENAI_MODEL").unwrap_or_else(|_| "gpt-4o-mini".to_string()),
-            },
-        }
+        Self { client, config }
     }
 
     fn endpoint(&self) -> String {
@@ -175,7 +164,7 @@ impl LlmProvider for OpenAiCompatibleProvider {
             .config
             .api_key
             .as_deref()
-            .ok_or(LlmError::MissingEnv("SHIZI_OPENAI_API_KEY"))?;
+            .ok_or(LlmError::MissingConfig("OpenAI API Key"))?;
 
         let response = self
             .client

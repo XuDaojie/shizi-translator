@@ -1,10 +1,13 @@
-use std::{env, time::{SystemTime, UNIX_EPOCH}};
+use std::{sync::Arc, time::{SystemTime, UNIX_EPOCH}};
 
 use tauri::{Emitter, Manager};
 
 use crate::{
     app::state::AppState,
-    core::translation::{TranslationEvent, TranslationRequest, TranslationSessionId},
+    core::{
+        llm::{LlmProvider, MockLlmProvider, OpenAiCompatibleConfig, OpenAiCompatibleProvider},
+        translation::{TranslationEvent, TranslationRequest, TranslationService, TranslationSessionId},
+    },
 };
 
 pub const TRANSLATION_EVENT: &str = "translation:event";
@@ -27,6 +30,15 @@ pub async fn start_translation(
         return Err("请输入要翻译的文本".to_string());
     }
 
+    let config = state.config_store.get().map_err(|error| error.to_string())?;
+    let provider: Arc<dyn LlmProvider> = match config.provider.as_str() {
+        "mock" => Arc::new(MockLlmProvider),
+        _ => Arc::new(OpenAiCompatibleProvider::new(OpenAiCompatibleConfig::from(
+            config.openai_compatible,
+        ))),
+    };
+    let translation_service = TranslationService::new(provider);
+
     let session_id = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|_| "无法创建翻译会话".to_string())?
@@ -36,11 +48,10 @@ pub async fn start_translation(
     let request = TranslationRequest {
         session_id: TranslationSessionId(session_id.clone()),
         source_text,
-        target_lang: env::var("SHIZI_TARGET_LANG").unwrap_or_else(|_| "中文".to_string()),
+        target_lang: config.target_lang,
     };
 
     let app_handle = app.clone();
-    let translation_service = state.translation_service.clone();
 
     tauri::async_runtime::spawn(async move {
         let failed_session_id = request.session_id.clone();

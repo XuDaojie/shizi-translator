@@ -2,8 +2,8 @@ use crate::core::translation::TranslationRequest;
 
 #[derive(Debug, thiserror::Error)]
 pub enum LlmError {
-    #[error("缺少环境变量 {0}")]
-    MissingEnv(&'static str),
+    #[error("缺少配置 {0}")]
+    MissingConfig(&'static str),
     #[error("HTTP 请求失败：{0}")]
     Http(String),
     #[error("服务返回错误：{message}")]
@@ -15,7 +15,7 @@ pub enum LlmError {
 impl LlmError {
     pub fn retryable(&self) -> bool {
         match self {
-            Self::MissingEnv(_) | Self::Parse(_) => false,
+            Self::MissingConfig(_) | Self::Parse(_) => false,
             Self::Http(_) => true,
             Self::Api { retryable, .. } => *retryable,
         }
