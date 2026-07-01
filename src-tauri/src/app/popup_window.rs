@@ -1,6 +1,13 @@
 // 类型与纯函数在任务 4 的窗口管理函数中使用前暂时允许 dead_code。
 #![allow(dead_code)]
 
+pub const POPUP_LABEL: &str = "translation-popup";
+
+use tauri::{LogicalPosition, Manager, WebviewUrl, WebviewWindowBuilder};
+
+use crate::core::config::AppConfig;
+use crate::platform::cursor_logical_context;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LogicalPos {
     pub x: f64,
@@ -48,6 +55,77 @@ pub fn compute_popup_position(
     }
 
     LogicalPos { x, y }
+}
+
+/// 预创建模式下启动时调用：创建并隐藏翻译弹窗。运行时模式无操作。
+/// 已存在则跳过（幂等）。
+pub fn ensure_popup_window(app: &tauri::AppHandle, config: &AppConfig) -> Result<(), String> {
+    if !config.popup_precreate {
+        return Ok(());
+    }
+    if app.get_webview_window(POPUP_LABEL).is_some() {
+        return Ok(());
+    }
+    build_popup(app)?;
+    Ok(())
+}
+
+/// 唤起弹窗：预创建模式 show + 定位；运行时模式复用或创建 + 定位。
+/// 光标上下文不可用时退化为不重新定位（保留上一次位置或默认）。
+pub fn show_popup(app: &tauri::AppHandle, config: &AppConfig) -> Result<(), String> {
+    let window = if config.popup_precreate {
+        app.get_webview_window(POPUP_LABEL)
+            .ok_or_else(|| "翻译弹窗未预创建".to_string())?
+    } else {
+        // 运行时模式：复用已有窗口，避免 close+rebuild 触发的标签冲突
+        // （close 会触发 CloseRequested → prevent_close → hide，窗口未销毁）
+        match app.get_webview_window(POPUP_LABEL) {
+            Some(existing) => existing,
+            None => build_popup(app)?,
+        }
+    };
+
+    let scale = app
+        .get_webview_window("main")
+        .and_then(|w| w.scale_factor().ok())
+        .unwrap_or(1.0);
+
+    if let Some((cx, cy, wx, wy, ww, wh)) = cursor_logical_context(scale) {
+        const POPUP_W: f64 = 400.0;
+        const POPUP_H: f64 = 300.0;
+        let pos = compute_popup_position(
+            LogicalPos { x: cx, y: cy },
+            LogicalSize { width: POPUP_W, height: POPUP_H },
+            LogicalRect { x: wx, y: wy, width: ww, height: wh },
+        );
+        let _ = window.set_position(LogicalPosition::new(pos.x, pos.y));
+    }
+
+    let _ = window.show();
+    let _ = window.set_focus();
+    Ok(())
+}
+
+fn build_popup(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, String> {
+    let window = WebviewWindowBuilder::new(app, POPUP_LABEL, WebviewUrl::App("translate.html".into()))
+        .title("Shizi 翻译")
+        .inner_size(400.0, 300.0)
+        .decorations(true)
+        .resizable(true)
+        .visible(false)
+        .build()
+        .map_err(|e| format!("创建翻译弹窗失败: {e}"))?;
+
+    // 关闭事件：隐藏而非销毁（托盘驻留模型）
+    let win_clone = window.clone();
+    window.on_window_event(move |event| {
+        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+            api.prevent_close();
+            let _ = win_clone.hide();
+        }
+    });
+
+    Ok(window)
 }
 
 #[cfg(test)]
