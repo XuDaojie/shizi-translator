@@ -13,6 +13,14 @@ const modelInput = document.getElementById('modelInput');
 const timeoutInput = document.getElementById('timeoutInput');
 const saveConfigBtn = document.getElementById('saveConfigBtn');
 const configStatus = document.getElementById('configStatus');
+const providerSelect = document.getElementById('providerSelect');
+const openaiSettings = document.getElementById('openaiSettings');
+const claudeSettings = document.getElementById('claudeSettings');
+const claudeApiKeyInput = document.getElementById('claudeApiKeyInput');
+const claudeBaseUrlInput = document.getElementById('claudeBaseUrlInput');
+const claudeModelInput = document.getElementById('claudeModelInput');
+const claudeTimeoutInput = document.getElementById('claudeTimeoutInput');
+const claudeEnableThinkingInput = document.getElementById('claudeEnableThinkingInput');
 
 const tauriApi = window.__TAURI__;
 const invoke = tauriApi?.core?.invoke;
@@ -56,17 +64,32 @@ function getSessionId(payload) {
   return null;
 }
 
+function toggleProviderSettings() {
+  const provider = providerSelect.value;
+  openaiSettings.classList.toggle('hidden', provider !== 'openai-compatible');
+  claudeSettings.classList.toggle('hidden', provider !== 'claude');
+}
+
 function fillConfigForm(config) {
   targetLangInput.value = config.targetLang ?? '中文';
+  providerSelect.value = config.provider ?? 'openai-compatible';
+  // OpenAI Compatible 字段
   apiKeyInput.value = config.openaiCompatible?.apiKey ?? '';
   baseUrlInput.value = config.openaiCompatible?.baseUrl ?? 'https://api.openai.com/v1';
   modelInput.value = config.openaiCompatible?.model ?? 'gpt-4o-mini';
   timeoutInput.value = String(config.openaiCompatible?.timeoutSeconds ?? 60);
+  // Claude 字段
+  claudeApiKeyInput.value = config.claude?.apiKey ?? '';
+  claudeBaseUrlInput.value = config.claude?.baseUrl ?? 'https://api.anthropic.com';
+  claudeModelInput.value = config.claude?.model ?? 'claude-haiku-4-5';
+  claudeTimeoutInput.value = String(config.claude?.timeoutSeconds ?? 60);
+  claudeEnableThinkingInput.checked = config.claude?.enableThinking ?? false;
+  toggleProviderSettings();
 }
 
 function readConfigForm() {
   return {
-    provider: 'openai-compatible',
+    provider: providerSelect.value,
     targetLang: targetLangInput.value.trim() || '中文',
     openaiCompatible: {
       apiKey: apiKeyInput.value.trim() || null,
@@ -74,31 +97,37 @@ function readConfigForm() {
       model: modelInput.value.trim(),
       timeoutSeconds: Number(timeoutInput.value),
     },
+    claude: {
+      apiKey: claudeApiKeyInput.value.trim() || null,
+      baseUrl: claudeBaseUrlInput.value.trim(),
+      model: claudeModelInput.value.trim(),
+      timeoutSeconds: Number(claudeTimeoutInput.value),
+      enableThinking: claudeEnableThinkingInput.checked,
+    },
   };
 }
 
 function validateConfig(config) {
-  let url;
-  try {
-    url = new URL(config.openaiCompatible.baseUrl);
-  } catch {
-    return 'Base URL 请输入有效的 http(s) 地址';
+  const sections = config.provider === 'claude' ? [config.claude] : [config.openaiCompatible];
+  for (const section of sections) {
+    let url;
+    try {
+      url = new URL(section.baseUrl);
+    } catch {
+      return 'Base URL 请输入有效的 http(s) 地址';
+    }
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return 'Base URL 请输入有效的 http(s) 地址';
+    }
+    if (!section.model) {
+      return 'Model 不能为空';
+    }
+    if (!Number.isInteger(section.timeoutSeconds)
+        || section.timeoutSeconds < 1
+        || section.timeoutSeconds > 600) {
+      return 'Timeout 秒请输入 1-600 的整数';
+    }
   }
-
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    return 'Base URL 请输入有效的 http(s) 地址';
-  }
-
-  if (!config.openaiCompatible.model) {
-    return 'Model 不能为空';
-  }
-
-  if (!Number.isInteger(config.openaiCompatible.timeoutSeconds)
-      || config.openaiCompatible.timeoutSeconds < 1
-      || config.openaiCompatible.timeoutSeconds > 600) {
-    return 'Timeout 秒请输入 1-600 的整数';
-  }
-
   return null;
 }
 
@@ -227,6 +256,8 @@ settingsBtn.addEventListener('click', () => {
   syncSettingsButtonText();
 });
 
+providerSelect.addEventListener('change', toggleProviderSettings);
+
 saveConfigBtn.addEventListener('click', saveAppConfig);
 
 translateBtn.addEventListener('click', async () => {
@@ -294,7 +325,7 @@ retryBtn.addEventListener('click', async () => {
   }
   outputText.textContent = '翻译中...';
   outputText.style.color = '#999';
-  setActionButtons({ translating: true, canRetry: false });
+  setActionButtons({ translating: false, canRetry: false });
   try {
     await invoke('retry_translation');
   } catch (error) {

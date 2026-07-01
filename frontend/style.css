@@ -85,6 +85,25 @@ body {
   border-color: #4a90d9;
 }
 
+.settings-panel select {
+  padding: 7px 8px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font: inherit;
+  outline: none;
+  background: #fff;
+  cursor: pointer;
+}
+
+.settings-panel select:focus {
+  border-color: #4a90d9;
+}
+
+.settings-panel label:has(input[type="checkbox"]) {
+  flex-direction: row;
+  align-items: center;
+}
+
 .config-warning {
   font-size: 11px;
   color: #b54708;
