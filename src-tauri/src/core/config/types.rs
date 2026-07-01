@@ -12,6 +12,10 @@ const DEFAULT_TIMEOUT_SECONDS: u64 = 60;
 const DEFAULT_CLAUDE_BASE_URL: &str = "https://api.anthropic.com";
 const DEFAULT_CLAUDE_MODEL: &str = "claude-haiku-4-5";
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppConfig {
@@ -20,6 +24,10 @@ pub struct AppConfig {
     pub openai_compatible: OpenAiCompatibleAppConfig,
     #[serde(default)]
     pub claude: ClaudeAppConfig,
+    #[serde(default = "default_true")]
+    pub popup_precreate: bool,
+    #[serde(default = "default_true")]
+    pub overlay_precreate: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,6 +58,8 @@ impl AppConfig {
                 .unwrap_or_else(|_| DEFAULT_TARGET_LANG.to_string()),
             openai_compatible: OpenAiCompatibleAppConfig::from_env(),
             claude: ClaudeAppConfig::from_env(),
+            popup_precreate: true,
+            overlay_precreate: true,
         }
         .normalized()
     }
@@ -60,6 +70,14 @@ impl AppConfig {
         self.openai_compatible = self.openai_compatible.normalized();
         self.claude = self.claude.normalized();
         self
+    }
+
+    pub fn is_configured(&self) -> bool {
+        match self.provider.as_str() {
+            "mock" => true,
+            "claude" => self.claude.api_key.is_some(),
+            _ => self.openai_compatible.api_key.is_some(),
+        }
     }
 }
 
@@ -246,5 +264,70 @@ mod tests {
         assert_eq!(config.claude.timeout_seconds, DEFAULT_TIMEOUT_SECONDS);
         assert!(!config.claude.enable_thinking);
         assert!(config.claude.api_key.is_none());
+    }
+
+    #[test]
+    fn app_config_defaults_precreate_window_strategies() {
+        let config = AppConfig::from_env();
+        assert!(config.popup_precreate, "popup_precreate 默认应为 true");
+        assert!(config.overlay_precreate, "overlay_precreate 默认应为 true");
+    }
+
+    #[test]
+    fn app_config_serializes_window_strategy_fields_camel_case() {
+        let config = AppConfig::from_env();
+        let json = serde_json::to_string(&config).expect("序列化");
+        assert!(json.contains("\"popupPrecreate\":true"), "应输出 camelCase 字段 popupPrecreate: {json}");
+        assert!(json.contains("\"overlayPrecreate\":true"), "应输出 camelCase 字段 overlayPrecreate: {json}");
+    }
+
+    #[test]
+    fn app_config_deserializes_window_strategy_defaults_when_missing() {
+        let json = r#"{
+            "provider": "openai-compatible",
+            "targetLang": "中文",
+            "openaiCompatible": {
+                "apiKey": "sk-x",
+                "baseUrl": "https://api.openai.com/v1",
+                "model": "gpt-4o-mini",
+                "timeoutSeconds": 60
+            }
+        }"#;
+        let config: AppConfig = serde_json::from_str::<AppConfig>(json)
+            .expect("缺少窗口策略字段应可反序列化")
+            .normalized();
+        assert!(config.popup_precreate);
+        assert!(config.overlay_precreate);
+    }
+
+    #[test]
+    fn is_configured_true_when_openai_has_api_key() {
+        let mut config = AppConfig::from_env();
+        config.provider = "openai-compatible".to_string();
+        config.openai_compatible.api_key = Some("sk-x".to_string());
+        assert!(config.is_configured());
+    }
+
+    #[test]
+    fn is_configured_false_when_openai_missing_api_key() {
+        let mut config = AppConfig::from_env();
+        config.provider = "openai-compatible".to_string();
+        config.openai_compatible.api_key = None;
+        assert!(!config.is_configured());
+    }
+
+    #[test]
+    fn is_configured_true_when_claude_has_api_key() {
+        let mut config = AppConfig::from_env();
+        config.provider = "claude".to_string();
+        config.claude.api_key = Some("sk-ant".to_string());
+        assert!(config.is_configured());
+    }
+
+    #[test]
+    fn is_configured_true_when_mock_provider() {
+        let mut config = AppConfig::from_env();
+        config.provider = "mock".to_string();
+        assert!(config.is_configured(), "mock provider 无需 key 视为已配置");
     }
 }
