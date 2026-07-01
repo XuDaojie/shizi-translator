@@ -2,6 +2,8 @@ use std::sync::{Arc, Mutex};
 
 use crate::core::capture::CapturedImage;
 use crate::core::config::ConfigStore;
+use crate::core::translation::TranslationInput;
+use tokio_util::sync::CancellationToken;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -14,6 +16,11 @@ pub struct AppState {
     capture_in_progress: Arc<Mutex<bool>>,
     // overlay 截图链路：抓到的整屏帧 + 显示器 scale_factor，等待框选裁剪。
     pending_capture: Arc<Mutex<Option<(CapturedImage, f64)>>>,
+    // 当前翻译的取消信号。begin 时存入，翻译自然结束 clear、用户取消 cancel。
+    // cancel 取出并触发；幂等：无 token 或已清空返回 Ok 无操作。
+    current_cancel_token: Arc<Mutex<Option<CancellationToken>>>,
+    // 最近一次成功开始的翻译输入，供重试复用。begin 成功后存入，retry 时 take。
+    last_translation_input: Arc<Mutex<Option<TranslationInput>>>,
 }
 
 impl AppState {
@@ -24,6 +31,8 @@ impl AppState {
             translation_busy: Arc::new(Mutex::new(false)),
             capture_in_progress: Arc::new(Mutex::new(false)),
             pending_capture: Arc::new(Mutex::new(None)),
+            current_cancel_token: Arc::new(Mutex::new(None)),
+            last_translation_input: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -127,6 +136,55 @@ impl AppState {
             .lock()
             .map_err(|_| "截图帧状态锁已损坏".to_string())?;
         Ok(slot.take())
+    }
+
+    pub fn set_current_cancel_token(&self, token: CancellationToken) -> Result<(), String> {
+        let mut slot = self
+            .current_cancel_token
+            .lock()
+            .map_err(|_| "取消信号状态锁已损坏".to_string())?;
+        *slot = Some(token);
+        Ok(())
+    }
+
+    pub fn cancel_current_translation(&self) -> Result<(), String> {
+        let token = {
+            let mut slot = self
+                .current_cancel_token
+                .lock()
+                .map_err(|_| "取消信号状态锁已损坏".to_string())?;
+            slot.take()
+        };
+        if let Some(token) = token {
+            token.cancel();
+        }
+        Ok(())
+    }
+
+    pub fn set_last_translation_input(&self, input: TranslationInput) -> Result<(), String> {
+        let mut slot = self
+            .last_translation_input
+            .lock()
+            .map_err(|_| "重试输入状态锁已损坏".to_string())?;
+        *slot = Some(input);
+        Ok(())
+    }
+
+    pub fn take_last_translation_input(&self) -> Result<Option<TranslationInput>, String> {
+        let mut slot = self
+            .last_translation_input
+            .lock()
+            .map_err(|_| "重试输入状态锁已损坏".to_string())?;
+        Ok(slot.take())
+    }
+
+    pub fn clear_current_cancel_token(&self) -> Result<(), String> {
+        let mut slot = self
+            .current_cancel_token
+            .lock()
+            .map_err(|_| "取消信号状态锁已损坏".to_string())?;
+        *slot = None;
+        Ok(())
     }
 }
 
@@ -263,5 +321,74 @@ mod tests {
         state.finish_capture().expect("第一次释放");
         // 对已清位再清应无害（cancel/submit 各分支可能重复释放）。
         state.finish_capture().expect("幂等释放");
+    }
+
+    #[test]
+    fn cancel_token_triggers_on_cancel_current_translation() {
+        let state = app_state();
+        let token = tokio_util::sync::CancellationToken::new();
+        state.set_current_cancel_token(token.clone()).expect("写入 cancel token");
+
+        state.cancel_current_translation().expect("触发取消");
+
+        assert!(token.is_cancelled(), "token 应被触发");
+    }
+
+    #[test]
+    fn cancel_current_translation_is_idempotent_when_no_token() {
+        let state = app_state();
+        state.cancel_current_translation().expect("无 token 取消应幂等");
+    }
+
+    #[test]
+    fn cancel_current_translation_is_idempotent_after_take() {
+        let state = app_state();
+        let token = tokio_util::sync::CancellationToken::new();
+        state.set_current_cancel_token(token.clone()).expect("写入 cancel token");
+
+        state.cancel_current_translation().expect("第一次取消触发");
+        state.cancel_current_translation().expect("重复取消应幂等");
+
+        assert!(token.is_cancelled());
+    }
+
+    #[test]
+    fn last_translation_input_round_trips() {
+        use crate::core::translation::TranslationInput;
+        let state = app_state();
+        let input = TranslationInput::ManualText("hello".to_string());
+
+        state.set_last_translation_input(input.clone()).expect("写入重试输入");
+
+        let taken = state.take_last_translation_input().expect("取出重试输入");
+        assert_eq!(taken, Some(input));
+
+        let again = state.take_last_translation_input().expect("再次取出");
+        assert_eq!(again, None);
+    }
+
+    #[test]
+    fn last_translation_input_overwrites_previous() {
+        use crate::core::translation::TranslationInput;
+        let state = app_state();
+        let first = TranslationInput::SelectedText("first".to_string());
+        let second = TranslationInput::SelectedText("second".to_string());
+
+        state.set_last_translation_input(first).expect("写入第一个");
+        state.set_last_translation_input(second.clone()).expect("覆盖第二个");
+
+        let taken = state.take_last_translation_input().expect("取出");
+        assert_eq!(taken, Some(second));
+    }
+
+    #[test]
+    fn clear_current_cancel_token_is_idempotent() {
+        let state = app_state();
+        let token = tokio_util::sync::CancellationToken::new();
+        state.set_current_cancel_token(token).expect("写入 cancel token");
+
+        state.clear_current_cancel_token().expect("第一次清空");
+        state.clear_current_cancel_token().expect("幂等清空");
+        state.cancel_current_translation().expect("清空后取消应幂等");
     }
 }

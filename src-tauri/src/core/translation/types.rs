@@ -18,7 +18,7 @@ impl TranslationRequest {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", tag = "type")]
 pub enum TranslationInput {
     ManualText(String),
@@ -57,6 +57,9 @@ pub enum TranslationEvent {
         session_id: TranslationSessionId,
         message: String,
         retryable: bool,
+    },
+    Cancelled {
+        session_id: TranslationSessionId,
     },
 }
 
@@ -109,5 +112,18 @@ mod tests {
         assert_eq!(payload["sourceText"], "OCR 原文");
         assert!(payload.get("session_id").is_none());
         assert!(payload.get("source_text").is_none());
+    }
+
+    #[test]
+    fn cancelled_event_serializes_with_frontend_field_names() {
+        let event = TranslationEvent::Cancelled {
+            session_id: TranslationSessionId("session-cancel-1".to_string()),
+        };
+
+        let payload = serde_json::to_value(event).expect("事件应可序列化");
+
+        assert_eq!(payload["type"], "cancelled");
+        assert_eq!(payload["sessionId"], "session-cancel-1");
+        assert!(payload.get("session_id").is_none());
     }
 }
