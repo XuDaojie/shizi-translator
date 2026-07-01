@@ -13,7 +13,7 @@
 - OpenAI-compatible 流式翻译 provider：调用兼容 `/v1/chat/completions` 的流式接口。
 - Claude / Anthropic 流式翻译 provider：调用 Anthropic Messages API 的 SSE 流式接口，支持 thinking 模式。
 - Mock provider：用于无真实 API Key 的本地验证。
-- 内嵌设置面板：配置目标语言、provider 及 API Key、Base URL、模型名和超时时间。
+- 独立设置页与独立翻译弹窗：主窗口承载设置页，划词 / OCR 触发时弹出独立翻译弹窗并跟随光标定位，两者互不耦合。
 - 流式结果展示：Rust 后端通过 Tauri event 推送翻译状态和增量文本，前端实时渲染。
 - 翻译取消与重试：流式翻译过程中可取消，失败或取消后可一键重试。
 - 翻译来源徽章：划词翻译显示「来自划词」、OCR 翻译显示「来自 OCR」，手动输入不显示；翻译结束/取消/失败/清空时徽章自动隐藏。
@@ -44,7 +44,7 @@
 
 ## 配置
 
-主窗口内嵌“设置”面板，当前支持：
+主窗口为独立设置页，当前支持：
 
 - 目标语言
 - API Key
@@ -83,7 +83,6 @@ SHIZI_LLM_PROVIDER=mock npm run tauri dev
 以下能力尚未实现：
 
 - Slint 原生高性能翻译弹窗。
-- 独立设置窗口；当前设置仍内嵌在主窗口。
 - API Key 系统安全存储。
 - 翻译历史记录、快捷键自定义。
 

@@ -11,11 +11,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 项目结构
 
 ```
-frontend/          静态前端（原生 HTML/JS/CSS，无构建步骤）
-  index.html       主窗口 UI：翻译输入、输出区、内嵌设置面板
+frontend/          静态前端（原生 HTML/JS/CSS，无构建步骤），按职责拆为三个独立页面
+  settings.html    主窗口设置页：provider / 目标语言 / API Key 等配置
+  translate.html   独立翻译弹窗：监听 translation:event 流式渲染、取消重试、来源徽章
   overlay.html     截图 OCR overlay：canvas 整屏 BGRA 渲染 + 鼠标框选，回传 CSS 矩形
-  main.js          前端交互：配置读写、翻译触发、translation:event 监听与流式渲染
-  style.css        主窗口样式
+  settings.* / translate.* 各自的 JS 与 CSS
 src-tauri/         Rust 后端 + Tauri 配置
   src/lib.rs       应用装配入口：注册插件、commands、托盘、快捷键、窗口生命周期
   src/main.rs      薄入口，调用 shizi_lib::run()
@@ -60,7 +60,7 @@ cd src-tauri && cargo clean           # 清理 Rust 编译缓存
 
 - **分层结构**：
   - **核心层**：Rust 实现，承载翻译业务、配置管理、LLM provider、划词复制等能力。
-  - **UI 层**：当前仍是单 WebView 主窗口，包含翻译区与内嵌设置面板；后续目标是拆成 ①**翻译弹窗** 与 ②**设置页面** 两个可替换模块。新增能力时不要把核心逻辑写进前端，也不要让未来两个 UI 模块互相耦合。
+  - **UI 层**：已拆成 ①**设置页**（主窗口 `settings.html`）与 ②**翻译弹窗**（独立 `translate.html`，划词 / OCR 触发时创建并跟随光标定位）两个可替换模块，截图 overlay 为第三个独立页面。新增能力时不要把核心逻辑写进前端，也不要让 UI 模块互相耦合。
 - **托盘驻留模型**：窗口的 `CloseRequested` 被拦截改为 `hide()`，应用通过托盘菜单「退出」才会真正退出；详见 [src-tauri/src/app/window.rs](src-tauri/src/app/window.rs) 与 [src-tauri/src/app/tray.rs](src-tauri/src/app/tray.rs)。
 - **全局快捷键**：`Alt+T` 划词复制并自动翻译；`Alt+O` 触发截图 OCR 翻译（DXGI 抓光标所在显示器整屏帧 → 自建 overlay 区域框选 → crop → Windows.Media.Ocr → 复用翻译链路）。由 `tauri-plugin-global-shortcut` 注册，逻辑集中在 `src-tauri/src/app/shortcuts.rs`。新增快捷键时需在 `capabilities/default.json` 同步授权。
 - **前后端通信**：当前已有 Tauri commands：`start_translation`、`take_pending_source_text`、`get_app_config`、`save_app_config`，以及截图 overlay 四命令 `get_capture_frame_meta` / `get_capture_frame_bytes` / `submit_capture_region` / `cancel_capture`。后端通过 `translation:event` 向前端推送 `Started` / `Delta` / `Finished` / `Failed`。
