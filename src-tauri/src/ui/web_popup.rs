@@ -10,7 +10,7 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     app::{state::AppState, window::show_window},
     core::{
-        llm::{LlmProvider, MockLlmProvider, OpenAiCompatibleConfig, OpenAiCompatibleProvider},
+        llm::{ClaudeConfig, ClaudeProvider, LlmProvider, MockLlmProvider, OpenAiCompatibleConfig, OpenAiCompatibleProvider},
         translation::{
             TranslationEvent, TranslationInput, TranslationRequest, TranslationService,
             TranslationSessionId,
@@ -72,6 +72,7 @@ pub fn start_translation_from_input(
         .map_err(|error| error.to_string())?;
     let provider: Arc<dyn LlmProvider> = match config.provider.as_str() {
         "mock" => Arc::new(MockLlmProvider),
+        "claude" => Arc::new(ClaudeProvider::new(ClaudeConfig::from(config.claude))),
         _ => Arc::new(OpenAiCompatibleProvider::new(OpenAiCompatibleConfig::from(
             config.openai_compatible,
         ))),
@@ -245,3 +246,5 @@ mod tests {
         );
     }
 }
+
+
