@@ -461,3 +461,61 @@ Windows OCR spike 已验证 `Windows.Media.Ocr` 接入路径：
 6. OCR 失败、取消、无文本、语言包缺失的用户可见文案。
 
 确认以上决策后，再创建单独的实现计划。
+
+## 自建 overlay 区域框选落地状态
+
+> 落地于 `feat/overlay-region-capture` 分支（2026-07）。规格见 `docs/superpowers/specs/2026-06-30-overlay-region-capture-design.md`，计划见 `docs/superpowers/plans/2026-06-30-overlay-region-capture.md`。
+
+### 链路演进
+
+截图 OCR 从「GraphicsCapturePicker 全屏单帧」演进为「自建 overlay 区域框选」，端到端链路：
+
+```text
+Alt+O
+  -> app/shortcuts 分流 OCR -> ui::ocr_popup::start_translation_from_ocr
+     1. translation_busy 预检
+     2. try_begin_capture（独立 capture 锁，挡 OCR/recognize 期间二次 Alt+O）
+     3. platform::capture_screen() = DXGI Desktop Duplication 抓光标所在显示器整屏 BGRA 帧
+     4. AppState::set_pending_capture(frame, scale_factor)
+     5. ui::overlay::open_overlay() 建 screenshot-overlay 窗口（fullscreen + always_on_top + 无装饰）
+  -> frontend/overlay.html
+     - get_capture_frame_meta 拿 (width, height, scale_factor)
+     - get_capture_frame_bytes 拿整屏 BGRA ArrayBuffer（tauri::ipc::Response，无 PNG 编码/落盘）
+     - canvas 物理像素 = 帧尺寸、CSS 尺寸 = 逻辑尺寸，BGRA→RGBA 逐像素交换后 putImageData
+     - 鼠标拖矩形（clientX/Y 为 CSS 逻辑像素）；mouseup 提交、Esc/右键/选区过小取消
+  -> submit_capture_region(x,y,w,h)
+     1. close_overlay
+     2. take_pending_capture 取 (frame, scale)，None 静默
+     3. css_rect_to_physical 按 scale 换算物理像素
+     4. recognize_region = CapturedImage::crop + WindowsOcrEngine.recognize（recognize 期间持 capture 锁，完成后 finish_capture 让 translation_busy 接管）
+     5. start_translation_from_input（沿用）-> translation:event
+  -> cancel_capture：take_pending_capture + finish_capture + close_overlay，静默
+```
+
+### 关键组件
+
+- **`CapturedImage::crop`**（`core/capture/mod.rs`）：纯 BGRA 行切片裁剪，含格式/零尺寸/溢出/越界/缓冲区长度校验，可单测。
+- **`css_rect_to_physical`**（`core/capture/mod.rs`）：CSS 逻辑像素 → 物理像素纯函数，向下取整。
+- **`WindowsScreenCapture::capture_monitor`**（`platform/windows/capture.rs`）：DXGI `DuplicateOutput` + `AcquireNextFrame`，`GetCursorPos`+`MonitorFromPoint` 定位光标显示器（兜底第一个 output），尺寸取自 acquired texture 自身 `GetDesc`（防 rotation/DPI 切换错位），复用 D3D11 staging 提取。删除了 GraphicsCapturePicker / owner_hwnd / WinRT IDirect3DDevice 桥。
+- **`AppState` 暂存帧 + capture 锁**（`app/state.rs`）：`pending_capture: Arc<Mutex<Option<(CapturedImage, f64)>>>` + 独立 `capture_in_progress` 锁（`try_begin_capture`/`finish_capture` 幂等）。
+- **`recognize_cropped_for_translation`**（`core/ocr_translation.rs`）：对已抓帧 crop + recognize + 空文本拒绝，与 `recognize_capture_for_translation` 签名一致但永不返回 `Ok(None)`。
+- **`overlay.rs`**（`ui/overlay.rs`）：建窗 + 四个 Tauri command（meta/bytes/submit/cancel）。
+- **`overlay.html`**（`frontend/overlay.html`）：原生静态 canvas 框选，无构建。
+
+### 并发与状态机
+
+- `translation_busy` 仅在 `start_translation_from_input` 内置位，无法覆盖 OCR/recognize 阶段。
+- 引入独立 `capture_in_progress` 锁：`start_translation_from_ocr` 入口 `try_begin_capture`，overlay 期间持锁；`submit_capture_region` 在 recognize 完成后、`start_translation_from_input` 前 `finish_capture`，让 `translation_busy` 接管；`cancel_capture` 释放。`finish_capture` 幂等，cancel/submit 竞争安全。
+
+### 已知限制（MVP）
+
+- **多显示器**：`capture_monitor` 按光标定位 DXGI Output，但 `WebviewWindowBuilder.fullscreen(true)` 默认建在主屏；光标在副屏时抓帧与建窗可能错位。仅保证主屏正确。
+- **scale_factor 来源近似**：取主窗口缩放近似目标显示器缩放，单屏一致，混合 DPI 多屏不准。
+- **DXGI 失败场景**：锁屏/屏保/安全桌面/远程会话下 `DuplicateOutput` 可能失败，统一落 `BackendUnavailable` →「截图失败，请稍后重试」。
+- 多屏精确定位（按 monitor `.position()/.inner_size()/.scale_factor()` 建窗）、GraphicsCapture 兜底、overlay 多选区/编辑手柄/放大镜、截图历史均为非目标。
+
+### 测试
+
+- 单元测试（纯 Rust）：`crop`、`css_rect_to_physical`、`AppState` 往返与覆盖语义、`recognize_cropped_for_translation` 三分支、capture 锁 `try_begin/finish`、`unsupported` 平台缝。`cargo test` 45 passed。
+- `#[ignore]` 集成测试：`capture_monitor_returns_bgra_frame`（需桌面会话，`cargo test -- --ignored`）。
+- 人工验证：`npm run tauri dev` 跑 Alt+O 框选 / Esc 取消 / 选区过小 / busy 守卫 / Alt+T 回归。

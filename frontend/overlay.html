@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>Shizi 截图</title>
+  <style>
+    html, body { margin: 0; padding: 0; overflow: hidden; cursor: crosshair; user-select: none; }
+    #frame { position: fixed; top: 0; left: 0; }
+    #mask { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.35); }
+    #sel { position: fixed; border: 1px solid #38bdf8; background: rgba(56,189,248,0.12); display: none; }
+  </style>
+</head>
+<body>
+  <canvas id="frame"></canvas>
+  <div id="mask"></div>
+  <div id="sel"></div>
+  <script>
+    const invoke = window.__TAURI__.core.invoke;
+    const canvas = document.getElementById('frame');
+    const sel = document.getElementById('sel');
+    let downX = 0, downY = 0, moving = false, down = false;
+
+    async function init() {
+      const meta = await invoke('get_capture_frame_meta');
+      if (!meta) { await invoke('cancel_capture'); return; }
+      const [w, h, scale] = meta;
+      const buf = await invoke('get_capture_frame_bytes'); // ArrayBuffer，BGRA
+      const bgra = new Uint8Array(buf);
+      const rgba = new Uint8ClampedArray(w * h * 4);
+      for (let i = 0; i < w * h; i++) {
+        rgba[i*4]   = bgra[i*4+2]; // R <- B
+        rgba[i*4+1] = bgra[i*4+1]; // G
+        rgba[i*4+2] = bgra[i*4];   // B <- R
+        rgba[i*4+3] = bgra[i*4+3]; // A
+      }
+      canvas.width = w; canvas.height = h;            // 物理像素
+      canvas.style.width = (w / scale) + 'px';        // CSS 逻辑像素
+      canvas.style.height = (h / scale) + 'px';
+      canvas.getContext('2d').putImageData(new ImageData(rgba, w, h), 0, 0);
+      // 内容就绪后再让后端显示窗口，消除 WebView2 默认白底占位闪烁。
+      await invoke('show_overlay');
+    }
+
+    function updateSel(x1, y1, x2, y2) {
+      const left = Math.min(x1, x2), top = Math.min(y1, y2);
+      const width = Math.abs(x2 - x1), height = Math.abs(y2 - y1);
+      sel.style.display = 'block';
+      sel.style.left = left + 'px';
+      sel.style.top = top + 'px';
+      sel.style.width = width + 'px';
+      sel.style.height = height + 'px';
+    }
+
+    window.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) {
+        // 右键/中键取消：重置拖拽状态，避免后续 mouseup 误提交。
+        down = false; moving = false;
+        invoke('cancel_capture');
+        return;
+      }
+      down = true; moving = false; downX = e.clientX; downY = e.clientY;
+    });
+    // 抑制右键菜单与拖拽默认行为，框选交互不被打断。
+    window.addEventListener('contextmenu', (e) => e.preventDefault());
+    window.addEventListener('dragstart', (e) => e.preventDefault());
+    window.addEventListener('mousemove', (e) => {
+      if (!down) return;
+      moving = true; updateSel(downX, downY, e.clientX, e.clientY);
+    });
+    window.addEventListener('mouseup', (e) => {
+      if (!down) return;
+      down = false;
+      const x = Math.min(downX, e.clientX), y = Math.min(downY, e.clientY);
+      const w = Math.abs(e.clientX - downX), h = Math.abs(e.clientY - downY);
+      if (!moving || w < 3 || h < 3) { invoke('cancel_capture'); return; }
+      invoke('submit_capture_region', { x, y, w, h });
+    });
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') invoke('cancel_capture');
+    });
+
+    init().catch(() => invoke('cancel_capture'));
+  </script>
+</body>
+</html>

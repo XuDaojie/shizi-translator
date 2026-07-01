@@ -1,44 +1,56 @@
 use crate::{
     app::state::AppState,
     core::{capture::CaptureError, ocr::OcrError, ocr_translation::OcrTranslationError},
-    platform::capture_and_recognize,
-    ui::web_popup::{show_translation_error, start_translation_from_input},
+    platform::capture_screen,
+    ui::{overlay::open_overlay, web_popup::show_translation_error},
 };
 
-use crate::{app::window::show_window, core::ocr::OcrHints};
 use tauri::Manager;
 
 pub async fn start_translation_from_ocr(app: tauri::AppHandle, state: AppState) {
-    // ponytail: OCR 阶段不持有 translation_busy；picker 模态天然串行，
-    // 翻译阶段仍由 start_translation_from_input 内部 try_begin_translation 保护。
-    // busy peek 与 OCR→翻译间存在微小竞态窗口，MVP 可接受；后续可让 OCR 入口占住 busy。
     if state.is_translation_busy() {
         show_translation_error(&app, "正在翻译中，请稍后再试");
         return;
     }
 
-    // GraphicsCapturePicker 在桌面应用中需要可见 owner window handle，否则 picker 可能不显示。
-    show_window(&app);
+    // capture 独立锁：挡住 OCR/recognize 期间二次 Alt+O 覆盖 pending_capture。
+    // 持锁到 submit_capture_region / cancel_capture 释放；本函数每条失败路径都须 finish_capture。
+    if let Err(message) = state.try_begin_capture() {
+        show_translation_error(&app, message);
+        return;
+    }
 
-    // GraphicsCapturePicker 在桌面应用中需要 owner window handle，否则 PickSingleItemAsync 失败。
-    let owner_hwnd = app
-        .get_webview_window("main")
-        .and_then(|window| window.hwnd().ok())
-        .map(|hwnd| hwnd.0 as isize)
-        .unwrap_or(0);
-
-    match capture_and_recognize(OcrHints::default(), owner_hwnd).await {
-        Ok(None) => {} // 用户取消截图，静默
-        Ok(Some(input)) => {
-            if let Err(error) = start_translation_from_input(input, app.clone(), &state) {
-                show_translation_error(&app, error);
-            }
+    // 先抓整屏帧（overlay 显示前拍完，避免把 overlay 截进图里）
+    let frame = match capture_screen().await {
+        Ok(frame) => frame,
+        Err(error) => {
+            let _ = state.finish_capture();
+            show_translation_error(&app, friendly_ocr_error(OcrTranslationError::Capture(error)));
+            return;
         }
-        Err(error) => show_translation_error(&app, friendly_ocr_error(error)),
+    };
+
+    // scale_factor 取主窗口缩放（MVP 简化；多屏精确缩放留后续）
+    let scale = app
+        .get_webview_window("main")
+        .and_then(|w| w.scale_factor().ok())
+        .unwrap_or(1.0);
+
+    if let Err(error) = state.set_pending_capture(frame, scale) {
+        let _ = state.finish_capture();
+        show_translation_error(&app, error);
+        return;
+    }
+
+    // overlay 自身承载交互，不需要主窗口可见。成功打开后保留 capture 锁，等 submit/cancel 释放。
+    if let Err(error) = open_overlay(&app) {
+        let _ = state.take_pending_capture();
+        let _ = state.finish_capture();
+        show_translation_error(&app, format!("无法打开截图窗口：{error}"));
     }
 }
 
-fn friendly_ocr_error(error: OcrTranslationError) -> String {
+pub fn friendly_ocr_error(error: OcrTranslationError) -> String {
     match error {
         OcrTranslationError::Capture(CaptureError::UnsupportedPlatform) => {
             "当前平台暂不支持截图 OCR".to_string()

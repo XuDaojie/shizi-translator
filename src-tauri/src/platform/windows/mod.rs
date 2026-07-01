@@ -2,21 +2,23 @@ pub mod capture;
 pub mod ocr;
 
 use crate::core::{
+    capture::{CaptureError, CapturedImage},
     ocr::OcrHints,
-    ocr_translation::{recognize_capture_for_translation, OcrTranslationError},
+    ocr_translation::{recognize_cropped_for_translation, OcrTranslationError},
     translation::TranslationInput,
 };
-use capture::WindowsScreenCapture;
 use ocr::WindowsOcrEngine;
 
-pub async fn capture_and_recognize(
+/// 抓光标所在显示器整屏帧 + 该显示器 scale_factor。
+pub async fn capture_screen() -> Result<CapturedImage, CaptureError> {
+    capture::WindowsScreenCapture::new().capture_monitor().await
+}
+
+/// 对已抓帧按物理像素矩形裁剪并 OCR。
+pub async fn recognize_region(
+    frame: &CapturedImage,
+    region: (u32, u32, u32, u32),
     hints: OcrHints,
-    owner_hwnd: isize,
 ) -> Result<Option<TranslationInput>, OcrTranslationError> {
-    recognize_capture_for_translation(
-        &WindowsScreenCapture::new(owner_hwnd),
-        &WindowsOcrEngine,
-        hints,
-    )
-    .await
+    recognize_cropped_for_translation(frame, region, &WindowsOcrEngine, hints).await
 }
