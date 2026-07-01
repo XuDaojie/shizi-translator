@@ -2,7 +2,7 @@ use crate::{
     app::state::AppState,
     core::{capture::CaptureError, ocr::OcrError, ocr_translation::OcrTranslationError},
     platform::capture_screen,
-    ui::{overlay::open_overlay, web_popup::show_translation_error},
+    ui::{overlay, web_popup::show_translation_error},
 };
 
 use tauri::Manager;
@@ -42,8 +42,19 @@ pub async fn start_translation_from_ocr(app: tauri::AppHandle, state: AppState) 
         return;
     }
 
+    // 读取配置以决定 overlay 创建策略
+    let config = match state.config_store.get() {
+        Ok(c) => c,
+        Err(e) => {
+            let _ = state.take_pending_capture();
+            let _ = state.finish_capture();
+            show_translation_error(&app, format!("读取配置失败: {e}"));
+            return;
+        }
+    };
+
     // overlay 自身承载交互，不需要主窗口可见。成功打开后保留 capture 锁，等 submit/cancel 释放。
-    if let Err(error) = open_overlay(&app) {
+    if let Err(error) = overlay::open_overlay(&app, &config) {
         let _ = state.take_pending_capture();
         let _ = state.finish_capture();
         show_translation_error(&app, format!("无法打开截图窗口：{error}"));

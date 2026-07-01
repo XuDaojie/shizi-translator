@@ -2,6 +2,7 @@ use tauri::{Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 
 use crate::{
     app::state::AppState,
+    core::config::AppConfig,
     core::ocr::OcrHints,
     platform::recognize_region,
     ui::web_popup::{show_translation_error, start_translation_from_input},
@@ -9,11 +10,7 @@ use crate::{
 
 pub const OVERLAY_LABEL: &str = "screenshot-overlay";
 
-/// 在光标所在显示器上铺满建 overlay 窗口。整屏帧须已存入 AppState。
-pub fn open_overlay(app: &tauri::AppHandle) -> Result<(), String> {
-    if let Some(existing) = app.get_webview_window(OVERLAY_LABEL) {
-        let _ = existing.close();
-    }
+fn build_overlay(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, String> {
     let window = WebviewWindowBuilder::new(app, OVERLAY_LABEL, WebviewUrl::App("overlay.html".into()))
         .title("Shizi 截图")
         .decorations(false)
@@ -36,6 +33,48 @@ pub fn open_overlay(app: &tauri::AppHandle) -> Result<(), String> {
             let _ = state.finish_capture();
         }
     });
+    Ok(window)
+}
+
+/// 预创建模式下启动时调用：创建并隐藏 overlay。运行时模式无操作。
+pub fn ensure_overlay(app: &tauri::AppHandle) -> Result<(), String> {
+    let config = app
+        .state::<AppState>()
+        .config_store
+        .get()
+        .map_err(|e| format!("读取配置失败: {e}"))?;
+    if !config.overlay_precreate {
+        return Ok(());
+    }
+    if app.get_webview_window(OVERLAY_LABEL).is_some() {
+        return Ok(());
+    }
+    build_overlay(app)?;
+    Ok(())
+}
+
+/// 在光标所在显示器上铺满建 overlay 窗口。整屏帧须已存入 AppState。
+/// 按配置分预创建模式（复用持久窗口 + 重载帧）与运行时模式（按需创建）。
+pub fn open_overlay(app: &tauri::AppHandle, config: &AppConfig) -> Result<(), String> {
+    let window = if config.overlay_precreate {
+        // 预创建模式：获取已有窗口，重载帧以读取新的 pending_capture
+        app.get_webview_window(OVERLAY_LABEL)
+            .ok_or_else(|| "截图 overlay 未预创建".to_string())?
+    } else {
+        // 运行时模式：先关闭已有窗口（如果有）
+        if let Some(existing) = app.get_webview_window(OVERLAY_LABEL) {
+            let _ = existing.close();
+        }
+        build_overlay(app)?
+    };
+
+    // 预创建模式需重载前端以读取新的 pending_capture 帧
+    if config.overlay_precreate {
+        let _ = window.eval("location.reload()");
+    }
+
+    window.show().map_err(|e| e.to_string())?;
+    let _ = window.set_focus();
     Ok(())
 }
 
