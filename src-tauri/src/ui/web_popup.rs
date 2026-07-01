@@ -113,6 +113,7 @@ pub fn start_translation_from_input(
         TranslationEvent::Started {
             session_id: request.session_id.clone(),
             source_text: request.source_text().to_string(),
+            source_type: request.input.kind().to_string(),
         },
     )
     .map_err(|error| {

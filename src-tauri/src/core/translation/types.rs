@@ -52,6 +52,7 @@ pub enum TranslationEvent {
     Started {
         session_id: TranslationSessionId,
         source_text: String,
+        source_type: String,
     },
     Delta {
         session_id: TranslationSessionId,
@@ -131,6 +132,7 @@ mod tests {
         let event = TranslationEvent::Started {
             session_id: TranslationSessionId("session-1".to_string()),
             source_text: "OCR 原文".to_string(),
+            source_type: "ocrText".to_string(),
         };
 
         let payload = serde_json::to_value(event).expect("事件应可序列化");
@@ -138,8 +140,25 @@ mod tests {
         assert_eq!(payload["type"], "started");
         assert_eq!(payload["sessionId"], "session-1");
         assert_eq!(payload["sourceText"], "OCR 原文");
+        assert_eq!(payload["sourceType"], "ocrText");
         assert!(payload.get("session_id").is_none());
         assert!(payload.get("source_text").is_none());
+        assert!(payload.get("source_type").is_none());
+    }
+
+    #[test]
+    fn started_event_source_type_serializes_for_each_kind() {
+        for kind in ["manualText", "selectedText", "ocrText"] {
+            let event = TranslationEvent::Started {
+                session_id: TranslationSessionId("session-x".to_string()),
+                source_text: "x".to_string(),
+                source_type: kind.to_string(),
+            };
+
+            let payload = serde_json::to_value(event).expect("事件应可序列化");
+
+            assert_eq!(payload["sourceType"], kind);
+        }
     }
 
     #[test]
