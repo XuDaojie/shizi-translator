@@ -129,11 +129,12 @@ pub fn start_translation_from_input(
     })?;
     let app_handle = app.clone();
     let state_for_task = state.clone();
+    let collect_usage = config.collect_usage;
 
     tauri::async_runtime::spawn(async move {
         let failed_session_id = request.session_id.clone();
         let result = translation_service
-            .translate_with(request, cancel_token, |event| {
+            .translate_with(request, collect_usage, cancel_token, |event| {
                 let _ = emit_translation_event(&app_handle, event);
             })
             .await;

@@ -3,7 +3,7 @@ use std::{sync::Arc, sync::Mutex};
 use crate::core::llm::{LlmError, LlmProvider, LlmStreamEvent};
 use tokio_util::sync::CancellationToken;
 
-use super::{TranslationEvent, TranslationRequest};
+use super::{TokenUsage, TranslationEvent, TranslationRequest};
 
 #[derive(Debug, thiserror::Error)]
 pub enum TranslationError {
@@ -32,6 +32,7 @@ impl TranslationService {
     pub async fn translate_with<F>(
         &self,
         request: TranslationRequest,
+        collect_usage: bool,
         cancel: CancellationToken,
         mut emit: F,
     ) -> Result<(), TranslationError>
@@ -39,19 +40,30 @@ impl TranslationService {
         F: FnMut(TranslationEvent) + Send,
     {
         let full_text = Arc::new(Mutex::new(String::new()));
+        let usage: Arc<Mutex<Option<TokenUsage>>> = Arc::new(Mutex::new(None));
         let delta_text = full_text.clone();
+        let usage_slot = usage.clone();
         let delta_session_id = request.session_id.clone();
 
         self.provider
             .stream_translate(&request, &mut |ev| {
-                if let LlmStreamEvent::Delta(text) = ev {
-                    if let Ok(mut t) = delta_text.lock() {
-                        t.push_str(&text);
+                match ev {
+                    LlmStreamEvent::Delta(text) => {
+                        if let Ok(mut t) = delta_text.lock() {
+                            t.push_str(&text);
+                        }
+                        emit(TranslationEvent::Delta {
+                            session_id: delta_session_id.clone(),
+                            text,
+                        });
                     }
-                    emit(TranslationEvent::Delta {
-                        session_id: delta_session_id.clone(),
-                        text,
-                    });
+                    LlmStreamEvent::Usage(u) => {
+                        if collect_usage {
+                            if let Ok(mut slot) = usage_slot.lock() {
+                                *slot = Some(u);
+                            }
+                        }
+                    }
                 }
             }, &cancel)
             .await?;
@@ -66,10 +78,14 @@ impl TranslationService {
                 session_id: request.session_id,
             });
         } else {
+            let usage = usage
+                .lock()
+                .map(|slot| slot.clone())
+                .unwrap_or(None);
             emit(TranslationEvent::Finished {
                 session_id: request.session_id,
                 full_text,
-                usage: None,
+                usage,
             });
         }
 
@@ -81,7 +97,7 @@ impl TranslationService {
 mod tests {
     use super::*;
     use crate::core::llm::{LlmProvider, LlmStreamEvent};
-    use crate::core::translation::{TranslationInput, TranslationRequest, TranslationSessionId};
+    use crate::core::translation::{TokenUsage, TranslationInput, TranslationRequest, TranslationSessionId};
     use std::sync::{Arc, Mutex};
     use tokio_util::sync::CancellationToken;
 
@@ -110,6 +126,25 @@ mod tests {
         }
     }
 
+    struct UsageFakeProvider;
+
+    #[async_trait::async_trait]
+    impl LlmProvider for UsageFakeProvider {
+        async fn stream_translate(
+            &self,
+            _request: &TranslationRequest,
+            on_event: &mut (dyn FnMut(LlmStreamEvent) + Send),
+            _cancel: &CancellationToken,
+        ) -> Result<(), LlmError> {
+            on_event(LlmStreamEvent::Delta("你好".to_string()));
+            on_event(LlmStreamEvent::Usage(TokenUsage {
+                input_tokens: 27,
+                output_tokens: 18,
+            }));
+            Ok(())
+        }
+    }
+
     fn request() -> TranslationRequest {
         TranslationRequest {
             session_id: TranslationSessionId("test-session".to_string()),
@@ -132,7 +167,7 @@ mod tests {
 
         let handle = tokio::spawn(async move {
             service
-                .translate_with(request(), cancel_for_task, |event| {
+                .translate_with(request(), true, cancel_for_task, |event| {
                     events_for_task.lock().unwrap().push(event);
                 })
                 .await
@@ -168,7 +203,7 @@ mod tests {
         let events_for_task = events.clone();
 
         service
-            .translate_with(request(), cancel, |event| {
+            .translate_with(request(), true, cancel, |event| {
                 events_for_task.lock().unwrap().push(event);
             })
             .await
@@ -185,5 +220,61 @@ mod tests {
 
         assert!(types.contains(&"finished"), "未取消应 emit Finished: {:?}", types);
         assert!(!types.contains(&"cancelled"), "未取消不应 emit Cancelled");
+    }
+
+    #[tokio::test]
+    async fn finished_carries_usage_when_collect_enabled() {
+        let service = TranslationService::new(Arc::new(UsageFakeProvider));
+        let cancel = CancellationToken::new();
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let events_for_task = events.clone();
+
+        service
+            .translate_with(
+                request(),
+                true,
+                cancel,
+                |event| events_for_task.lock().unwrap().push(event),
+            )
+            .await
+            .expect("应返回 Ok");
+
+        let events = events.lock().unwrap();
+        let usage = events.iter().find_map(|e| match e {
+            TranslationEvent::Finished { usage, .. } => usage.clone(),
+            _ => None,
+        });
+        assert_eq!(
+            usage,
+            Some(TokenUsage {
+                input_tokens: 27,
+                output_tokens: 18
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn finished_usage_none_when_collect_disabled() {
+        let service = TranslationService::new(Arc::new(UsageFakeProvider));
+        let cancel = CancellationToken::new();
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let events_for_task = events.clone();
+
+        service
+            .translate_with(
+                request(),
+                false,
+                cancel,
+                |event| events_for_task.lock().unwrap().push(event),
+            )
+            .await
+            .expect("应返回 Ok");
+
+        let events = events.lock().unwrap();
+        let usage = events.iter().find_map(|e| match e {
+            TranslationEvent::Finished { usage, .. } => usage.clone(),
+            _ => None,
+        });
+        assert_eq!(usage, None);
     }
 }
