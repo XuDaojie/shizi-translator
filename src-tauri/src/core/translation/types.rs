@@ -4,6 +4,13 @@ use serde::Serialize;
 #[serde(rename_all = "camelCase")]
 pub struct TranslationSessionId(pub String);
 
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenUsage {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TranslationRequest {
@@ -61,6 +68,7 @@ pub enum TranslationEvent {
     Finished {
         session_id: TranslationSessionId,
         full_text: String,
+        usage: Option<TokenUsage>,
     },
     Failed {
         session_id: TranslationSessionId,
@@ -172,5 +180,45 @@ mod tests {
         assert_eq!(payload["type"], "cancelled");
         assert_eq!(payload["sessionId"], "session-cancel-1");
         assert!(payload.get("session_id").is_none());
+    }
+
+    #[test]
+    fn token_usage_serializes_camel_case() {
+        let usage = TokenUsage {
+            input_tokens: 27,
+            output_tokens: 18,
+        };
+        let payload = serde_json::to_value(usage).expect("usage 应可序列化");
+        assert_eq!(payload["inputTokens"], 27);
+        assert_eq!(payload["outputTokens"], 18);
+        assert!(payload.get("input_tokens").is_none());
+    }
+
+    #[test]
+    fn finished_event_serializes_with_usage_when_present() {
+        let event = TranslationEvent::Finished {
+            session_id: TranslationSessionId("session-1".to_string()),
+            full_text: "你好".to_string(),
+            usage: Some(TokenUsage {
+                input_tokens: 27,
+                output_tokens: 18,
+            }),
+        };
+        let payload = serde_json::to_value(event).expect("事件应可序列化");
+        assert_eq!(payload["type"], "finished");
+        assert_eq!(payload["fullText"], "你好");
+        assert_eq!(payload["usage"]["inputTokens"], 27);
+        assert_eq!(payload["usage"]["outputTokens"], 18);
+    }
+
+    #[test]
+    fn finished_event_serializes_usage_null_when_absent() {
+        let event = TranslationEvent::Finished {
+            session_id: TranslationSessionId("session-1".to_string()),
+            full_text: "你好".to_string(),
+            usage: None,
+        };
+        let payload = serde_json::to_value(event).expect("事件应可序列化");
+        assert!(payload["usage"].is_null());
     }
 }

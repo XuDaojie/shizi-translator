@@ -67,6 +67,7 @@ impl TranslationService {
             emit(TranslationEvent::Finished {
                 session_id: request.session_id,
                 full_text,
+                usage: None,
             });
         }
 
