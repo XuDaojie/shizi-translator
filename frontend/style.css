@@ -200,10 +200,22 @@ button:disabled {
 .output-area {
   flex: 1;
   min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.source-badge {
+  align-self: flex-start;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  color: #555;
+  background: #eef3f8;
 }
 
 .output-box {
-  height: 100%;
+  flex: 1;
   padding: 10px;
   border: 1px solid #ddd;
   border-radius: 8px;

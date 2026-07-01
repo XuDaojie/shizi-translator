@@ -215,7 +215,7 @@ Vision Framework
 任务 2：新增 ScreenCapture trait 和 Windows 初版实现。
 任务 3：新增 OcrEngine trait 和 Windows.Media.Ocr 初版实现。
 任务 4：新增 OCR 快捷键，触发截图 -> OCR -> TranslationService。
-任务 5：前端弹窗展示输入来源：Selected / OCR / Manual。
+任务 5：前端弹窗展示输入来源：Selected / OCR / Manual。 ✅
 任务 6：加入 OCR 错误状态展示，例如无语言包、权限不足、识别为空。
 ```
 

@@ -1,5 +1,6 @@
 const inputText = document.getElementById('inputText');
 const outputText = document.getElementById('outputText');
+const sourceBadge = document.getElementById('sourceBadge');
 const translateBtn = document.getElementById('translateBtn');
 const settingsBtn = document.getElementById('settingsBtn');
 const clearBtn = document.getElementById('clearBtn');
@@ -32,6 +33,29 @@ let currentSessionId = null;
 function resetOutput() {
   outputText.textContent = '翻译结果将显示在这里';
   outputText.style.color = '#999';
+}
+
+function setSourceBadge(sourceType) {
+  switch (sourceType) {
+    case 'selectedText':
+      sourceBadge.textContent = '来自划词';
+      sourceBadge.classList.remove('hidden');
+      break;
+    case 'ocrText':
+      sourceBadge.textContent = '来自 OCR';
+      sourceBadge.classList.remove('hidden');
+      break;
+    default:
+      // manualText 或未知值：隐藏（防御）
+      sourceBadge.classList.add('hidden');
+      sourceBadge.textContent = '';
+      break;
+  }
+}
+
+function hideSourceBadge() {
+  sourceBadge.classList.add('hidden');
+  sourceBadge.textContent = '';
 }
 
 function setActionButtons({ translating, canRetry }) {
@@ -204,6 +228,7 @@ function renderTranslationEvent(payload) {
       inputText.value = payload.sourceText ?? inputText.value;
       outputText.textContent = '';
       outputText.style.color = '#333';
+      setSourceBadge(payload.sourceType);
       setActionButtons({ translating: true, canRetry: false });
       break;
     case 'delta':
@@ -217,6 +242,7 @@ function renderTranslationEvent(payload) {
       outputText.textContent = payload.fullText ?? outputText.textContent;
       outputText.style.color = '#333';
       currentSessionId = null;
+      hideSourceBadge();
       setActionButtons({ translating: false, canRetry: true });
       scrollOutputToBottom();
       break;
@@ -225,6 +251,7 @@ function renderTranslationEvent(payload) {
       outputText.textContent = payload.message ?? '翻译失败';
       outputText.style.color = '#b42318';
       currentSessionId = null;
+      hideSourceBadge();
       setActionButtons({ translating: false, canRetry: true });
       scrollOutputToBottom();
       break;
@@ -233,6 +260,7 @@ function renderTranslationEvent(payload) {
       outputText.textContent += '\n[已取消]';
       outputText.style.color = '#999';
       currentSessionId = null;
+      hideSourceBadge();
       setActionButtons({ translating: false, canRetry: true });
       break;
     default:
@@ -289,6 +317,7 @@ translateBtn.addEventListener('click', async () => {
     outputText.textContent = String(error);
     outputText.style.color = '#b42318';
     currentSessionId = null;
+    hideSourceBadge();
     setActionButtons({ translating: false, canRetry: true });
   }
 });
@@ -300,6 +329,7 @@ clearBtn.addEventListener('click', () => {
   inputText.value = '';
   currentSessionId = null;
   resetOutput();
+  hideSourceBadge();
   setActionButtons({ translating: false, canRetry: false });
 });
 
@@ -333,6 +363,7 @@ retryBtn.addEventListener('click', async () => {
     outputText.textContent = String(error);
     outputText.style.color = '#b42318';
     currentSessionId = null;
+    hideSourceBadge();
     setActionButtons({ translating: false, canRetry: true });
   }
 });

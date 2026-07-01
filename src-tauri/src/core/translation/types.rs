@@ -36,6 +36,14 @@ impl TranslationInput {
             Self::OcrText { text, .. } => text,
         }
     }
+
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::ManualText(_) => "manualText",
+            Self::SelectedText(_) => "selectedText",
+            Self::OcrText { .. } => "ocrText",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -44,6 +52,7 @@ pub enum TranslationEvent {
     Started {
         session_id: TranslationSessionId,
         source_text: String,
+        source_type: String,
     },
     Delta {
         session_id: TranslationSessionId,
@@ -88,6 +97,26 @@ mod tests {
     }
 
     #[test]
+    fn translation_input_kind_returns_serde_tag_literal() {
+        assert_eq!(
+            TranslationInput::ManualText("x".to_string()).kind(),
+            "manualText"
+        );
+        assert_eq!(
+            TranslationInput::SelectedText("x".to_string()).kind(),
+            "selectedText"
+        );
+        assert_eq!(
+            TranslationInput::OcrText {
+                text: "x".to_string(),
+                image_id: None,
+            }
+            .kind(),
+            "ocrText"
+        );
+    }
+
+    #[test]
     fn translation_request_source_text_reads_input_text() {
         let request = TranslationRequest {
             session_id: TranslationSessionId("session-1".to_string()),
@@ -103,6 +132,7 @@ mod tests {
         let event = TranslationEvent::Started {
             session_id: TranslationSessionId("session-1".to_string()),
             source_text: "OCR 原文".to_string(),
+            source_type: "ocrText".to_string(),
         };
 
         let payload = serde_json::to_value(event).expect("事件应可序列化");
@@ -110,8 +140,25 @@ mod tests {
         assert_eq!(payload["type"], "started");
         assert_eq!(payload["sessionId"], "session-1");
         assert_eq!(payload["sourceText"], "OCR 原文");
+        assert_eq!(payload["sourceType"], "ocrText");
         assert!(payload.get("session_id").is_none());
         assert!(payload.get("source_text").is_none());
+        assert!(payload.get("source_type").is_none());
+    }
+
+    #[test]
+    fn started_event_source_type_serializes_for_each_kind() {
+        for kind in ["manualText", "selectedText", "ocrText"] {
+            let event = TranslationEvent::Started {
+                session_id: TranslationSessionId("session-x".to_string()),
+                source_text: "x".to_string(),
+                source_type: kind.to_string(),
+            };
+
+            let payload = serde_json::to_value(event).expect("事件应可序列化");
+
+            assert_eq!(payload["sourceType"], kind);
+        }
     }
 
     #[test]
