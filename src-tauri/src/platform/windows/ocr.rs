@@ -249,6 +249,10 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn windows_ocr_engine_can_be_called_with_generated_bitmap() {
+        // 无 OCR 语言包的机器上跳过（替代已删的 is_available probe）。
+        if windows::Media::Ocr::OcrEngine::TryCreateFromUserProfileLanguages().is_err() {
+            return;
+        }
         let image = image(CapturedImageFormat::Bgra8, vec![255; 32 * 32 * 4], 32, 32);
         let result = WindowsOcrEngine.recognize(image, OcrHints::default()).await;
 

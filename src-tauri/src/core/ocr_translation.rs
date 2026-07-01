@@ -13,7 +13,6 @@ pub enum OcrTranslationError {
 }
 
 /// overlay 路径：对已抓到的整屏帧按物理像素矩形裁剪后 OCR，转成翻译输入。
-/// overlay 路径：对已抓到的整屏帧按物理像素矩形裁剪后 OCR，转成翻译输入。
 ///
 /// `region` 单位为物理像素，调用方需先通过 [`crate::core::capture::css_rect_to_physical`]
 /// 把 overlay 前端回传的 CSS 逻辑像素矩形按 `scale_factor` 换算后再传入。
