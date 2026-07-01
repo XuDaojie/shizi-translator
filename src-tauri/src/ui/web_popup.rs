@@ -86,9 +86,21 @@ pub fn start_translation_from_input(
     };
 
     state.try_begin_translation()?;
+
+    let cancel_token = CancellationToken::new();
+    if let Err(error) = state.set_current_cancel_token(cancel_token.clone()) {
+        let _ = state.finish_translation();
+        return Err(error);
+    }
+    if let Err(error) = state.set_last_translation_input(request.input.clone()) {
+        let _ = state.clear_current_cancel_token();
+        let _ = state.finish_translation();
+        return Err(error);
+    }
     if let Err(error) =
         cache_automatic_source_text_for_popup(&request.input, request.source_text(), state)
     {
+        let _ = state.clear_current_cancel_token();
         let _ = state.finish_translation();
         return Err(error);
     }
@@ -103,6 +115,7 @@ pub fn start_translation_from_input(
         },
     )
     .map_err(|error| {
+        let _ = state.clear_current_cancel_token();
         let _ = state.finish_translation();
         error.to_string()
     })?;
@@ -112,7 +125,7 @@ pub fn start_translation_from_input(
     tauri::async_runtime::spawn(async move {
         let failed_session_id = request.session_id.clone();
         let result = translation_service
-            .translate_with(request, CancellationToken::new(), |event| {
+            .translate_with(request, cancel_token, |event| {
                 let _ = emit_translation_event(&app_handle, event);
             })
             .await;
@@ -128,6 +141,7 @@ pub fn start_translation_from_input(
                 },
             );
         }
+        let _ = state_for_task.clear_current_cancel_token();
         let _ = state_for_task.finish_translation();
     });
 
@@ -161,6 +175,22 @@ pub async fn start_translation(
     state: tauri::State<'_, AppState>,
 ) -> Result<String, String> {
     start_translation_from_text(text, app, state.inner())
+}
+
+#[tauri::command]
+pub async fn cancel_translation(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    state.cancel_current_translation()
+}
+
+#[tauri::command]
+pub async fn retry_translation(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    let input = state
+        .take_last_translation_input()?
+        .ok_or_else(|| "没有可重试的翻译".to_string())?;
+    start_translation_from_input(input, app, state.inner())
 }
 
 fn create_session_id() -> Result<String, String> {

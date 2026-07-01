@@ -17,7 +17,9 @@ use ui::{
         cancel_capture, get_capture_frame_bytes, get_capture_frame_meta, show_overlay,
         submit_capture_region,
     },
-    web_popup::{start_translation, take_pending_source_text},
+    web_popup::{
+        cancel_translation, retry_translation, start_translation, take_pending_source_text,
+    },
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -32,6 +34,8 @@ pub fn run() {
         )
         .invoke_handler(tauri::generate_handler![
             start_translation,
+            cancel_translation,
+            retry_translation,
             take_pending_source_text,
             get_app_config,
             save_app_config,
