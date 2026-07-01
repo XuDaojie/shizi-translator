@@ -21,98 +21,8 @@ body {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  padding: 16px;
-}
-
-.header {
-  text-align: center;
-  margin-bottom: 12px;
-}
-
-.header h1 {
-  font-size: 22px;
-  font-weight: 700;
-  color: #1a1a1a;
-}
-
-.subtitle {
-  font-size: 12px;
-  color: #888;
-  margin-top: 2px;
-}
-
-.content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
+  padding: 12px;
   gap: 8px;
-  overflow-y: auto;
-}
-
-.hidden {
-  display: none !important;
-}
-
-.settings-panel {
-  max-height: min(46vh, 320px);
-  padding: 10px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  background: #fff;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  overflow-y: auto;
-}
-
-.settings-panel label {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 12px;
-  color: #555;
-}
-
-.settings-panel input {
-  padding: 7px 8px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  font: inherit;
-  outline: none;
-}
-
-.settings-panel input:focus {
-  border-color: #4a90d9;
-}
-
-.settings-panel select {
-  padding: 7px 8px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  font: inherit;
-  outline: none;
-  background: #fff;
-  cursor: pointer;
-}
-
-.settings-panel select:focus {
-  border-color: #4a90d9;
-}
-
-.settings-panel label:has(input[type="checkbox"]) {
-  flex-direction: row;
-  align-items: center;
-}
-
-.config-warning {
-  font-size: 11px;
-  color: #b54708;
-}
-
-.config-status {
-  min-height: 16px;
-  font-size: 12px;
-  color: #666;
 }
 
 .input-area textarea {
@@ -134,7 +44,7 @@ body {
 
 .action-bar {
   display: flex;
-  gap: 8px;
+  gap: 6px;
 }
 
 .action-bar button {
@@ -182,21 +92,6 @@ button:disabled {
   color: #fff;
 }
 
-#saveConfigBtn {
-  padding: 8px;
-  border: none;
-  border-radius: 6px;
-  background: #4a90d9;
-  color: #fff;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-#saveConfigBtn:hover:not(:disabled) {
-  opacity: 0.85;
-}
-
 .output-area {
   flex: 1;
   min-height: 120px;
@@ -223,11 +118,5 @@ button:disabled {
   background: #fff;
   color: #999;
   overflow-y: auto;
-}
-
-.footer {
-  text-align: center;
-  font-size: 11px;
-  color: #aaa;
-  margin-top: 8px;
+  line-height: 1.6;
 }

@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shizi - 设置</title>
+  <link rel="stylesheet" href="settings.css">
+  <script type="module" src="settings.js" defer></script>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Shizi</h1>
+      <p class="subtitle">设置</p>
+    </div>
+
+    <div class="settings-form">
+      <label>
+        目标语言
+        <input id="targetLangInput" type="text" placeholder="中文">
+      </label>
+
+      <label>
+        Provider
+        <select id="providerSelect">
+          <option value="openai-compatible">OpenAI Compatible</option>
+          <option value="claude">Claude</option>
+          <option value="mock">Mock（调试用）</option>
+        </select>
+      </label>
+
+      <!-- OpenAI Compatible 配置 -->
+      <div id="openaiSettings" class="provider-section">
+        <h3>OpenAI Compatible</h3>
+        <label>
+          API Key
+          <input id="apiKeyInput" type="password" placeholder="sk-...">
+        </label>
+        <p class="config-warning">API Key 本阶段会明文保存到本机配置文件，请只在可信设备上使用。</p>
+        <label>
+          Base URL
+          <input id="baseUrlInput" type="text" placeholder="https://api.openai.com/v1">
+        </label>
+        <label>
+          Model
+          <input id="modelInput" type="text" placeholder="gpt-4o-mini">
+        </label>
+        <label>
+          Timeout 秒
+          <input id="timeoutInput" type="number" min="1" step="1" placeholder="60">
+        </label>
+      </div>
+
+      <!-- Claude 配置 -->
+      <div id="claudeSettings" class="provider-section hidden">
+        <h3>Claude</h3>
+        <label>
+          API Key
+          <input id="claudeApiKeyInput" type="password" placeholder="sk-ant-...">
+        </label>
+        <p class="config-warning">API Key 本阶段会明文保存到本机配置文件，请只在可信设备上使用。</p>
+        <label>
+          Base URL
+          <input id="claudeBaseUrlInput" type="text" placeholder="https://api.anthropic.com">
+        </label>
+        <label>
+          Model
+          <input id="claudeModelInput" type="text" placeholder="claude-haiku-4-5">
+        </label>
+        <label>
+          Timeout 秒
+          <input id="claudeTimeoutInput" type="number" min="1" step="1" placeholder="60">
+        </label>
+        <label class="checkbox-label">
+          <input id="claudeEnableThinkingInput" type="checkbox">
+          Enable Thinking（仅对支持的模型生效，Haiku 需关闭）
+        </label>
+      </div>
+
+      <!-- 窗口策略 -->
+      <div class="strategy-section">
+        <h3>窗口策略</h3>
+        <label class="checkbox-label">
+          <input id="popupPrecreateInput" type="checkbox">
+          预创建翻译弹窗
+        </label>
+        <label class="checkbox-label">
+          <input id="overlayPrecreateInput" type="checkbox">
+          预创建截图窗口
+        </label>
+      </div>
+
+      <button id="saveConfigBtn">保存配置</button>
+      <div id="configStatus" class="config-status"></div>
+    </div>
+  </div>
+</body>
+</html>
