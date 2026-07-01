@@ -1,3 +1,4 @@
+#[allow(dead_code)] // 平台截图抽象预留：跨平台捕获参数模型，供未来 macOS/DXGI 替换实现
 #[derive(Debug, Clone, PartialEq)]
 pub struct CaptureRegion {
     pub display_id: Option<String>,
@@ -84,6 +85,7 @@ pub fn css_rect_to_physical(
     )
 }
 
+#[allow(dead_code)] // 格式枚举完整性预留：Rgba8/Png 为后续编码/拷贝路径保留
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CapturedImageFormat {
     Bgra8,
@@ -91,6 +93,7 @@ pub enum CapturedImageFormat {
     Png,
 }
 
+#[allow(dead_code)] // 错误枚举完整性预留：PermissionDenied/NoCaptureTarget/UnsupportedPlatform 供平台抽象与非 Windows 路径
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum CaptureError {
     #[error("无法访问屏幕捕获权限")]
@@ -105,6 +108,7 @@ pub enum CaptureError {
     ImageConversionFailed(String),
 }
 
+#[allow(dead_code)] // 平台截图抽象边界：当前仅 Windows 实现，保留供未来 macOS/DXGI 替换实现
 #[async_trait::async_trait]
 pub trait ScreenCapture: Send + Sync {
     async fn capture_region(&self, region: CaptureRegion) -> Result<CapturedImage, CaptureError>;

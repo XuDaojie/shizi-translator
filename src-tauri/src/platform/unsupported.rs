@@ -5,14 +5,6 @@ use crate::core::{
     translation::TranslationInput,
 };
 
-pub struct GraphicsCaptureProbe;
-
-impl GraphicsCaptureProbe {
-    pub fn is_supported() -> bool {
-        false
-    }
-}
-
 pub async fn capture_screen() -> Result<CapturedImage, CaptureError> {
     Err(CaptureError::UnsupportedPlatform)
 }

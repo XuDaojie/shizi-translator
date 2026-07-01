@@ -7,12 +7,6 @@ use windows::Storage::Streams::DataWriter;
 
 pub struct WindowsOcrEngine;
 
-impl WindowsOcrEngine {
-    pub fn is_available() -> bool {
-        windows::Media::Ocr::OcrEngine::TryCreateFromUserProfileLanguages().is_ok()
-    }
-}
-
 fn validate_image_dimensions(width: u32, height: u32, max_dimension: u32) -> Result<(), OcrError> {
     if width > max_dimension || height > max_dimension {
         return Err(OcrError::ImageTooLarge);
@@ -255,10 +249,6 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn windows_ocr_engine_can_be_called_with_generated_bitmap() {
-        if !WindowsOcrEngine::is_available() {
-            return;
-        }
-
         let image = image(CapturedImageFormat::Bgra8, vec![255; 32 * 32 * 4], 32, 32);
         let result = WindowsOcrEngine.recognize(image, OcrHints::default()).await;
 

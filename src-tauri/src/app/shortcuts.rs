@@ -1,4 +1,4 @@
-use std::{str::FromStr, thread, time::Duration};
+use std::{thread, time::Duration};
 
 use tauri::{Manager, State};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};

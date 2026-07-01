@@ -12,12 +12,6 @@ pub struct OcrResult {
     pub engine: String,
 }
 
-impl OcrResult {
-    pub fn is_empty_text(&self) -> bool {
-        self.text.trim().is_empty()
-    }
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct OcrLine {
     pub text: String,
@@ -50,6 +44,7 @@ pub enum OcrError {
     ImageConversionFailed(String),
     #[error("未识别到文本")]
     EmptyResult,
+    #[allow(dead_code)] // 平台抽象预留：非 Windows 路径错误完整性
     #[error("当前平台暂不支持 OCR")]
     UnsupportedPlatform,
 }
@@ -58,31 +53,4 @@ pub enum OcrError {
 pub trait OcrEngine: Send + Sync {
     async fn recognize(&self, image: CapturedImage, hints: OcrHints)
         -> Result<OcrResult, OcrError>;
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn ocr_result_detects_empty_text_after_trim() {
-        let result = OcrResult {
-            text: "  \n ".to_string(),
-            lines: vec![],
-            engine: "fake".to_string(),
-        };
-
-        assert!(result.is_empty_text());
-    }
-
-    #[test]
-    fn ocr_result_keeps_non_empty_text() {
-        let result = OcrResult {
-            text: "Hello".to_string(),
-            lines: vec![],
-            engine: "fake".to_string(),
-        };
-
-        assert!(!result.is_empty_text());
-    }
 }

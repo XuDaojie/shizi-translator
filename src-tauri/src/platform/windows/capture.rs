@@ -25,10 +25,6 @@ impl WindowsScreenCapture {
         Self
     }
 
-    pub fn is_supported() -> bool {
-        true
-    }
-
     fn create_d3d11_device() -> Result<(ID3D11Device, ID3D11DeviceContext), CaptureError> {
         let mut device: Option<ID3D11Device> = None;
         let mut context: Option<ID3D11DeviceContext> = None;
@@ -318,14 +314,6 @@ impl Drop for MappedTextureGuard<'_> {
         unsafe {
             self.context.Unmap(self.texture, 0);
         }
-    }
-}
-
-pub struct WindowsGraphicsCaptureProbe;
-
-impl WindowsGraphicsCaptureProbe {
-    pub fn is_supported() -> bool {
-        true
     }
 }
 
