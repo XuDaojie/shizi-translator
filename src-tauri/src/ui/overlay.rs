@@ -39,9 +39,16 @@ pub fn open_overlay(app: &tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-fn close_overlay(app: &tauri::AppHandle) {
+// 仅 hide 不 close：submit/cancel 由 overlay 自身的 invoke 触发，命令响应经 wry
+// custom-protocol（http://ipc.localhost/<cmd>）由 wry::dispatch_handler 以 PostMessage
+// 投递回 overlay 宿主 hwnd。若在此处 close() 销毁 overlay，hwnd 会先于响应投递失效，
+// PostMessageW 返回 ERROR_INVALID_WINDOW_HANDLE(0x80070578)（wry 在 debug 下 eprintln
+// “PostMessage failed ; is the messages queue full?”）。hide() 令窗口不可见（体验同 close）
+// 但保留有效 hwnd，响应可正常投递；实际销毁交由下次 open_overlay 的 existing.close()
+// 回收——此时该 hwnd 已无在途响应指向它，close 不再触发该错误。
+fn hide_overlay(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window(OVERLAY_LABEL) {
-        let _ = window.close();
+        let _ = window.hide();
     }
 }
 
@@ -69,7 +76,7 @@ pub async fn cancel_capture(
     // 释放 capture 锁。幂等：若 submit 已 take 走帧并释放过，此处再清无害。
     // 若 cancel 自己 take 走帧，则此处负责释放 start_translation_from_ocr 占的锁。
     let _ = state.finish_capture();
-    close_overlay(&app);
+    hide_overlay(&app);
     Ok(())
 }
 
@@ -85,7 +92,7 @@ pub async fn submit_capture_region(
 ) -> Result<(), String> {
     use crate::core::capture::css_rect_to_physical;
 
-    close_overlay(&app);
+    hide_overlay(&app);
 
     let Some((frame, scale)) = state.take_pending_capture()? else {
         // 帧已被取消/消费（cancel 或前一次 submit 已 take 并释放 capture 锁），静默。
