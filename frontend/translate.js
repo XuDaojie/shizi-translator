@@ -121,7 +121,7 @@ function renderTranslationEvent(payload) {
       currentSessionId = null;
       hideSourceBadge();
       hideUsageFooter();
-      setActionButtons({ translating: false, canRetry: true });
+      setActionButtons({ translating: false, canRetry: payload.retryable !== false });
       scrollOutputToBottom();
       break;
     case 'cancelled':
