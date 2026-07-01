@@ -9,6 +9,8 @@
     "withGlobalTauri": true,
     "windows": [
       {
+        "label": "main",
+        "url": "settings.html",
         "title": "Shizi - 翻译助手",
         "width": 480,
         "height": 360,
