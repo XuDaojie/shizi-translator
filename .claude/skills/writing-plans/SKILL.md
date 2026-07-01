@@ -54,7 +54,7 @@ metadata:
 ```markdown
 # [功能名称] 实现计划
 
-> **面向 AI 代理的工作者：** 本计划在新对话中执行。执行前必须先用 AskUserQuestion 询问用户选择执行方式（superpowers:subagent-driven-development 或 superpowers:executing-plans），不得自行决定。步骤使用复选框（`- [ ]`）语法来跟踪进度。
+> **面向 AI 代理的工作者：** 必需子技能：使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans 逐任务实现此计划。步骤使用复选框（`- [ ]`）语法来跟踪进度。
 
 **目标：** [一句话描述要构建什么]
 
@@ -138,9 +138,20 @@ git commit -m "feat: add specific feature"
 
 ## 执行交接
 
-保存计划后，**不得在本对话进入执行**。按协作规范第 7 条，编码执行属于下一阶段，须由用户在新对话凭交接提示词进入：
+保存计划后，提供执行选项：
 
-- 按 [docs/superpowers/handoff-templates.md](docs/superpowers/handoff-templates.md) 的 plan→执行 模板填充字段，在回复末尾以代码块输出交接提示词，然后停下
-- 交接提示词的「下一步动作」已包含「必须先用 AskUserQuestion 询问用户选择执行方式（子代理驱动 / 内联执行），不得自行决定」——执行方式的选择在新对话由用户作出，不在本对话进行
-- **不得在本对话调用 executing-plans 或 subagent-driven-development**
-- 用户如想在本对话继续执行，需显式要求
+**"计划已完成并保存到 `docs/superpowers/plans/<filename>.md`。两种执行方式：**
+
+**1. 子代理驱动（推荐）** - 每个任务调度一个新的子代理，任务间进行审查，快速迭代
+
+**2. 内联执行** - 在当前会话中使用 executing-plans 执行任务，批量执行并设有检查点
+
+**选哪种方式？"**
+
+**如果选择子代理驱动：**
+- **必需子技能：** 使用 superpowers:subagent-driven-development
+- 每个任务一个新子代理 + 两阶段审查
+
+**如果选择内联执行：**
+- **必需子技能：** 使用 superpowers:executing-plans
+- 批量执行并设有检查点供审查

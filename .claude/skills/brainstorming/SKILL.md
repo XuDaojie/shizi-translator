@@ -34,7 +34,7 @@ metadata:
 6. **编写设计文档** — 保存到 `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` 并 commit
 7. **规格自检** — 快速内联检查占位符、矛盾、模糊性、范围（详见下方）
 8. **用户审查书面规格** — 在继续之前请用户审查规格文件
-9. **过渡到实现计划阶段** — 输出 spec→plan 交接提示词并停下，**不在本对话调用 writing-plans**（详见协作规范第 7 条）
+9. **过渡到实现** — 调用 writing-plans 技能创建实现计划
 
 ## 流程图
 
@@ -64,11 +64,11 @@ digraph brainstorming {
     "编写设计文档" -> "规格自检\n（内联修复）";
     "规格自检\n（内联修复）" -> "用户审查规格?";
     "用户审查规格?" -> "编写设计文档" [label="要求修改"];
-    "用户审查规格?" -> "输出 spec→plan 交接提示词并停下" [label="批准"];
+    "用户审查规格?" -> "调用 writing-plans 技能" [label="批准"];
 }
 ```
 
-**终止状态是输出 spec→plan 交接提示词并停下。** 不要调用 frontend-design、mcp-builder、writing-plans 或任何其他实现技能。需求规划阶段在本对话结束——下一阶段（编写实现计划）由用户在新对话凭交接提示词进入。这是协作规范第 7 条的硬性要求，不得在本对话直接进入 writing-plans；用户如想在本对话继续，需显式要求。
+**终止状态是调用 writing-plans。** 不要调用 frontend-design、mcp-builder 或任何其他实现技能。头脑风暴之后你唯一要调用的技能是 writing-plans。
 
 ## 流程详述
 
@@ -137,9 +137,8 @@ digraph brainstorming {
 
 **实现：**
 
-- 用户批准规格后，按 [docs/superpowers/handoff-templates.md](docs/superpowers/handoff-templates.md) 的 spec→plan 模板填充字段，在回复末尾以代码块输出交接提示词，然后停下
-- **不得在本对话调用 writing-plans 或任何实现技能**——编写实现计划属于下一阶段，须由用户在新对话凭交接提示词进入（协作规范第 7 条）
-- 用户如想在本对话继续编写实现计划，需显式要求
+- 调用 writing-plans 技能创建详细的实现计划
+- 不要调用任何其他技能。writing-plans 是下一步。
 
 ## 核心原则
 
