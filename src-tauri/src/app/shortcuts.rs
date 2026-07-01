@@ -8,7 +8,7 @@ use crate::{
     core::{selection::copy_selected_text, translation::TranslationInput},
     ui::{
         ocr_popup::start_translation_from_ocr,
-        web_popup::{show_translation_error, start_translation_from_input},
+        web_popup::{show_translation_error, show_translation_popup, start_translation_from_input},
     },
 };
 
@@ -75,6 +75,14 @@ fn handle_selection_translate(app: &tauri::AppHandle) {
         if let Err(error) = state.set_pending_source_text(selected_text.clone()) {
             show_translation_error(&app_handle, error);
             return;
+        }
+
+        let config = state.config_store.get();
+        if let Ok(config) = &config {
+            if let Err(error) = show_translation_popup(&app_handle, config) {
+                show_translation_error(&app_handle, error);
+                return;
+            }
         }
 
         if let Err(error) = start_translation_from_input(
