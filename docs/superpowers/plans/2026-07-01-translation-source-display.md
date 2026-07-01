@@ -426,9 +426,9 @@ git commit -m "feat(frontend): Started 事件按来源切换徽章显隐"
 运行：`node --check frontend/main.js`
 预期：无输出。
 
-- [ ] **步骤 4：手动验证（mock provider）**
+- [x] **步骤 4：手动验证（mock provider）**
 
-> 自动化验证（cargo test / cargo build --release / node --check）已于编码执行阶段全部通过；此项需 GUI 交互，待人工执行。
+> 自动化验证（cargo test / cargo build --release / node --check）已于编码执行阶段全部通过；手动验证由用户在桌面环境完成并确认通过。
 
 运行：`SHIZI_LLM_PROVIDER=mock npm run tauri dev`（PowerShell 下用 `$env:SHIZI_LLM_PROVIDER='mock'; npm run tauri dev`）
 
