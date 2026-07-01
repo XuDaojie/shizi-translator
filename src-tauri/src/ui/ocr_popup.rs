@@ -64,29 +64,37 @@ pub async fn start_translation_from_ocr(app: tauri::AppHandle, state: AppState) 
 pub fn friendly_ocr_error(error: OcrTranslationError) -> String {
     match error {
         OcrTranslationError::Capture(CaptureError::UnsupportedPlatform) => {
-            "当前平台暂不支持截图 OCR".to_string()
+            "截图失败：当前平台暂不支持截图 OCR。".to_string()
         }
         OcrTranslationError::Capture(CaptureError::NoCaptureTarget) => {
-            "未选择截图区域或窗口".to_string()
+            "截图失败：未选择截图区域或窗口。".to_string()
         }
         OcrTranslationError::Capture(CaptureError::PermissionDenied) => {
-            "无法访问屏幕捕获权限".to_string()
+            "截图失败：无法访问屏幕捕获权限。".to_string()
         }
         OcrTranslationError::Capture(CaptureError::BackendUnavailable(detail)) => {
             format!("截图失败，请稍后重试（{detail}）")
         }
         OcrTranslationError::Capture(CaptureError::ImageConversionFailed(detail)) => {
-            format!("截图图像转换失败（{detail}）")
+            format!("截图失败：图像转换失败（{detail}）")
         }
-        OcrTranslationError::Ocr(OcrError::EngineUnavailable) => "系统 OCR 能力不可用".to_string(),
-        OcrTranslationError::Ocr(OcrError::LanguageUnavailable(_)) => "缺少 OCR 语言包".to_string(),
-        OcrTranslationError::Ocr(OcrError::ImageTooLarge) => "截图区域过大，请缩小区域".to_string(),
-        OcrTranslationError::Ocr(OcrError::EmptyResult) => "未识别到文本".to_string(),
+        OcrTranslationError::Ocr(OcrError::EngineUnavailable) => {
+            "OCR 识别失败：系统 OCR 能力不可用。".to_string()
+        }
+        OcrTranslationError::Ocr(OcrError::LanguageUnavailable(_)) => {
+            "OCR 识别失败：缺少 OCR 语言包。请在「Windows 设置 > 时间和语言 > 语言」安装对应 OCR 语言包后重试。".to_string()
+        }
+        OcrTranslationError::Ocr(OcrError::ImageTooLarge) => {
+            "OCR 识别失败：截图区域过大，请缩小区域后重新按 Alt+O 截图。".to_string()
+        }
+        OcrTranslationError::Ocr(OcrError::EmptyResult) => {
+            "OCR 识别失败：未识别到文本。请重新按 Alt+O 框选更清晰的区域。".to_string()
+        }
         OcrTranslationError::Ocr(OcrError::ImageConversionFailed(_)) => {
-            "OCR 图像转换失败".to_string()
+            "OCR 识别失败：图像转换失败，请重新截图。".to_string()
         }
         OcrTranslationError::Ocr(OcrError::UnsupportedPlatform) => {
-            "当前平台暂不支持截图 OCR".to_string()
+            "OCR 识别失败：当前平台暂不支持截图 OCR。".to_string()
         }
     }
 }
@@ -100,17 +108,7 @@ mod tests {
     fn friendly_error_maps_empty_result() {
         assert_eq!(
             friendly_ocr_error(OcrTranslationError::Ocr(OcrError::EmptyResult)),
-            "未识别到文本"
-        );
-    }
-
-    #[test]
-    fn friendly_error_maps_unsupported_platform() {
-        assert_eq!(
-            friendly_ocr_error(OcrTranslationError::Capture(
-                CaptureError::UnsupportedPlatform
-            )),
-            "当前平台暂不支持截图 OCR"
+            "OCR 识别失败：未识别到文本。请重新按 Alt+O 框选更清晰的区域。"
         );
     }
 
@@ -120,7 +118,69 @@ mod tests {
             friendly_ocr_error(OcrTranslationError::Ocr(OcrError::LanguageUnavailable(
                 "zh-Hans-CN".to_string()
             ))),
-            "缺少 OCR 语言包"
+            "OCR 识别失败：缺少 OCR 语言包。请在「Windows 设置 > 时间和语言 > 语言」安装对应 OCR 语言包后重试。"
+        );
+    }
+
+    #[test]
+    fn friendly_error_maps_image_too_large() {
+        assert_eq!(
+            friendly_ocr_error(OcrTranslationError::Ocr(OcrError::ImageTooLarge)),
+            "OCR 识别失败：截图区域过大，请缩小区域后重新按 Alt+O 截图。"
+        );
+    }
+
+    #[test]
+    fn friendly_error_maps_engine_unavailable() {
+        assert_eq!(
+            friendly_ocr_error(OcrTranslationError::Ocr(OcrError::EngineUnavailable)),
+            "OCR 识别失败：系统 OCR 能力不可用。"
+        );
+    }
+
+    #[test]
+    fn friendly_error_maps_ocr_image_conversion_failed() {
+        assert_eq!(
+            friendly_ocr_error(OcrTranslationError::Ocr(OcrError::ImageConversionFailed(
+                "boom".to_string()
+            ))),
+            "OCR 识别失败：图像转换失败，请重新截图。"
+        );
+    }
+
+    #[test]
+    fn friendly_error_maps_ocr_unsupported_platform() {
+        assert_eq!(
+            friendly_ocr_error(OcrTranslationError::Ocr(OcrError::UnsupportedPlatform)),
+            "OCR 识别失败：当前平台暂不支持截图 OCR。"
+        );
+    }
+
+    #[test]
+    fn friendly_error_maps_capture_unsupported_platform() {
+        assert_eq!(
+            friendly_ocr_error(OcrTranslationError::Capture(
+                CaptureError::UnsupportedPlatform
+            )),
+            "截图失败：当前平台暂不支持截图 OCR。"
+        );
+    }
+
+    #[test]
+    fn friendly_error_maps_capture_no_target() {
+        assert_eq!(
+            friendly_ocr_error(OcrTranslationError::Capture(CaptureError::NoCaptureTarget)),
+            "截图失败：未选择截图区域或窗口。"
+        );
+    }
+
+    #[test]
+    fn friendly_error_maps_capture_permission_denied() {
+        assert_eq!(
+            friendly_ocr_error(OcrTranslationError::Capture(
+                CaptureError::PermissionDenied
+            )),
+            "截图失败：无法访问屏幕捕获权限。"
         );
     }
 
@@ -131,6 +191,16 @@ mod tests {
                 CaptureError::BackendUnavailable("boom".to_string())
             )),
             "截图失败，请稍后重试（boom）"
+        );
+    }
+
+    #[test]
+    fn friendly_error_maps_capture_image_conversion_failed() {
+        assert_eq!(
+            friendly_ocr_error(OcrTranslationError::Capture(
+                CaptureError::ImageConversionFailed("boom".to_string())
+            )),
+            "截图失败：图像转换失败（boom）"
         );
     }
 }
