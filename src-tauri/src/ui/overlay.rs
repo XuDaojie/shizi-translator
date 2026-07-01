@@ -21,6 +21,9 @@ pub fn open_overlay(app: &tauri::AppHandle) -> Result<(), String> {
         .skip_taskbar(true)
         .resizable(false)
         .fullscreen(true)
+        // 创建时不可见：WebView2 加载 HTML + canvas putImageData 期间会显示默认白底，
+        // 由前端在内容就绪后 invoke('show_overlay') 让后端显示，消除占位闪烁。
+        .visible(false)
         .build()
         .map_err(|e| e.to_string())?;
     // 兜底：overlay 被外部关闭或异常销毁时（非 submit/cancel 正常路径），
@@ -33,7 +36,6 @@ pub fn open_overlay(app: &tauri::AppHandle) -> Result<(), String> {
             let _ = state.finish_capture();
         }
     });
-    let _ = window.set_focus();
     Ok(())
 }
 
@@ -112,6 +114,17 @@ pub async fn submit_capture_region(
             }
         }
         Err(error) => show_translation_error(&app, crate::ui::ocr_popup::friendly_ocr_error(error)),
+    }
+    Ok(())
+}
+
+/// 前端 canvas 渲染完成后调用，让 overlay 窗口可见。
+/// 后端 Rust 调 window.show() 不走 IPC 权限层，无需 capability 授权 core:window:allow-show。
+#[tauri::command]
+pub async fn show_overlay(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window(OVERLAY_LABEL) {
+        window.show().map_err(|e| e.to_string())?;
+        let _ = window.set_focus();
     }
     Ok(())
 }

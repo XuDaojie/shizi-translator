@@ -129,14 +129,24 @@ impl WindowsScreenCapture {
         let (device, context) = Self::create_d3d11_device()?;
         let (dupl, _width, _height) = Self::duplicate_cursor_output(&device)?;
 
-        // AcquireNextFrame 首帧即全帧；带超时轮询。
+        // AcquireNextFrame 轮询：必须等到 AccumulatedFrames >= 1 才是有效帧。
+        // Duplication 对象刚创建时首次 acquire 可能返回 Ok 但 AccumulatedFrames == 0，
+        // 此时 texture 无有效内容（全黑），MSDN 明确不应处理；须 ReleaseFrame 后继续等。
         let mut acquired: Option<ID3D11Texture2D> = None;
-        for _ in 0..20 {
+        for _ in 0..40 {
             let mut frame_info = DXGI_OUTDUPL_FRAME_INFO::default();
             let mut resource = None;
             let hr = unsafe { dupl.AcquireNextFrame(50, &mut frame_info, &mut resource) };
             match hr {
                 Ok(()) => {
+                    if frame_info.AccumulatedFrames == 0 {
+                        // 尚无新 present，texture 无效；释放本轮 acquire 后继续轮询。
+                        unsafe {
+                            let _ = dupl.ReleaseFrame();
+                        }
+                        std::thread::sleep(Duration::from_millis(20));
+                        continue;
+                    }
                     let resource = resource.ok_or_else(|| {
                         CaptureError::BackendUnavailable("DXGI 帧资源为空".into())
                     })?;

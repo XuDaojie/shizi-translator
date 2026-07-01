@@ -13,7 +13,10 @@ use core::config::ConfigStore;
 use tauri::Manager;
 use ui::{
     config::{get_app_config, save_app_config},
-    overlay::{cancel_capture, get_capture_frame_bytes, get_capture_frame_meta, submit_capture_region},
+    overlay::{
+        cancel_capture, get_capture_frame_bytes, get_capture_frame_meta, show_overlay,
+        submit_capture_region,
+    },
     web_popup::{start_translation, take_pending_source_text},
 };
 
@@ -36,6 +39,7 @@ pub fn run() {
             get_capture_frame_bytes,
             submit_capture_region,
             cancel_capture,
+            show_overlay,
         ])
         .setup(|app| {
             let config_store = ConfigStore::load(app.handle())

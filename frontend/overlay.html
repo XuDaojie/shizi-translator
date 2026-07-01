@@ -37,6 +37,8 @@
       canvas.style.width = (w / scale) + 'px';        // CSS 逻辑像素
       canvas.style.height = (h / scale) + 'px';
       canvas.getContext('2d').putImageData(new ImageData(rgba, w, h), 0, 0);
+      // 内容就绪后再让后端显示窗口，消除 WebView2 默认白底占位闪烁。
+      await invoke('show_overlay');
     }
 
     function updateSel(x1, y1, x2, y2) {
