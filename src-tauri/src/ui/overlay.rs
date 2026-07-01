@@ -73,8 +73,6 @@ pub fn open_overlay(app: &tauri::AppHandle, config: &AppConfig) -> Result<(), St
         let _ = window.eval("location.reload()");
     }
 
-    window.show().map_err(|e| e.to_string())?;
-    let _ = window.set_focus();
     Ok(())
 }
 
