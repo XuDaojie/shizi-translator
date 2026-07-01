@@ -28,6 +28,8 @@ pub struct AppConfig {
     pub popup_precreate: bool,
     #[serde(default = "default_true")]
     pub overlay_precreate: bool,
+    #[serde(default = "default_true")]
+    pub collect_usage: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -60,6 +62,9 @@ impl AppConfig {
             claude: ClaudeAppConfig::from_env(),
             popup_precreate: true,
             overlay_precreate: true,
+            collect_usage: env::var("SHIZI_COLLECT_USAGE")
+                .map(|value| value.eq_ignore_ascii_case("true"))
+                .unwrap_or(true),
         }
         .normalized()
     }
@@ -329,5 +334,37 @@ mod tests {
         let mut config = AppConfig::from_env();
         config.provider = "mock".to_string();
         assert!(config.is_configured(), "mock provider 无需 key 视为已配置");
+    }
+
+
+    #[test]
+    fn app_config_defaults_collect_usage_true() {
+        let config = AppConfig::from_env();
+        assert!(config.collect_usage, "collect_usage 默认应为 true");
+    }
+
+    #[test]
+    fn app_config_serializes_collect_usage_camel_case() {
+        let config = AppConfig::from_env();
+        let json = serde_json::to_string(&config).expect("序列化");
+        assert!(json.contains("\"collectUsage\":true"), "应输出 camelCase 字段 collectUsage: {json}");
+    }
+
+    #[test]
+    fn app_config_deserializes_collect_usage_default_when_missing() {
+        let json = r#"{
+            "provider": "openai-compatible",
+            "targetLang": "中文",
+            "openaiCompatible": {
+                "apiKey": "sk-x",
+                "baseUrl": "https://api.openai.com/v1",
+                "model": "gpt-4o-mini",
+                "timeoutSeconds": 60
+            }
+        }"#;
+        let config: AppConfig = serde_json::from_str::<AppConfig>(json)
+            .expect("缺少 collect_usage 字段应可反序列化")
+            .normalized();
+        assert!(config.collect_usage);
     }
 }
