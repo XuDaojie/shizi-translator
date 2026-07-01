@@ -108,6 +108,7 @@ function readConfigForm() {
 }
 
 function validateConfig(config) {
+  if (config.provider === 'mock') return null;
   const sections = config.provider === 'claude' ? [config.claude] : [config.openaiCompatible];
   for (const section of sections) {
     let url;
@@ -325,7 +326,7 @@ retryBtn.addEventListener('click', async () => {
   }
   outputText.textContent = '翻译中...';
   outputText.style.color = '#999';
-  setActionButtons({ translating: false, canRetry: false });
+  setActionButtons({ translating: true, canRetry: false });
   try {
     await invoke('retry_translation');
   } catch (error) {
