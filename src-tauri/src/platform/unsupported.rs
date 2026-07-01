@@ -17,6 +17,11 @@ pub async fn recognize_region(
     Err(OcrTranslationError::Capture(CaptureError::UnsupportedPlatform))
 }
 
+/// 非 Windows 平台无法获取光标上下文，返回 `None`，调用方退化为不定位。
+pub fn cursor_logical_context(_scale: f64) -> Option<(f64, f64, f64, f64, f64, f64)> {
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
