@@ -1,4 +1,6 @@
-use std::{thread, time::Duration};
+use std::time::Duration;
+
+use tokio_util::sync::CancellationToken;
 
 use crate::core::{
     llm::{LlmError, LlmProvider},
@@ -13,6 +15,7 @@ impl LlmProvider for MockLlmProvider {
         &self,
         request: &TranslationRequest,
         on_delta: &mut (dyn FnMut(String) + Send),
+        cancel: &CancellationToken,
     ) -> Result<(), LlmError> {
         let chunks = [
             "[Mock 翻译] ".to_string(),
@@ -23,7 +26,10 @@ impl LlmProvider for MockLlmProvider {
 
         for chunk in chunks {
             on_delta(chunk);
-            thread::sleep(Duration::from_millis(180));
+            tokio::select! {
+                _ = cancel.cancelled() => return Ok(()),
+                _ = tokio::time::sleep(Duration::from_millis(180)) => {}
+            }
         }
 
         Ok(())

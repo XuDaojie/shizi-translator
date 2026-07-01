@@ -1,3 +1,5 @@
+use tokio_util::sync::CancellationToken;
+
 use crate::core::translation::TranslationRequest;
 
 #[derive(Debug, thiserror::Error)]
@@ -28,5 +30,6 @@ pub trait LlmProvider: Send + Sync {
         &self,
         request: &TranslationRequest,
         on_delta: &mut (dyn FnMut(String) + Send),
+        cancel: &CancellationToken,
     ) -> Result<(), LlmError>;
 }

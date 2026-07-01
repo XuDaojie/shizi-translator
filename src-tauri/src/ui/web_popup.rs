@@ -5,6 +5,7 @@ use std::{
 };
 
 use tauri::Emitter;
+use tokio_util::sync::CancellationToken;
 
 use crate::{
     app::{state::AppState, window::show_window},
@@ -111,7 +112,7 @@ pub fn start_translation_from_input(
     tauri::async_runtime::spawn(async move {
         let failed_session_id = request.session_id.clone();
         let result = translation_service
-            .translate_with(request, |event| {
+            .translate_with(request, CancellationToken::new(), |event| {
                 let _ = emit_translation_event(&app_handle, event);
             })
             .await;

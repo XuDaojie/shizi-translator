@@ -3,6 +3,8 @@ use std::time::Duration;
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 
+use tokio_util::sync::CancellationToken;
+
 use crate::core::{
     llm::{LlmError, LlmProvider},
     translation::TranslationRequest,
@@ -169,6 +171,7 @@ impl LlmProvider for OpenAiCompatibleProvider {
         &self,
         request: &TranslationRequest,
         on_delta: &mut (dyn FnMut(String) + Send),
+        cancel: &CancellationToken,
     ) -> Result<(), LlmError> {
         let api_key = self
             .config
@@ -192,17 +195,23 @@ impl LlmProvider for OpenAiCompatibleProvider {
         let mut stream = response.bytes_stream();
         let mut buffer = String::new();
 
-        while let Some(bytes) = stream.next().await {
-            let bytes = bytes.map_err(|error| LlmError::Http(error.to_string()))?;
-            buffer.push_str(&String::from_utf8_lossy(&bytes));
-            buffer = buffer.replace("\r\n", "\n");
+        loop {
+            tokio::select! {
+                _ = cancel.cancelled() => return Ok(()),
+                bytes = stream.next() => {
+                    let Some(bytes) = bytes else { break };
+                    let bytes = bytes.map_err(|error| LlmError::Http(error.to_string()))?;
+                    buffer.push_str(&String::from_utf8_lossy(&bytes));
+                    buffer = buffer.replace("\r\n", "\n");
 
-            while let Some(index) = buffer.find("\n\n") {
-                let event = buffer[..index].to_string();
-                buffer = buffer[index + 2..].to_string();
+                    while let Some(index) = buffer.find("\n\n") {
+                        let event = buffer[..index].to_string();
+                        buffer = buffer[index + 2..].to_string();
 
-                if Self::consume_sse_event(&event, on_delta)? {
-                    return Ok(());
+                        if Self::consume_sse_event(&event, on_delta)? {
+                            return Ok(());
+                        }
+                    }
                 }
             }
         }
