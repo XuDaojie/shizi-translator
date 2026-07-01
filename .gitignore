@@ -9,3 +9,4 @@ node_modules/
 pot-desktop/
 .codegraph/
 .claude/worktrees
+.worktrees/
