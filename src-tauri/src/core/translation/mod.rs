@@ -2,4 +2,6 @@ pub mod service;
 pub mod types;
 
 pub use service::TranslationService;
-pub use types::{TranslationEvent, TranslationInput, TranslationRequest, TranslationSessionId};
+pub use types::{
+    TokenUsage, TranslationEvent, TranslationInput, TranslationRequest, TranslationSessionId,
+};

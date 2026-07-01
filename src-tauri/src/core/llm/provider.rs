@@ -1,6 +1,6 @@
 use tokio_util::sync::CancellationToken;
 
-use crate::core::translation::TranslationRequest;
+use crate::core::translation::{TokenUsage, TranslationRequest};
 
 #[derive(Debug, thiserror::Error)]
 pub enum LlmError {
@@ -24,12 +24,18 @@ impl LlmError {
     }
 }
 
+/// provider 向 service 输出的流事件。Delta 为文本增量，Usage 为 token 用量。
+pub enum LlmStreamEvent {
+    Delta(String),
+    Usage(TokenUsage),
+}
+
 #[async_trait::async_trait]
 pub trait LlmProvider: Send + Sync {
     async fn stream_translate(
         &self,
         request: &TranslationRequest,
-        on_delta: &mut (dyn FnMut(String) + Send),
+        on_event: &mut (dyn FnMut(LlmStreamEvent) + Send),
         cancel: &CancellationToken,
     ) -> Result<(), LlmError>;
 }

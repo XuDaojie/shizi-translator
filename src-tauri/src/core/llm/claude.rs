@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
 use crate::core::{
-    llm::{LlmError, LlmProvider},
-    translation::TranslationRequest,
+    llm::{LlmError, LlmProvider, LlmStreamEvent},
+    translation::{TokenUsage, TranslationRequest},
 };
 
 #[derive(Debug, Clone)]
@@ -59,7 +59,8 @@ impl ClaudeProvider {
 
     pub fn consume_sse_event(
         event: &str,
-        on_delta: &mut (dyn FnMut(String) + Send),
+        input_tokens: &mut Option<u64>,
+        on_event: &mut (dyn FnMut(LlmStreamEvent) + Send),
     ) -> Result<bool, LlmError> {
         for line in event.lines() {
             let Some(data) = line.strip_prefix("data:") else {
@@ -90,12 +91,39 @@ impl ClaudeProvider {
                 return Ok(true);
             }
 
+            if event_type == "message_start" {
+                if let Some(input) = parsed
+                    .message
+                    .and_then(|m| m.usage)
+                    .and_then(|u| u.input_tokens)
+                {
+                    *input_tokens = Some(input);
+                    on_event(LlmStreamEvent::Usage(TokenUsage {
+                        input_tokens: input,
+                        output_tokens: 0,
+                    }));
+                }
+            }
+
+            if event_type == "message_delta" {
+                if let Some(output) = parsed
+                    .usage
+                    .and_then(|u| u.output_tokens)
+                {
+                    let input = input_tokens.unwrap_or(0);
+                    on_event(LlmStreamEvent::Usage(TokenUsage {
+                        input_tokens: input,
+                        output_tokens: output,
+                    }));
+                }
+            }
+
             if event_type == "content_block_delta" {
                 if let Some(delta) = &parsed.delta {
-                    if delta.delta_type == "text_delta" {
+                    if delta.delta_type.as_deref() == Some("text_delta") {
                         if let Some(text) = &delta.text {
                             if !text.is_empty() {
-                                on_delta(text.clone());
+                                on_event(LlmStreamEvent::Delta(text.clone()));
                             }
                         }
                     }
@@ -151,23 +179,25 @@ struct ClaudeMessage {
 }
 
 #[derive(Deserialize)]
-#[allow(dead_code)] // event_type 对应 SSE 协议的 type 字段，反序列化保留以备将来按事件类型分发
+#[allow(dead_code)]
 struct ClaudeSseEvent {
     #[serde(rename = "type")]
     event_type: String,
     delta: Option<EventDelta>,
     error: Option<ClaudeEventError>,
+    message: Option<ClaudeSseMessageData>,
+    usage: Option<ClaudeUsage>,
 }
 
 #[derive(Deserialize)]
 struct EventDelta {
     #[serde(rename = "type")]
-    delta_type: String,
+    delta_type: Option<String>,
     text: Option<String>,
 }
 
 #[derive(Deserialize)]
-#[allow(dead_code)] // error_type 对应错误事件类型，反序列化保留以备将来区分错误种类
+#[allow(dead_code)]
 struct ClaudeEventError {
     #[serde(rename = "type")]
     error_type: String,
@@ -184,12 +214,23 @@ struct ClaudeApiErrorDetail {
     message: String,
 }
 
+#[derive(Deserialize)]
+struct ClaudeSseMessageData {
+    usage: Option<ClaudeUsage>,
+}
+
+#[derive(Deserialize)]
+struct ClaudeUsage {
+    input_tokens: Option<u64>,
+    output_tokens: Option<u64>,
+}
+
 #[async_trait::async_trait]
 impl LlmProvider for ClaudeProvider {
     async fn stream_translate(
         &self,
         request: &TranslationRequest,
-        on_delta: &mut (dyn FnMut(String) + Send),
+        on_event: &mut (dyn FnMut(LlmStreamEvent) + Send),
         cancel: &CancellationToken,
     ) -> Result<(), LlmError> {
         let api_key = self
@@ -236,6 +277,7 @@ impl LlmProvider for ClaudeProvider {
 
         let mut stream = response.bytes_stream();
         let mut buffer = String::new();
+        let mut input_tokens: Option<u64> = None;
 
         loop {
             tokio::select! {
@@ -250,7 +292,7 @@ impl LlmProvider for ClaudeProvider {
                         let event = buffer[..index].to_string();
                         buffer = buffer[index + 2..].to_string();
 
-                        if Self::consume_sse_event(&event, on_delta)? {
+                        if Self::consume_sse_event(&event, &mut input_tokens, on_event)? {
                             return Ok(());
                         }
                     }
@@ -259,7 +301,7 @@ impl LlmProvider for ClaudeProvider {
         }
 
         if !buffer.trim().is_empty() {
-            Self::consume_sse_event(&buffer, on_delta)?;
+            Self::consume_sse_event(&buffer, &mut input_tokens, on_event)?;
         }
 
         Ok(())
@@ -269,12 +311,20 @@ impl LlmProvider for ClaudeProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::llm::LlmStreamEvent;
+    use crate::core::translation::TokenUsage;
 
     #[test]
     fn consume_sse_event_extracts_text_delta() {
         let event = "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"你好\"}}";
         let mut texts = Vec::new();
-        let done = ClaudeProvider::consume_sse_event(event, &mut |t| texts.push(t)).unwrap();
+        let mut input_tokens: Option<u64> = None;
+        let done = ClaudeProvider::consume_sse_event(event, &mut input_tokens, &mut |ev| {
+            if let LlmStreamEvent::Delta(t) = ev {
+                texts.push(t);
+            }
+        })
+        .unwrap();
         assert!(!done);
         assert_eq!(texts, vec!["你好"]);
     }
@@ -283,7 +333,13 @@ mod tests {
     fn consume_sse_event_message_stop_returns_done() {
         let event = "event: message_stop\ndata: {\"type\":\"message_stop\"}";
         let mut texts = Vec::new();
-        let done = ClaudeProvider::consume_sse_event(event, &mut |t| texts.push(t)).unwrap();
+        let mut input_tokens: Option<u64> = None;
+        let done = ClaudeProvider::consume_sse_event(event, &mut input_tokens, &mut |ev| {
+            if let LlmStreamEvent::Delta(t) = ev {
+                texts.push(t);
+            }
+        })
+        .unwrap();
         assert!(done);
         assert!(texts.is_empty());
     }
@@ -292,7 +348,13 @@ mod tests {
     fn consume_sse_event_ignores_ping() {
         let event = "event: ping\ndata: {\"type\":\"ping\"}";
         let mut texts = Vec::new();
-        let done = ClaudeProvider::consume_sse_event(event, &mut |t| texts.push(t)).unwrap();
+        let mut input_tokens: Option<u64> = None;
+        let done = ClaudeProvider::consume_sse_event(event, &mut input_tokens, &mut |ev| {
+            if let LlmStreamEvent::Delta(t) = ev {
+                texts.push(t);
+            }
+        })
+        .unwrap();
         assert!(!done);
         assert!(texts.is_empty());
     }
@@ -300,8 +362,8 @@ mod tests {
     #[test]
     fn consume_sse_event_error_returns_api_error() {
         let event = "event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"bad key\"}}";
-        let mut texts = Vec::new();
-        let result = ClaudeProvider::consume_sse_event(event, &mut |t| texts.push(t));
+        let mut input_tokens: Option<u64> = None;
+        let result = ClaudeProvider::consume_sse_event(event, &mut input_tokens, &mut |_| {});
         match result {
             Err(LlmError::Api { retryable: false, .. }) => {}
             other => panic!("预期 Api(retryable=false)，得到：{other:?}"),
@@ -312,7 +374,13 @@ mod tests {
     fn consume_sse_event_multiple_events_mixed() {
         let event = "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Hello\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\" World\"}}";
         let mut texts = Vec::new();
-        let done = ClaudeProvider::consume_sse_event(event, &mut |t| texts.push(t)).unwrap();
+        let mut input_tokens: Option<u64> = None;
+        let done = ClaudeProvider::consume_sse_event(event, &mut input_tokens, &mut |ev| {
+            if let LlmStreamEvent::Delta(t) = ev {
+                texts.push(t);
+            }
+        })
+        .unwrap();
         assert!(!done);
         assert_eq!(texts, vec!["Hello", " World"]);
     }
@@ -331,5 +399,49 @@ mod tests {
             .await;
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), LlmError::MissingConfig(_)));
+    }
+
+    #[test]
+    fn consume_sse_event_extracts_input_usage_from_message_start() {
+        let event = "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"claude-haiku-4-5\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":27,\"output_tokens\":1}}}";
+        let mut events: Vec<LlmStreamEvent> = Vec::new();
+        let mut input_tokens: Option<u64> = None;
+        ClaudeProvider::consume_sse_event(event, &mut input_tokens, &mut |ev| {
+            events.push(ev);
+        })
+        .unwrap();
+        let usage = events.iter().find_map(|ev| match ev {
+            LlmStreamEvent::Usage(u) => Some(u.clone()),
+            _ => None,
+        });
+        assert_eq!(
+            usage,
+            Some(TokenUsage {
+                input_tokens: 27,
+                output_tokens: 0
+            })
+        );
+    }
+
+    #[test]
+    fn consume_sse_event_extracts_output_usage_from_message_delta() {
+        let event = "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":18}}";
+        let mut events: Vec<LlmStreamEvent> = Vec::new();
+        let mut input_tokens: Option<u64> = Some(27);
+        ClaudeProvider::consume_sse_event(event, &mut input_tokens, &mut |ev| {
+            events.push(ev);
+        })
+        .unwrap();
+        let usage = events.iter().find_map(|ev| match ev {
+            LlmStreamEvent::Usage(u) => Some(u.clone()),
+            _ => None,
+        });
+        assert_eq!(
+            usage,
+            Some(TokenUsage {
+                input_tokens: 27,
+                output_tokens: 18
+            })
+        );
     }
 }

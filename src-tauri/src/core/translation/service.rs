@@ -1,6 +1,6 @@
 use std::{sync::Arc, sync::Mutex};
 
-use crate::core::llm::{LlmError, LlmProvider};
+use crate::core::llm::{LlmError, LlmProvider, LlmStreamEvent};
 use tokio_util::sync::CancellationToken;
 
 use super::{TranslationEvent, TranslationRequest};
@@ -43,14 +43,16 @@ impl TranslationService {
         let delta_session_id = request.session_id.clone();
 
         self.provider
-            .stream_translate(&request, &mut |chunk| {
-                if let Ok(mut text) = delta_text.lock() {
-                    text.push_str(&chunk);
+            .stream_translate(&request, &mut |ev| {
+                if let LlmStreamEvent::Delta(text) = ev {
+                    if let Ok(mut t) = delta_text.lock() {
+                        t.push_str(&text);
+                    }
+                    emit(TranslationEvent::Delta {
+                        session_id: delta_session_id.clone(),
+                        text,
+                    });
                 }
-                emit(TranslationEvent::Delta {
-                    session_id: delta_session_id.clone(),
-                    text: chunk,
-                });
             }, &cancel)
             .await?;
 
@@ -78,7 +80,7 @@ impl TranslationService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::llm::LlmProvider;
+    use crate::core::llm::{LlmProvider, LlmStreamEvent};
     use crate::core::translation::{TranslationInput, TranslationRequest, TranslationSessionId};
     use std::sync::{Arc, Mutex};
     use tokio_util::sync::CancellationToken;
@@ -92,7 +94,7 @@ mod tests {
         async fn stream_translate(
             &self,
             _request: &TranslationRequest,
-            on_delta: &mut (dyn FnMut(String) + Send),
+            on_event: &mut (dyn FnMut(LlmStreamEvent) + Send),
             cancel: &CancellationToken,
         ) -> Result<(), LlmError> {
             let chunks = ["a", "b", "c"];
@@ -101,7 +103,7 @@ mod tests {
                     _ = cancel.cancelled() => return Ok(()),
                     _ = tokio::time::sleep(std::time::Duration::from_millis(50)) => {}
                 }
-                on_delta(chunk.to_string());
+                on_event(LlmStreamEvent::Delta(chunk.to_string()));
                 self.deltas_emitted.lock().unwrap().push(chunk.to_string());
             }
             Ok(())

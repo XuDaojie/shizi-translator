@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
 use crate::core::{
-    llm::{LlmError, LlmProvider},
-    translation::TranslationRequest,
+    llm::{LlmError, LlmProvider, LlmStreamEvent},
+    translation::{TokenUsage, TranslationRequest},
 };
 
 pub struct OpenAiCompatibleProvider {
@@ -24,10 +24,18 @@ pub struct OpenAiCompatibleConfig {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ChatCompletionRequest {
     model: String,
     stream: bool,
+    stream_options: StreamOptions,
     messages: Vec<ChatMessage>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StreamOptions {
+    include_usage: bool,
 }
 
 #[derive(Serialize)]
@@ -39,6 +47,7 @@ struct ChatMessage {
 #[derive(Deserialize)]
 struct ChatCompletionChunk {
     choices: Option<Vec<ChatChoice>>,
+    usage: Option<ChatUsage>,
     error: Option<ApiError>,
 }
 
@@ -50,6 +59,12 @@ struct ChatChoice {
 #[derive(Deserialize)]
 struct ChatDelta {
     content: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ChatUsage {
+    prompt_tokens: u64,
+    completion_tokens: u64,
 }
 
 #[derive(Deserialize)]
@@ -83,6 +98,9 @@ impl OpenAiCompatibleProvider {
         ChatCompletionRequest {
             model: self.config.model.clone(),
             stream: true,
+            stream_options: StreamOptions {
+                include_usage: true,
+            },
             messages: vec![
                 ChatMessage {
                     role: "system",
@@ -126,7 +144,7 @@ impl OpenAiCompatibleProvider {
 
     fn consume_sse_event(
         event: &str,
-        on_delta: &mut (dyn FnMut(String) + Send),
+        on_event: &mut (dyn FnMut(LlmStreamEvent) + Send),
     ) -> Result<bool, LlmError> {
         for line in event.lines() {
             let Some(data) = line.strip_prefix("data:") else {
@@ -150,11 +168,18 @@ impl OpenAiCompatibleProvider {
                 });
             }
 
+            if let Some(usage) = chunk.usage {
+                on_event(LlmStreamEvent::Usage(TokenUsage {
+                    input_tokens: usage.prompt_tokens,
+                    output_tokens: usage.completion_tokens,
+                }));
+            }
+
             if let Some(choices) = chunk.choices {
                 for choice in choices {
                     if let Some(content) = choice.delta.and_then(|delta| delta.content) {
                         if !content.is_empty() {
-                            on_delta(content);
+                            on_event(LlmStreamEvent::Delta(content));
                         }
                     }
                 }
@@ -170,7 +195,7 @@ impl LlmProvider for OpenAiCompatibleProvider {
     async fn stream_translate(
         &self,
         request: &TranslationRequest,
-        on_delta: &mut (dyn FnMut(String) + Send),
+        on_event: &mut (dyn FnMut(LlmStreamEvent) + Send),
         cancel: &CancellationToken,
     ) -> Result<(), LlmError> {
         let api_key = self
@@ -208,7 +233,7 @@ impl LlmProvider for OpenAiCompatibleProvider {
                         let event = buffer[..index].to_string();
                         buffer = buffer[index + 2..].to_string();
 
-                        if Self::consume_sse_event(&event, on_delta)? {
+                        if Self::consume_sse_event(&event, on_event)? {
                             return Ok(());
                         }
                     }
@@ -217,9 +242,59 @@ impl LlmProvider for OpenAiCompatibleProvider {
         }
 
         if !buffer.trim().is_empty() {
-            Self::consume_sse_event(&buffer, on_delta)?;
+            Self::consume_sse_event(&buffer, on_event)?;
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::translation::{TranslationInput, TranslationSessionId};
+
+    fn request() -> TranslationRequest {
+        TranslationRequest {
+            session_id: TranslationSessionId("test".to_string()),
+            input: TranslationInput::ManualText("hi".to_string()),
+            target_lang: "中文".to_string(),
+        }
+    }
+
+    #[test]
+    fn consume_sse_event_extracts_usage_from_final_chunk() {
+        let event = "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":27,\"completion_tokens\":18}}";
+        let mut events: Vec<LlmStreamEvent> = Vec::new();
+        let done = OpenAiCompatibleProvider::consume_sse_event(event, &mut |ev| {
+            events.push(ev);
+        })
+        .unwrap();
+        assert!(!done);
+        let usage = events.iter().find_map(|ev| match ev {
+            LlmStreamEvent::Usage(u) => Some(u.clone()),
+            _ => None,
+        });
+        assert_eq!(
+            usage,
+            Some(TokenUsage {
+                input_tokens: 27,
+                output_tokens: 18
+            })
+        );
+    }
+
+    #[test]
+    fn request_body_includes_stream_options_include_usage() {
+        let config = OpenAiCompatibleConfig {
+            api_key: Some("sk-x".to_string()),
+            base_url: "https://api.openai.com/v1".to_string(),
+            model: "gpt-4o-mini".to_string(),
+            timeout_seconds: 60,
+        };
+        let provider = OpenAiCompatibleProvider::new(config);
+        let body = provider.request_body(&request());
+        let json = serde_json::to_value(&body).unwrap();
+        assert_eq!(json["streamOptions"]["includeUsage"], true);
     }
 }
