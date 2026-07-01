@@ -113,10 +113,10 @@ node --check frontend/main.js
      3. **编码执行**（`executing-plans` 或 `subagent-driven-development` skill）→ 按计划落地代码
    - **执行方式必须由用户选择**：进入编码执行阶段后，**必须先用 `AskUserQuestion` 工具询问用户**在「子代理驱动（`subagent-driven-development`）」与「内联执行（`executing-plans`）」之间二选一，**不得自行决定、不得默认内联**；未得到用户答复前不得进入任何执行动作。这一步是 plan→执行 交接提示词「下一步动作」第 2 步的硬性前置。
    - **产出物规则**：spec / plan 文档生成后立即 `git add` + `git commit`（见开发说明第 2 条，无需再次询问），交接提示词中以相对路径引用该文件。新对话靠读文件恢复上下文，不依赖旧对话历史。
-   - **交接点**：两个 —— spec→plan（需求规划完成 → 编写实现计划）、plan→执行（实现计划完成 → 编码落地）。`brainstorming` 与 `writing-plans` 各自收尾时，必须在回复末尾输出对应交接提示词并停下，**不得在同一对话直接进入下一阶段**；用户如想在本对话继续，需显式要求。
-   - **skill 收尾行为覆盖（优先级声明）**：第三方 skill 的 SKILL.md 末尾常指示「直接调用下一阶段 skill」（`brainstorming`→`writing-plans`；`writing-plans`→`executing-plans`/`subagent-driven-development` 并提供执行选项）。**该类终止指示被本规范第 7 条覆盖，一律不得执行**，收尾行为以本规范为准：
-     - `brainstorming`：用户审查批准 spec 后，**不得在本对话调用 `writing-plans`**，改为按 spec→plan 模板在回复末尾输出交接提示词并停下。
-     - `writing-plans`：计划自检通过、保存并 commit 后，**不得在本对话调用 `executing-plans` / `subagent-driven-development`，也不得在本对话提供执行选项并开始执行**，改为按 plan→执行 模板在回复末尾输出交接提示词并停下（执行方式选择由新对话的 `AskUserQuestion` 完成）。
+   - **交接点**：两个 —— spec→plan（需求规划完成 → 编写实现计划）、plan→执行（实现计划完成 → 编码落地）。
+   - **阶段收尾必须先询问用户（优先级声明）**：第三方 skill 的 SKILL.md 末尾常指示「直接调用下一阶段 skill」（`brainstorming`→`writing-plans`；`writing-plans`→`executing-plans`/`subagent-driven-development` 并提供执行选项）。**该类终止指示被本规范第 7 条覆盖，不得自行直接执行**，收尾时必须先停下、用 `AskUserQuestion` 询问用户选择走向：
+     - `brainstorming`：用户审查批准 spec 后，询问用户 ① 继续在本对话调用 `writing-plans` 编写实现计划 ② 输出 spec→plan 交接提示词并停下（推荐）。未得到答复前不得进入下一步。
+     - `writing-plans`：计划自检通过、保存并 commit 后，询问用户 ① 继续在本对话进入编码执行（再由下一项决定执行方式）② 输出 plan→执行 交接提示词并停下（推荐）。未得到答复前不得进入下一步；选 ① 时仍须按下方「执行方式必须由用户选择」用 `AskUserQuestion` 确认子代理驱动 / 内联执行。
      - 当 skill 终止指令与本规范冲突时，以本规范为准。本规范约束的是单次对话内不得跨阶段，不约束已通过交接进入新对话后的正常 skill 调用。
    - **交接即终止循环**：交接提示词在新对话作为首条消息收到后，该新对话即视为已进入目标阶段，在其中执行该阶段任务并调用对应 skill 是正确的，**不违反「禁止在当前对话跨阶段继续」**——该禁令约束的是单次对话内不得从一阶段直接滑入下一阶段，不约束已通过交接进入新对话后的正常执行；此时不得再生成交接提示词或要求另开新对话。模板内的「给 AI」元指令即此规则的载体。
    - **交接提示词模板**：见 [docs/superpowers/handoff-templates.md](docs/superpowers/handoff-templates.md)，按字段填充后在回复末尾以代码块输出。模板含 spec→plan 与 plan→执行 两套。
