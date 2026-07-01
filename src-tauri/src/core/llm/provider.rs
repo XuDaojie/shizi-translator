@@ -25,6 +25,7 @@ impl LlmError {
 }
 
 /// provider 向 service 输出的流事件。Delta 为文本增量，Usage 为 token 用量。
+#[derive(Debug)]
 pub enum LlmStreamEvent {
     Delta(String),
     Usage(TokenUsage),

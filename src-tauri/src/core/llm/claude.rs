@@ -57,6 +57,12 @@ impl ClaudeProvider {
         )
     }
 
+    /// Parse an SSE event text and emit stream events.
+    ///
+    /// `input_tokens` carries the input token count parsed from `message_start`
+    /// across events, so that the subsequent `message_delta` event can assemble
+    /// a complete `TokenUsage`. Claude API returns input and output usage in
+    /// two separate events, unlike OpenAI which combines them in the final chunk.
     pub fn consume_sse_event(
         event: &str,
         input_tokens: &mut Option<u64>,
