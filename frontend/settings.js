@@ -13,6 +13,7 @@ const claudeTimeoutInput = document.getElementById('claudeTimeoutInput');
 const claudeEnableThinkingInput = document.getElementById('claudeEnableThinkingInput');
 const popupPrecreateInput = document.getElementById('popupPrecreateInput');
 const overlayPrecreateInput = document.getElementById('overlayPrecreateInput');
+const collectUsageInput = document.getElementById('collectUsageInput');
 const saveConfigBtn = document.getElementById('saveConfigBtn');
 const configStatus = document.getElementById('configStatus');
 
@@ -43,6 +44,7 @@ function fillConfigForm(config) {
   claudeEnableThinkingInput.checked = config.claude?.enableThinking ?? false;
   popupPrecreateInput.checked = config.popupPrecreate ?? true;
   overlayPrecreateInput.checked = config.overlayPrecreate ?? true;
+  collectUsageInput.checked = config.collectUsage ?? true;
   toggleProviderSettings();
 }
 
@@ -65,6 +67,7 @@ function readConfigForm() {
     },
     popupPrecreate: popupPrecreateInput.checked,
     overlayPrecreate: overlayPrecreateInput.checked,
+    collectUsage: collectUsageInput.checked,
   };
 }
 

@@ -120,3 +120,14 @@ button:disabled {
   overflow-y: auto;
   line-height: 1.6;
 }
+
+.usage-footer {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #999;
+  text-align: right;
+}
+
+.usage-footer.hidden {
+  display: none;
+}

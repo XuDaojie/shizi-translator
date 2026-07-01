@@ -6,6 +6,7 @@ const settingsBtn = document.getElementById('settingsBtn');
 const clearBtn = document.getElementById('clearBtn');
 const cancelBtn = document.getElementById('cancelBtn');
 const retryBtn = document.getElementById('retryBtn');
+const usageFooter = document.getElementById('usageFooter');
 
 const tauriApi = window.__TAURI__;
 const invoke = tauriApi?.core?.invoke;
@@ -14,9 +15,24 @@ const listen = tauriApi?.event?.listen;
 let isTranslating = false;
 let currentSessionId = null;
 
+function showUsageFooter(usage) {
+  if (!usage) {
+    hideUsageFooter();
+    return;
+  }
+  usageFooter.textContent = `${usage.inputTokens} → ${usage.outputTokens} tokens`;
+  usageFooter.classList.remove('hidden');
+}
+
+function hideUsageFooter() {
+  usageFooter.classList.add('hidden');
+  usageFooter.textContent = '';
+}
+
 function resetOutput() {
   outputText.textContent = '翻译结果将显示在这里';
   outputText.style.color = '#999';
+  hideUsageFooter();
 }
 
 function setSourceBadge(sourceType) {
@@ -79,6 +95,7 @@ function renderTranslationEvent(payload) {
       outputText.textContent = '';
       outputText.style.color = '#333';
       setSourceBadge(payload.sourceType);
+      hideUsageFooter();
       setActionButtons({ translating: true, canRetry: false });
       break;
     case 'delta':
@@ -93,6 +110,7 @@ function renderTranslationEvent(payload) {
       outputText.style.color = '#333';
       currentSessionId = null;
       hideSourceBadge();
+      showUsageFooter(payload.usage);
       setActionButtons({ translating: false, canRetry: true });
       scrollOutputToBottom();
       break;
@@ -102,6 +120,7 @@ function renderTranslationEvent(payload) {
       outputText.style.color = '#b42318';
       currentSessionId = null;
       hideSourceBadge();
+      hideUsageFooter();
       setActionButtons({ translating: false, canRetry: true });
       scrollOutputToBottom();
       break;
@@ -111,6 +130,7 @@ function renderTranslationEvent(payload) {
       outputText.style.color = '#999';
       currentSessionId = null;
       hideSourceBadge();
+      hideUsageFooter();
       setActionButtons({ translating: false, canRetry: true });
       break;
     default:
@@ -157,6 +177,7 @@ translateBtn.addEventListener('click', async () => {
 
   outputText.textContent = '翻译中...';
   outputText.style.color = '#999';
+  hideUsageFooter();
   setActionButtons({ translating: true, canRetry: false });
 
   try {
