@@ -317,6 +317,7 @@ translateBtn.addEventListener('click', async () => {
     outputText.textContent = String(error);
     outputText.style.color = '#b42318';
     currentSessionId = null;
+    hideSourceBadge();
     setActionButtons({ translating: false, canRetry: true });
   }
 });
@@ -362,6 +363,7 @@ retryBtn.addEventListener('click', async () => {
     outputText.textContent = String(error);
     outputText.style.color = '#b42318';
     currentSessionId = null;
+    hideSourceBadge();
     setActionButtons({ translating: false, canRetry: true });
   }
 });
