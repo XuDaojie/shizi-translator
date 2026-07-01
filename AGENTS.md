@@ -17,7 +17,7 @@ src-tauri/         Rust 后端 + Tauri 配置
   src/main.rs      薄入口，调用 shizi_lib::run()
   src/app/         应用编排：托盘、全局快捷键、窗口控制、AppState（含 capture/translation 锁）
   src/core/config/ 本地配置模型与 JSON 存储
-  src/core/llm/    LLM provider 抽象、mock、OpenAI-compatible 流式 provider
+  src/core/llm/    LLM provider 抽象、mock、OpenAI-compatible、Claude 流式 provider
   src/core/selection/ 划词复制：剪贴板文本读取、Ctrl+C 模拟
   src/core/translation/ 翻译请求、事件与 TranslationService
   src/core/capture/ 截图抽象：CapturedImage、crop 内存裁剪、css_rect_to_physical DPI 换算
@@ -60,7 +60,7 @@ cd src-tauri && cargo clean           # 清理 Rust 编译缓存
 - **托盘驻留模型**：窗口的 `CloseRequested` 被拦截改为 `hide()`，应用通过托盘菜单「退出」才会真正退出；详见 [src-tauri/src/app/window.rs](src-tauri/src/app/window.rs) 与 [src-tauri/src/app/tray.rs](src-tauri/src/app/tray.rs)。
 - **全局快捷键**：`Alt+T` 划词复制并自动翻译；`Alt+O` 触发截图 OCR 翻译（DXGI 抓光标所在显示器整屏帧 → 自建 overlay 区域框选 → crop → Windows.Media.Ocr → 复用翻译链路）。由 `tauri-plugin-global-shortcut` 注册，逻辑集中在 `src-tauri/src/app/shortcuts.rs`。新增快捷键时需在 `capabilities/default.json` 同步授权。
 - **前后端通信**：当前已有 Tauri commands：`start_translation`、`take_pending_source_text`、`get_app_config`、`save_app_config`，以及截图 overlay 四命令 `get_capture_frame_meta` / `get_capture_frame_bytes` / `submit_capture_region` / `cancel_capture`。后端通过 `translation:event` 向前端推送 `Started` / `Delta` / `Finished` / `Failed`。
-- **配置存储**：当前设置面板将 OpenAI-compatible 配置保存到 Tauri app config dir 下的 `config.json`。API Key 在 MVP 阶段明文保存，后续产品化需迁移到系统 SecretStore。
+- **配置存储**：当前设置面板将 provider 配置保存到 Tauri app config dir 下的 `config.json`。支持 OpenAI-compatible 和 Claude 两种 provider。API Key 在 MVP 阶段明文保存，后续产品化需迁移到系统 SecretStore。
 
 ## 开发说明
 
@@ -152,3 +152,4 @@ Skills 位于 `.codex/skills/` 目录，每个 skill 有独立的 `SKILL.md` 文
 
 如果你认为哪怕只有 1% 的可能性某个 skill 适用于你正在做的事情，你必须调用该 skill 检查。
 <!-- superpowers-zh:end -->
+
