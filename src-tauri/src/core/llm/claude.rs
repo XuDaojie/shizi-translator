@@ -1,6 +1,13 @@
-use serde::Deserialize;
+use std::time::Duration;
 
-use crate::core::llm::LlmError;
+use futures_util::StreamExt;
+use serde::{Deserialize, Serialize};
+use tokio_util::sync::CancellationToken;
+
+use crate::core::{
+    llm::{LlmError, LlmProvider},
+    translation::TranslationRequest,
+};
 
 #[derive(Debug, Clone)]
 pub struct ClaudeConfig {
@@ -29,31 +36,27 @@ impl Default for ClaudeConfig {
     }
 }
 
-pub struct ClaudeProvider;
-
-#[derive(Deserialize)]
-struct ClaudeSseEvent {
-    #[serde(rename = "type")]
-    event_type: String,
-    delta: Option<EventDelta>,
-    error: Option<ClaudeEventError>,
-}
-
-#[derive(Deserialize)]
-struct EventDelta {
-    #[serde(rename = "type")]
-    delta_type: String,
-    text: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct ClaudeEventError {
-    #[serde(rename = "type")]
-    error_type: String,
-    message: String,
+pub struct ClaudeProvider {
+    client: reqwest::Client,
+    config: ClaudeConfig,
 }
 
 impl ClaudeProvider {
+    pub fn new(config: ClaudeConfig) -> Self {
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(config.timeout_seconds))
+            .build()
+            .expect("创建 HTTP client 失败");
+        Self { client, config }
+    }
+
+    fn endpoint(&self) -> String {
+        format!(
+            "{}/v1/messages",
+            self.config.base_url.trim_end_matches('/')
+        )
+    }
+
     pub fn consume_sse_event(
         event: &str,
         on_delta: &mut (dyn FnMut(String) + Send),
@@ -101,6 +104,163 @@ impl ClaudeProvider {
         }
 
         Ok(false)
+    }
+
+    async fn parse_error_response(response: reqwest::Response) -> LlmError {
+        let status = response.status();
+        let retryable = status.as_u16() == 429 || status.is_server_error();
+        let body = response.text().await.unwrap_or_default();
+        let message = serde_json::from_str::<ClaudeErrorEnvelope>(&body)
+            .map(|e| e.error.message)
+            .unwrap_or_else(|_| {
+                format!(
+                    "HTTP {}: {}",
+                    status,
+                    body.chars().take(500).collect::<String>()
+                )
+            });
+        if retryable {
+            LlmError::Http(message)
+        } else {
+            LlmError::Api { message, retryable: false }
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct ClaudeMessagesRequest {
+    model: String,
+    max_tokens: u32,
+    stream: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thinking: Option<ClaudeThinkingConfig>,
+    system: String,
+    messages: Vec<ClaudeMessage>,
+}
+
+#[derive(Serialize)]
+struct ClaudeThinkingConfig {
+    #[serde(rename = "type")]
+    thinking_type: String,
+}
+
+#[derive(Serialize)]
+struct ClaudeMessage {
+    role: String,
+    content: String,
+}
+
+#[derive(Deserialize)]
+struct ClaudeSseEvent {
+    #[serde(rename = "type")]
+    event_type: String,
+    delta: Option<EventDelta>,
+    error: Option<ClaudeEventError>,
+}
+
+#[derive(Deserialize)]
+struct EventDelta {
+    #[serde(rename = "type")]
+    delta_type: String,
+    text: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ClaudeEventError {
+    #[serde(rename = "type")]
+    error_type: String,
+    message: String,
+}
+
+#[derive(Deserialize)]
+struct ClaudeErrorEnvelope {
+    error: ClaudeApiErrorDetail,
+}
+
+#[derive(Deserialize)]
+struct ClaudeApiErrorDetail {
+    message: String,
+}
+
+#[async_trait::async_trait]
+impl LlmProvider for ClaudeProvider {
+    async fn stream_translate(
+        &self,
+        request: &TranslationRequest,
+        on_delta: &mut (dyn FnMut(String) + Send),
+        cancel: &CancellationToken,
+    ) -> Result<(), LlmError> {
+        let api_key = self
+            .config
+            .api_key
+            .as_deref()
+            .ok_or(LlmError::MissingConfig("Claude API Key"))?;
+
+        let body = ClaudeMessagesRequest {
+            model: self.config.model.clone(),
+            max_tokens: 4096,
+            stream: true,
+            thinking: if self.config.enable_thinking {
+                Some(ClaudeThinkingConfig {
+                    thinking_type: "adaptive".to_string(),
+                })
+            } else {
+                None
+            },
+            system: "你是一个专业翻译引擎。只输出译文，不要解释。".to_string(),
+            messages: vec![ClaudeMessage {
+                role: "user".to_string(),
+                content: format!(
+                    "请将以下文本翻译为{}：\n\n{}",
+                    request.target_lang,
+                    request.source_text()
+                ),
+            }],
+        };
+
+        let response = self
+            .client
+            .post(self.endpoint())
+            .header("x-api-key", api_key)
+            .header("anthropic-version", "2023-06-01")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| LlmError::Http(e.to_string()))?;
+
+        if !response.status().is_success() {
+            return Err(Self::parse_error_response(response).await);
+        }
+
+        let mut stream = response.bytes_stream();
+        let mut buffer = String::new();
+
+        loop {
+            tokio::select! {
+                _ = cancel.cancelled() => return Ok(()),
+                bytes = stream.next() => {
+                    let Some(bytes) = bytes else { break };
+                    let bytes = bytes.map_err(|e| LlmError::Http(e.to_string()))?;
+                    buffer.push_str(&String::from_utf8_lossy(&bytes));
+                    buffer = buffer.replace("\r\n", "\n");
+
+                    while let Some(index) = buffer.find("\n\n") {
+                        let event = buffer[..index].to_string();
+                        buffer = buffer[index + 2..].to_string();
+
+                        if Self::consume_sse_event(&event, on_delta)? {
+                            return Ok(());
+                        }
+                    }
+                }
+            }
+        }
+
+        if !buffer.trim().is_empty() {
+            Self::consume_sse_event(&buffer, on_delta)?;
+        }
+
+        Ok(())
     }
 }
 
@@ -153,5 +313,21 @@ mod tests {
         let done = ClaudeProvider::consume_sse_event(event, &mut |t| texts.push(t)).unwrap();
         assert!(!done);
         assert_eq!(texts, vec!["Hello", " World"]);
+    }
+
+    #[tokio::test]
+    async fn stream_translate_requires_api_key() {
+        let provider = ClaudeProvider::new(ClaudeConfig::new());
+        let request = crate::core::translation::TranslationRequest {
+            session_id: crate::core::translation::TranslationSessionId("test".to_string()),
+            input: crate::core::translation::TranslationInput::ManualText("hello".to_string()),
+            target_lang: "中文".to_string(),
+        };
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let result = provider
+            .stream_translate(&request, &mut |_| {}, &cancel)
+            .await;
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), LlmError::MissingConfig(_)));
     }
 }
