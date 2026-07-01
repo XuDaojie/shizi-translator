@@ -36,6 +36,14 @@ impl TranslationInput {
             Self::OcrText { text, .. } => text,
         }
     }
+
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::ManualText(_) => "manualText",
+            Self::SelectedText(_) => "selectedText",
+            Self::OcrText { .. } => "ocrText",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -84,6 +92,26 @@ mod tests {
             }
             .text(),
             "ocr"
+        );
+    }
+
+    #[test]
+    fn translation_input_kind_returns_serde_tag_literal() {
+        assert_eq!(
+            TranslationInput::ManualText("x".to_string()).kind(),
+            "manualText"
+        );
+        assert_eq!(
+            TranslationInput::SelectedText("x".to_string()).kind(),
+            "selectedText"
+        );
+        assert_eq!(
+            TranslationInput::OcrText {
+                text: "x".to_string(),
+                image_id: None,
+            }
+            .kind(),
+            "ocrText"
         );
     }
 
