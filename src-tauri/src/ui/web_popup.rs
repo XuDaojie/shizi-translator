@@ -5,11 +5,13 @@ use std::{
 };
 
 use tauri::Emitter;
+use tauri::Manager;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    app::{state::AppState, window::show_window},
+    app::{popup_window, state::AppState},
     core::{
+        config::AppConfig,
         llm::{ClaudeConfig, ClaudeProvider, LlmProvider, MockLlmProvider, OpenAiCompatibleConfig, OpenAiCompatibleProvider},
         translation::{
             TranslationEvent, TranslationInput, TranslationRequest, TranslationService,
@@ -25,6 +27,11 @@ pub fn emit_translation_event(
     event: TranslationEvent,
 ) -> Result<(), tauri::Error> {
     app.emit(TRANSLATION_EVENT, event)
+}
+
+/// 唤起翻译弹窗（show + 光标定位）。触发翻译前调用，修正旧版依赖窗口已可见的缺陷。
+pub fn show_translation_popup(app: &tauri::AppHandle, config: &AppConfig) -> Result<(), String> {
+    popup_window::show_popup(app, config)
 }
 
 pub fn start_translation_from_text(
@@ -106,7 +113,6 @@ pub fn start_translation_from_input(
         return Err(error);
     }
 
-    show_window(&app);
     thread::sleep(Duration::from_millis(120));
     emit_translation_event(
         &app,
@@ -152,7 +158,14 @@ pub fn start_translation_from_input(
 
 pub fn show_translation_error(app: &tauri::AppHandle, message: impl Into<String>) {
     let session_id = create_session_id().unwrap_or_else(|_| "selection-error".to_string());
-    show_window(app);
+    let config = app
+        .state::<AppState>()
+        .config_store
+        .get()
+        .ok();
+    if let Some(config) = config {
+        let _ = show_translation_popup(app, &config);
+    }
     let _ = emit_translation_event(
         app,
         TranslationEvent::Failed {
@@ -247,5 +260,3 @@ mod tests {
         );
     }
 }
-
-
