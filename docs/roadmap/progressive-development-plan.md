@@ -80,7 +80,7 @@ src-tauri/src/ui/settings_commands.rs
 
 - Anthropic / Claude 专用 provider。
 - `TranslationInput` / `TranslationMode` 的完整输入模型。
-- `Cancelled` 事件、usage/token 统计、取消/重试交互。
+- ~~`Cancelled` 事件~~ ✅、usage/token 统计、~~取消/重试交互~~ ✅。
 - 独立设置页与独立翻译弹窗拆分。
 - OCR / 截图 / Slint 原生弹窗。
 
@@ -89,7 +89,7 @@ src-tauri/src/ui/settings_commands.rs
 - 剪贴板与选区读取落在 `src-tauri/src/core/selection/clipboard.rs`、`keyboard.rs`、`mod.rs`。
 - 翻译 WebView 编排落在 `src-tauri/src/ui/web_popup.rs`。
 - 设置 commands 落在 `src-tauri/src/ui/config.rs`。
-- 当前 `TranslationEvent` 是 MVP 简化版，不含 `Cancelled` 与 `usage` 字段。
+- 当前 `TranslationEvent` 是 MVP 简化版，不含 `usage` 字段。
 
 ### 技术难点
 
