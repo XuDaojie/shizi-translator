@@ -362,5 +362,10 @@ mod tests {
         let image = capture.capture_monitor().await.expect("应抓到帧");
         assert_eq!(image.format, CapturedImageFormat::Bgra8);
         assert_eq!(image.bytes.len(), (image.width * image.height * 4) as usize);
+        // 防 accum=0 空帧回归：真实桌面帧不可能全 0。
+        assert!(
+            image.bytes.iter().any(|&b| b != 0),
+            "帧全 0，疑似 DXGI AccumulatedFrames==0 空帧"
+        );
     }
 }
