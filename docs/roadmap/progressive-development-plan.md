@@ -78,7 +78,7 @@ src-tauri/src/ui/settings_commands.rs
 
 暂未完成 / 后续演进：
 
-- Anthropic / Claude 专用 provider。
+- ~~Anthropic / Claude 专用 provider~~ ✅。
 - `TranslationInput` / `TranslationMode` 的完整输入模型。
 - ~~`Cancelled` 事件~~ ✅、usage/token 统计、~~取消/重试交互~~ ✅。
 - 独立设置页与独立翻译弹窗拆分。

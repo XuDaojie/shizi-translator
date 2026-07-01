@@ -11,9 +11,11 @@
 - `Alt+T` 划词翻译：在其他应用中选中文本后按 `Alt+T`，应用会尝试模拟 `Ctrl+C` 读取选中文本并自动翻译。
 - `Alt+O` 截图 OCR 翻译：通过 DXGI Desktop Duplication 抓取光标所在显示器整屏帧，在自建 overlay 窗口上鼠标框选区域，经 `Windows.Media.Ocr` 识别后复用翻译链路（Esc / 右键 / 选区过小可取消）。
 - OpenAI-compatible 流式翻译 provider：调用兼容 `/v1/chat/completions` 的流式接口。
+- Claude / Anthropic 流式翻译 provider：调用 Anthropic Messages API 的 SSE 流式接口，支持 thinking 模式。
 - Mock provider：用于无真实 API Key 的本地验证。
-- 内嵌设置面板：配置目标语言、API Key、Base URL、模型名和超时时间。
+- 内嵌设置面板：配置目标语言、provider 及 API Key、Base URL、模型名和超时时间。
 - 流式结果展示：Rust 后端通过 Tauri event 推送翻译状态和增量文本，前端实时渲染。
+- 翻译取消与重试：流式翻译过程中可取消，失败或取消后可一键重试。
 
 ## 使用方式
 
@@ -56,12 +58,17 @@
 首次没有本地配置文件时，会从以下环境变量读取默认值：
 
 ```bash
-SHIZI_LLM_PROVIDER=mock | openai-compatible
+SHIZI_LLM_PROVIDER=mock | openai-compatible | claude
 SHIZI_TARGET_LANG=中文
 SHIZI_OPENAI_API_KEY=...
 SHIZI_OPENAI_BASE_URL=https://api.openai.com/v1
 SHIZI_OPENAI_MODEL=gpt-4o-mini
 SHIZI_OPENAI_TIMEOUT_SECS=60
+SHIZI_CLAUDE_API_KEY=...
+SHIZI_CLAUDE_BASE_URL=https://api.anthropic.com
+SHIZI_CLAUDE_MODEL=claude-haiku-4-5
+SHIZI_CLAUDE_TIMEOUT_SECS=60
+SHIZI_CLAUDE_ENABLE_THINKING=false
 ```
 
 本地 mock 模式示例：
@@ -74,11 +81,10 @@ SHIZI_LLM_PROVIDER=mock npm run tauri dev
 
 以下能力尚未实现：
 
-- Anthropic / Claude 专用 provider。
 - Slint 原生高性能翻译弹窗。
 - 独立设置窗口；当前设置仍内嵌在主窗口。
 - API Key 系统安全存储。
-- 翻译取消、重试按钮、历史记录、快捷键自定义。
+- 翻译历史记录、快捷键自定义。
 
 截图 OCR 已落地，但存在以下 MVP 已知限制：
 

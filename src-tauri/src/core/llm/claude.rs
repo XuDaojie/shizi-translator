@@ -151,6 +151,7 @@ struct ClaudeMessage {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)] // event_type 对应 SSE 协议的 type 字段，反序列化保留以备将来按事件类型分发
 struct ClaudeSseEvent {
     #[serde(rename = "type")]
     event_type: String,
@@ -166,6 +167,7 @@ struct EventDelta {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)] // error_type 对应错误事件类型，反序列化保留以备将来区分错误种类
 struct ClaudeEventError {
     #[serde(rename = "type")]
     error_type: String,

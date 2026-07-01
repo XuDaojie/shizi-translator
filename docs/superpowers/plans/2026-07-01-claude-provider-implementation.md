@@ -16,7 +16,7 @@
 - 创建：`src-tauri/src/core/llm/claude.rs`（前 80 行）
 - 测试：内联于 `claude.rs` 的 `#[cfg(test)] mod tests`
 
-- [ ] **步骤 1：编写失败的测试——确保 `consume_sse_event` 编译前先定义结构体占位**
+- [x] **步骤 1：编写失败的测试——确保 `consume_sse_event` 编译前先定义结构体占位**
 
 `claude.rs` 开头写入以下结构体定义与 `consume_sse_event` 签名：
 
@@ -92,13 +92,13 @@ mod tests {
 }
 ```
 
-- [ ] **步骤 2：运行测试确认失败**
+- [x] **步骤 2：运行测试确认失败**
 
 运行：`cd src-tauri && cargo test llm::claude::tests -v 2>&1 | Select-String "FAILED|panicked|todo"`
 
 预期：单元测试存在但调用 `todo!()`，测试 panic。
 
-- [ ] **步骤 3：实现 SSE 事件结构体与 `consume_sse_event` 纯函数**
+- [x] **步骤 3：实现 SSE 事件结构体与 `consume_sse_event` 纯函数**
 
 用下列完整代码替换 `ClaudeProvider` 的 todo 占位：
 
@@ -188,13 +188,13 @@ impl ClaudeProvider {
 }
 ```
 
-- [ ] **步骤 4：运行测试验证通过**
+- [x] **步骤 4：运行测试验证通过**
 
 运行：`cd src-tauri && cargo test llm::claude::tests -v 2>&1 | Select-String "FAILED|panicked|ok"`
 
 预期：5 个测试全部 PASS。
 
-- [ ] **步骤 5：Commit**
+- [x] **步骤 5：Commit**
 
 ```bash
 cd src-tauri
@@ -211,7 +211,7 @@ git commit -m "feat: 添加 Claude SSE 事件解析与单元测试"
 - 修改：`src-tauri/src/core/llm/claude.rs`（追加 ClaudeConfig 结构体）
 - 修改：`src-tauri/src/core/llm/mod.rs`（导出 ClaudeConfig）
 
-- [ ] **步骤 1：在 `claude.rs` 中追加 `ClaudeConfig` 运行时结构体**
+- [x] **步骤 1：在 `claude.rs` 中追加 `ClaudeConfig` 运行时结构体**
 
 在 `use` 声明之后、`pub struct ClaudeProvider;` 之前插入：
 
@@ -244,7 +244,7 @@ impl Default for ClaudeConfig {
 }
 ```
 
-- [ ] **步骤 2：在 `src-tauri/src/core/config/types.rs` 中新增 `ClaudeAppConfig`**
+- [x] **步骤 2：在 `src-tauri/src/core/config/types.rs` 中新增 `ClaudeAppConfig`**
 
 在 `OpenAiCompatibleAppConfig` 的 `impl` 块之后、`impl From` 之前插入：
 
@@ -308,7 +308,7 @@ impl From<ClaudeAppConfig> for ClaudeConfig {
 }
 ```
 
-- [ ] **步骤 3：在 `AppConfig` 中增加 `claude` 字段**
+- [x] **步骤 3：在 `AppConfig` 中增加 `claude` 字段**
 
 将 `AppConfig` 改为：
 
@@ -326,7 +326,7 @@ pub struct AppConfig {
 
 在文件顶部 `use crate::core::llm::OpenAiCompatibleConfig;` 之后增加 `use crate::core::llm::ClaudeConfig;`。
 
-- [ ] **步骤 4：更新 `src-tauri/src/core/llm/mod.rs` 导出**
+- [x] **步骤 4：更新 `src-tauri/src/core/llm/mod.rs` 导出**
 
 将 `mod.rs` 改为：
 
@@ -342,13 +342,13 @@ pub use openai_compatible::{OpenAiCompatibleConfig, OpenAiCompatibleProvider};
 pub use provider::{LlmError, LlmProvider};
 ```
 
-- [ ] **步骤 5：运行编译验证**
+- [x] **步骤 5：运行编译验证**
 
 运行：`cd src-tauri && cargo build`
 
 预期：编译通过。
 
-- [ ] **步骤 6：Commit**
+- [x] **步骤 6：Commit**
 
 ```bash
 git add src-tauri/src/core/config/types.rs src-tauri/src/core/llm/claude.rs src-tauri/src/core/llm/mod.rs
@@ -363,7 +363,7 @@ git commit -m "feat: 添加 ClaudeConfig 与 ClaudeAppConfig 配置模型"
 - 修改：`src-tauri/src/core/llm/claude.rs`（追加 Messages API 请求结构体与 `stream_translate`）
 - 修改：`src-tauri/src/core/llm/claude.rs`（追加 `retryable` 属性标记）
 
-- [ ] **步骤 1：编写失败的编译测试——确认 `stream_translate` 方法签名正确**
+- [x] **步骤 1：编写失败的编译测试——确认 `stream_translate` 方法签名正确**
 
 在 `#[cfg(test)]` 中增加集成测试：
 
@@ -389,7 +389,7 @@ async fn stream_translate_requires_api_key() {
 
 预期：编译失败，因为 `ClaudeProvider` 没有 `new()` 方法和 `stream_translate` 实现。
 
-- [ ] **步骤 2：实现 `ClaudeProvider` 结构体与 `stream_translate`**
+- [x] **步骤 2：实现 `ClaudeProvider` 结构体与 `stream_translate`**
 
 在 `ClaudeProvider` 结构体定义位置：
 
@@ -574,19 +574,19 @@ struct ClaudeApiErrorDetail {
 }
 ```
 
-- [ ] **步骤 3：运行编译验证**
+- [x] **步骤 3：运行编译验证**
 
 运行：`cd src-tauri && cargo build`
 
 预期：编译通过。
 
-- [ ] **步骤 4：运行测试验证通过**
+- [x] **步骤 4：运行测试验证通过**
 
 运行：`cd src-tauri && cargo test llm::claude -v`
 
 预期：之前的 5 个 SSE 单元测试 + 新增的 `stream_translate_requires_api_key` 测试全部 PASS。
 
-- [ ] **步骤 5：Commit**
+- [x] **步骤 5：Commit**
 
 ```bash
 git add src-tauri/src/core/llm/claude.rs
@@ -600,7 +600,7 @@ git commit -m "feat: 实现 ClaudeProvider stream_translate 流式翻译"
 **文件：**
 - 修改：`src-tauri/src/ui/web_popup.rs`
 
-- [ ] **步骤 1：修改 import 与 factory match**
+- [x] **步骤 1：修改 import 与 factory match**
 
 将 web_popup.rs 开头的 import：
 
@@ -625,13 +625,13 @@ let provider: Arc<dyn LlmProvider> = match config.provider.as_str() {
 };
 ```
 
-- [ ] **步骤 2：运行编译验证**
+- [x] **步骤 2：运行编译验证**
 
 运行：`cd src-tauri && cargo build`
 
 预期：编译通过。
 
-- [ ] **步骤 3：Commit**
+- [x] **步骤 3：Commit**
 
 ```bash
 git add src-tauri/src/ui/web_popup.rs
@@ -647,7 +647,7 @@ git commit -m "feat: provider 工厂增加 claude 分支"
 - 修改：`frontend/main.js`
 - 修改：`frontend/style.css`
 
-- [ ] **步骤 1：在 `index.html` 中增加 provider 下拉和 Claude 表单**
+- [x] **步骤 1：在 `index.html` 中增加 provider 下拉和 Claude 表单**
 
 将设置面板从：
 
@@ -747,7 +747,7 @@ git commit -m "feat: provider 工厂增加 claude 分支"
 </div>
 ```
 
-- [ ] **步骤 2：更新 `main.js` —— provider 切换、配置读写、表单映射**
+- [x] **步骤 2：更新 `main.js` —— provider 切换、配置读写、表单映射**
 
 将常量声明区末尾增加：
 
@@ -856,13 +856,13 @@ function validateConfig(config) {
 providerSelect.addEventListener('change', toggleProviderSettings);
 ```
 
-- [ ] **步骤 3：运行前端语法检查**
+- [x] **步骤 3：运行前端语法检查**
 
 运行：`node --check frontend/main.js`
 
 预期：无报错。
 
-- [ ] **步骤 4：Commit**
+- [x] **步骤 4：Commit**
 
 ```bash
 git add frontend/index.html frontend/main.js
@@ -878,17 +878,17 @@ git commit -m "feat: 设置面板增加 provider 下拉与 Claude 表单"
 
 此任务在前序任务中已通过在 `ClaudeAppConfig` 每个字段加 `#[serde(default)]` 完成。验证步骤：
 
-- [ ] **步骤 1：确认旧 `config.json` 可反序列化**
+- [x] **步骤 1：确认旧 `config.json` 可反序列化**
 
 检查 `src-tauri/src/core/config/types.rs` 中 `AppConfig` 的 `claude` 字段是否保证存在且可默认反序列化。确认 `#[serde(default)]` 已覆盖。
 
-- [ ] **步骤 2：运行编译与测试**
+- [x] **步骤 2：运行编译与测试**
 
 运行：`cd src-tauri && cargo test && cargo build`
 
 预期：全部编译通过，测试通过。
 
-- [ ] **步骤 3：Commit**
+- [x] **步骤 3：Commit**
 
 ```bash
 git add src-tauri/src/core/config/types.rs
@@ -903,17 +903,17 @@ git commit -m "fix: 通过 serde(default) 确保旧 config.json 可平滑升级"
 - 修改：`AGENTS.md`（如有需要）
 - 修改：`CLAUDE.md`（如有需要）
 
-- [ ] **步骤 1：编译 release 确认无 warning**
+- [x] **步骤 1：编译 release 确认无 warning**
 
 运行：`cd src-tauri && cargo build --release 2>&1 | Select-String "warning|error"`
 
 预期：无 warning/error（allowed 的除外）。
 
-- [ ] **步骤 2：检查项目文档是否需同步**
+- [x] **步骤 2：检查项目文档是否需同步**
 
 检查 `AGENTS.md` 中 provider 列表、配置说明、前后端通信部分，确认 Claude 已纳入描述。需同步则修改对应段落。
 
-- [ ] **步骤 3：Commit**
+- [x] **步骤 3：Commit**
 
 ```bash
 git add AGENTS.md CLAUDE.md  # （如有改动）
