@@ -13,19 +13,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```
 frontend/          静态前端（原生 HTML/JS/CSS，无构建步骤）
   index.html       主窗口 UI：翻译输入、输出区、内嵌设置面板
+  overlay.html     截图 OCR overlay：canvas 整屏 BGRA 渲染 + 鼠标框选，回传 CSS 矩形
   main.js          前端交互：配置读写、翻译触发、translation:event 监听与流式渲染
   style.css        主窗口样式
 src-tauri/         Rust 后端 + Tauri 配置
   src/lib.rs       应用装配入口：注册插件、commands、托盘、快捷键、窗口生命周期
   src/main.rs      薄入口，调用 shizi_lib::run()
-  src/app/         应用编排：托盘、全局快捷键、窗口控制、AppState
+  src/app/         应用编排：托盘、全局快捷键、窗口控制、AppState（含 capture/translation 锁）
   src/core/config/ 本地配置模型与 JSON 存储
   src/core/llm/    LLM provider 抽象、mock、OpenAI-compatible 流式 provider
   src/core/selection/ 划词复制：剪贴板文本读取、Ctrl+C 模拟
   src/core/translation/ 翻译请求、事件与 TranslationService
-  src/ui/          Tauri commands 与 WebView 事件桥：翻译、配置
+  src/core/capture/ 截图抽象：CapturedImage、crop 内存裁剪、css_rect_to_physical DPI 换算
+  src/core/ocr/ OCR engine 抽象、Windows.Media.Ocr 实现
+  src/core/ocr_translation.rs 截图+OCR→TranslationInput 编排（含区域裁剪 workflow）
+  src/platform/ 平台缝：windows/（DXGI 抓帧、Windows OCR）+ unsupported/
+  src/ui/          Tauri commands 与 WebView 事件桥：翻译、配置、OCR 编排、overlay 框选
   tauri.conf.json  窗口尺寸、标题、产品标识；frontendDist 指向 ../frontend
-  capabilities/    Tauri 权限清单（core + global-shortcut）
+  capabilities/    Tauri 权限清单（core + global-shortcut，含 screenshot-overlay 窗口）
 pot-desktop/       参考实现（Pot 源码，仅供学习对照，不要直接修改）
 plugins.md         已安装插件/技能清单（新增或升级后必须同步）
 ```
@@ -57,8 +62,8 @@ cd src-tauri && cargo clean           # 清理 Rust 编译缓存
   - **核心层**：Rust 实现，承载翻译业务、配置管理、LLM provider、划词复制等能力。
   - **UI 层**：当前仍是单 WebView 主窗口，包含翻译区与内嵌设置面板；后续目标是拆成 ①**翻译弹窗** 与 ②**设置页面** 两个可替换模块。新增能力时不要把核心逻辑写进前端，也不要让未来两个 UI 模块互相耦合。
 - **托盘驻留模型**：窗口的 `CloseRequested` 被拦截改为 `hide()`，应用通过托盘菜单「退出」才会真正退出；详见 [src-tauri/src/app/window.rs](src-tauri/src/app/window.rs) 与 [src-tauri/src/app/tray.rs](src-tauri/src/app/tray.rs)。
-- **全局快捷键**：`Alt+T` 当前用于划词复制并自动翻译，由 `tauri-plugin-global-shortcut` 注册，逻辑集中在 `src-tauri/src/app/shortcuts.rs`。新增快捷键时需在 `capabilities/default.json` 同步授权。
-- **前后端通信**：当前已有 Tauri commands：`start_translation`、`take_pending_source_text`、`get_app_config`、`save_app_config`。后端通过 `translation:event` 向前端推送 `Started` / `Delta` / `Finished` / `Failed`。
+- **全局快捷键**：`Alt+T` 划词复制并自动翻译；`Alt+O` 触发截图 OCR 翻译（DXGI 抓光标所在显示器整屏帧 → 自建 overlay 区域框选 → crop → Windows.Media.Ocr → 复用翻译链路）。由 `tauri-plugin-global-shortcut` 注册，逻辑集中在 `src-tauri/src/app/shortcuts.rs`。新增快捷键时需在 `capabilities/default.json` 同步授权。
+- **前后端通信**：当前已有 Tauri commands：`start_translation`、`take_pending_source_text`、`get_app_config`、`save_app_config`，以及截图 overlay 四命令 `get_capture_frame_meta` / `get_capture_frame_bytes` / `submit_capture_region` / `cancel_capture`。后端通过 `translation:event` 向前端推送 `Started` / `Delta` / `Finished` / `Failed`。
 - **配置存储**：当前设置面板将 OpenAI-compatible 配置保存到 Tauri app config dir 下的 `config.json`。API Key 在 MVP 阶段明文保存，后续产品化需迁移到系统 SecretStore。
 
 ## 开发说明
