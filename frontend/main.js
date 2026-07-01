@@ -3,6 +3,8 @@ const outputText = document.getElementById('outputText');
 const translateBtn = document.getElementById('translateBtn');
 const settingsBtn = document.getElementById('settingsBtn');
 const clearBtn = document.getElementById('clearBtn');
+const cancelBtn = document.getElementById('cancelBtn');
+const retryBtn = document.getElementById('retryBtn');
 const settingsPanel = document.getElementById('settingsPanel');
 const targetLangInput = document.getElementById('targetLangInput');
 const apiKeyInput = document.getElementById('apiKeyInput');
@@ -24,11 +26,14 @@ function resetOutput() {
   outputText.style.color = '#999';
 }
 
-function setTranslating(value) {
-  isTranslating = value;
-  translateBtn.disabled = value;
-  clearBtn.disabled = value;
-  translateBtn.textContent = value ? '翻译中...' : '翻译';
+function setActionButtons({ translating, canRetry }) {
+  isTranslating = translating;
+  translateBtn.disabled = translating;
+  clearBtn.disabled = translating;
+  translateBtn.textContent = translating ? '翻译中...' : '翻译';
+  cancelBtn.hidden = !translating;
+  retryBtn.hidden = !canRetry;
+  retryBtn.disabled = translating;
 }
 
 function setConfigStatus(message, isError = false) {
@@ -169,7 +174,7 @@ function renderTranslationEvent(payload) {
       inputText.value = payload.sourceText ?? inputText.value;
       outputText.textContent = '';
       outputText.style.color = '#333';
-      setTranslating(true);
+      setActionButtons({ translating: true, canRetry: false });
       break;
     case 'delta':
       if (!shouldHandleSessionEvent(payload)) return;
@@ -182,7 +187,7 @@ function renderTranslationEvent(payload) {
       outputText.textContent = payload.fullText ?? outputText.textContent;
       outputText.style.color = '#333';
       currentSessionId = null;
-      setTranslating(false);
+      setActionButtons({ translating: false, canRetry: true });
       scrollOutputToBottom();
       break;
     case 'failed':
@@ -190,8 +195,15 @@ function renderTranslationEvent(payload) {
       outputText.textContent = payload.message ?? '翻译失败';
       outputText.style.color = '#b42318';
       currentSessionId = null;
-      setTranslating(false);
+      setActionButtons({ translating: false, canRetry: true });
       scrollOutputToBottom();
+      break;
+    case 'cancelled':
+      if (!shouldHandleSessionEvent(payload)) return;
+      outputText.textContent += '\n[已取消]';
+      outputText.style.color = '#999';
+      currentSessionId = null;
+      setActionButtons({ translating: false, canRetry: true });
       break;
     default:
       break;
@@ -237,7 +249,7 @@ translateBtn.addEventListener('click', async () => {
 
   outputText.textContent = '翻译中...';
   outputText.style.color = '#999';
-  setTranslating(true);
+  setActionButtons({ translating: true, canRetry: false });
 
   try {
     await invoke('start_translation', { text });
@@ -245,7 +257,7 @@ translateBtn.addEventListener('click', async () => {
     outputText.textContent = String(error);
     outputText.style.color = '#b42318';
     currentSessionId = null;
-    setTranslating(false);
+    setActionButtons({ translating: false, canRetry: true });
   }
 });
 
@@ -256,7 +268,41 @@ clearBtn.addEventListener('click', () => {
   inputText.value = '';
   currentSessionId = null;
   resetOutput();
-  setTranslating(false);
+  setActionButtons({ translating: false, canRetry: false });
+});
+
+cancelBtn.addEventListener('click', async () => {
+  if (!invoke) {
+    return;
+  }
+  try {
+    await invoke('cancel_translation');
+  } catch (error) {
+    outputText.textContent = String(error);
+    outputText.style.color = '#b42318';
+  }
+});
+
+retryBtn.addEventListener('click', async () => {
+  if (isTranslating) {
+    return;
+  }
+  if (!invoke) {
+    outputText.textContent = 'Tauri API 未就绪，请在桌面应用中运行';
+    outputText.style.color = '#b42318';
+    return;
+  }
+  outputText.textContent = '翻译中...';
+  outputText.style.color = '#999';
+  setActionButtons({ translating: true, canRetry: false });
+  try {
+    await invoke('retry_translation');
+  } catch (error) {
+    outputText.textContent = String(error);
+    outputText.style.color = '#b42318';
+    currentSessionId = null;
+    setActionButtons({ translating: false, canRetry: true });
+  }
 });
 
 inputText.addEventListener('keydown', (e) => {
