@@ -442,9 +442,11 @@ git commit -m "feat(frontend): Started 事件按来源切换徽章显隐"
 
 按协作规范第 2 条，回填本计划复选框，并同步相关设计文档（README 当前能力与限制、roadmap 完成状态、milestone 2 任务 5 状态）。
 
-- [ ] **步骤 6：收尾**
+- [x] **步骤 6：收尾**
 
 执行 `finishing-a-development-branch`（或等价 finish 流程）做合并/清理。
+
+> 收尾结论：本仓库为单分支（`master`）无远程的普通仓库，「翻译来源展示」功能已实现并提交、测试通过（62 passed）、文档同步完成。`finishing-a-development-branch` 流程检测后采用「保持现状」——无合并目标与远程，无可执行的合并/PR/清理动作，功能闭环。
 
 ---
 
