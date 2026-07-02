@@ -7,7 +7,7 @@
 ## 项目结构
 
 ```
-frontend/          静态前端（原生 HTML/JS/CSS，无构建步骤），按职责拆为三个独立页面
+frontend/          Vite 工程：设置页 settings.html 为 Vue 3 + Tailwind v4 + shadcn-vue 入口；translate.html / overlay.html 平铺在 frontend/public/ 保持纯静态（overlay 永久不迁）。构建产物 frontend/dist/。
   settings.html    主窗口设置页：provider / 目标语言 / API Key 等配置
   translate.html   独立翻译弹窗：监听 translation:event 流式渲染、取消重试、来源徽章
   overlay.html     截图 OCR overlay：canvas 整屏 BGRA 渲染 + 鼠标框选，回传 CSS 矩形
@@ -43,7 +43,8 @@ Tauri 2 + 原生静态前端 —— 没有 Vite/webpack/打包步骤，前端文
 ## 常用命令
 
 ```bash
-npm run tauri dev           # 开发模式（启动后端 + 加载 frontend/）
+npm install                 # 首次需装前端依赖
+npm run tauri dev           # 开发模式（拉起 Vite dev server + 后端）
 npm run tauri build         # 生成 release 安装包（MSI/NSIS）
 cd src-tauri && cargo build           # 仅构建后端 debug
 cd src-tauri && cargo build --release # 仅构建后端 release（产物：src-tauri/target/release/shizi.exe）
@@ -82,10 +83,13 @@ cd src-tauri && cargo clean           # 清理 Rust 编译缓存
 ```bash
 cd src-tauri && cargo test
 cd src-tauri && cargo build
-node --check frontend/main.js
+npm run dev                 # 仅启动前端 Vite dev server
+npm run build               # 仅构建前端到 frontend/dist/
+npm run typecheck           # vue-tsc 类型检查
+npm run test                # vitest 单测
 ```
 
-前端尚未引入测试框架，当前以前端语法检查 + Tauri dev 手动验证为主。
+前端 validateConfig 纯函数已覆盖 vitest 单测（`npm run test`）；Vue 组件通过 vue-tsc 类型检查（`npm run typecheck`）和 Tauri dev 手动验证。
 
 ## 协作规范
 
@@ -168,4 +172,3 @@ Skills 位于 `.codex/skills/` 目录，每个 skill 有独立的 `SKILL.md` 文
 
 如果你认为哪怕只有 1% 的可能性某个 skill 适用于你正在做的事情，你必须调用该 skill 检查。
 <!-- superpowers-zh:end -->
-

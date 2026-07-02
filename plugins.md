@@ -43,3 +43,24 @@
 - **安装方式**：手动创建
 - **功能**：根据当前 git 工作区修改自动分析生成 Conventional Commits 格式的提交信息并提交
 - **升级方式**：直接编辑 `.claude/skills/my-commit/SKILL.md`
+
+## 前端依赖（Vite 工程）
+
+设置页引入 Vite 构建步骤，依赖如下：
+
+| 依赖 | 版本 | 用途 |
+|------|------|------|
+| Vite | ^7 | 前端构建工具与 dev server |
+| Vue | ^3.5 | 前端框架 |
+| `@vitejs/plugin-vue` | ^6 | Vite Vue 3 SFC 编译插件 |
+| Tailwind CSS | ^4 | 原子化 CSS 框架 |
+| `@tailwindcss/vite` | ^4 | Tailwind v4 Vite 插件 |
+| shadcn-vue | latest | UI 组件库（new-york 风格，按需拷贝源码至 `frontend/src/components/ui/`） |
+| reka-ui | ^2 | shadcn-vue 底层无样式组件库 |
+| `@iconify/vue` | ^4 | 图标组件 |
+| class-variance-authority | ^0.7 | 组件变体管理 |
+| clsx | ^2 | 类名合并工具 |
+| tailwind-merge | ^3 | Tailwind 类名冲突合并 |
+| TypeScript | ^5.6 | 类型系统 |
+| vue-tsc | ^2 | Vue TypeScript 类型检查 |
+| vitest | ^3 | 单元测试框架 |

@@ -426,6 +426,14 @@ translation_total_ms
 
 ## 参考源码分析流程
 
+## 前端体验优化（Tauri UI 路线）
+
+在 Tauri UI（WebView）路线下持续提升前端体验，暂不切 Slint。
+
+- **设置页 Vue 3 重构**（骨架可交付，2026-07）：Vite 7 + Vue 3.5 + Tailwind CSS v4 + shadcn-vue（new-york）+ Iconify 替换原纯静态 HTML/JS/CSS。translate / overlay 平铺进 `frontend/public/` 保持纯静态（overlay 永久不迁）。构建产物 `frontend/dist/`。UI 视觉细节待 open design 原型图定稿后打磨。
+- 翻译页 Vue 迁移（后续）
+- 最终视实际体验决定是否切 Slint
+
 参考 Poets / Pot 等项目时，必须先分析再设计，不能边看边搬。推荐流程：
 
 ```text

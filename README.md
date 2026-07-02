@@ -4,16 +4,16 @@
 
 ## 当前能力
 
-当前 MVP 基于 Tauri 2 + Rust 后端 + 原生静态 Web 前端实现，已经具备：
+当前 MVP 基于 Tauri 2 + Rust 后端 + Vue 3 前端实现，已经具备：
 
 - 托盘常驻：关闭窗口会隐藏到托盘，通过托盘菜单退出应用。
-- 手动输入翻译：在主窗口输入文本后点击“翻译”。
+- 手动输入翻译：在主窗口输入文本后点击"翻译"。
 - `Alt+T` 划词翻译：在其他应用中选中文本后按 `Alt+T`，应用会尝试模拟 `Ctrl+C` 读取选中文本并自动翻译。
 - `Alt+O` 截图 OCR 翻译：通过 DXGI Desktop Duplication 抓取光标所在显示器整屏帧，在自建 overlay 窗口上鼠标框选区域，经 `Windows.Media.Ocr` 识别后复用翻译链路（Esc / 右键 / 选区过小可取消）。
 - OpenAI-compatible 流式翻译 provider：调用兼容 `/v1/chat/completions` 的流式接口。
 - Claude / Anthropic 流式翻译 provider：调用 Anthropic Messages API 的 SSE 流式接口，支持 thinking 模式。
 - Mock provider：用于无真实 API Key 的本地验证。
-- 独立设置页与独立翻译弹窗：主窗口承载设置页，划词 / OCR 触发时弹出独立翻译弹窗并跟随光标定位，两者互不耦合。
+- 独立设置页与独立翻译弹窗：主窗口承载设置页（Vue 3 + Tailwind v4 + shadcn-vue），划词 / OCR 触发时弹出独立翻译弹窗并跟随光标定位，两者互不耦合。
 - 流式结果展示：Rust 后端通过 Tauri event 推送翻译状态和增量文本，前端实时渲染。
 - 翻译取消与重试：流式翻译过程中可取消，失败或取消后可一键重试。
 - OCR 错误指引：截图 OCR 失败（缺语言包 / 识别为空 / 区域过大等）时给出带阶段前缀与可操作指引的错误文案，并隐藏无意义的重试按钮。
@@ -26,7 +26,7 @@
 
 1. 启动应用。
 2. 在输入框输入要翻译的文本。
-3. 点击“翻译”。
+3. 点击"翻译"。
 
 ### 划词翻译
 
@@ -46,13 +46,17 @@
 
 ## 配置
 
-主窗口为独立设置页，当前支持：
+主窗口为独立设置页（Vue 3 + Tailwind v4 + shadcn-vue + Iconify），当前支持：
 
 - 目标语言
+- Provider 选择（OpenAI Compatible / Claude / Mock）
 - API Key
 - Base URL
 - Model
 - Timeout 秒
+- 窗口策略（预创建翻译弹窗/截图窗口、token 用量采集）
+
+> translate / overlay 仍为纯静态 HTML/JS/CSS（`frontend/public/`），overlay 永久不迁。
 
 配置会保存到 Tauri 的应用配置目录下的 `config.json`。
 
@@ -96,57 +100,18 @@ SHIZI_LLM_PROVIDER=mock npm run tauri dev
 
 ## 命令
 
-### 运行（开发模式）
-
 ```bash
-npm run tauri dev
-```
-
-### 编译（debug）
-
-```bash
-cd src-tauri && cargo build
-```
-
-### 测试（Rust）
-
-```bash
-cd src-tauri && cargo test
-```
-
-### 前端语法检查
-
-```bash
-node --check frontend/main.js
-```
-
-### 打包（release）
-
-```bash
-cd src-tauri && cargo build --release
-# release exe: src-tauri/target/release/shizi.exe
-```
-
-### 生成安装包（MSI/NSIS）
-
-```bash
-npm run tauri build
-# 安装包: src-tauri/target/release/bundle/msi/ 或 bundle/nsis/
-```
-
-### 调试
-
-```bash
-npm run tauri dev
-# 或直接运行 release exe:
-./src-tauri/target/release/shizi.exe
-```
-
-### 清理编译缓存
-
-```bash
-cd src-tauri && cargo clean
-# 删除整个 target 目录（可节省数 GB 空间）
+npm install               # 首次需装前端依赖（Vite/Vue/Tailwind/shadcn-vue）
+npm run tauri dev         # 开发模式（拉起 Vite dev server + 后端）
+npm run tauri build       # 生成 release 安装包
+npm run dev               # 仅启动前端 Vite dev server（无 Tauri 容器，invoke 不可用）
+npm run build             # 仅构建前端到 frontend/dist/
+npm run typecheck         # vue-tsc 类型检查
+npm run test              # vitest 单测
+cd src-tauri && cargo build           # 仅构建后端 debug
+cd src-tauri && cargo build --release # 仅构建后端 release
+cd src-tauri && cargo test            # 后端单测
+cd src-tauri && cargo clean           # 清理 Rust 编译缓存
 ```
 
 > `npx tauri dev` 也可代替 `npm run tauri dev` 执行。
