@@ -81,7 +81,7 @@ src-tauri/src/ui/settings_commands.rs
 - ~~Anthropic / Claude 专用 provider~~ ✅。
 - `TranslationInput` / `TranslationMode` 的完整输入模型。
 - ~~`Cancelled` 事件~~ ✅、~~usage/token 统计~~ ✅、~~取消/重试交互~~ ✅。
-- 独立设置页与独立翻译弹窗拆分。
+- 独立设置页与独立翻译弹窗拆分 ✅。
 - OCR / 截图 / Slint 原生弹窗。
 
 当前 MVP 的实际文件结构与本计划早期命名略有差异：

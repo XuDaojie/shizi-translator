@@ -70,7 +70,7 @@ MVP 简化点：
 - 尚未抽出 `TranslationEventSink` trait；当前通过闭包和 Tauri `emit` 完成事件投递。
 - 当前 `TranslationRequest` 仍是 `source_text + target_lang` 的简化结构，不是完整 `TranslationInput`。
 - 当前 `TranslationEvent` 不包含 `Cancelled`、`usage` 等后续字段。
-- 当前设置 UI 仍内嵌在主窗口，并不是独立设置页。
+- 当前设置页已拆分为独立 WebView（6 分类面板、多服务实例、reka-ui 组件库），通过 projectToAppConfig 桥接后端 save_app_config。
 
 后续演进：
 
