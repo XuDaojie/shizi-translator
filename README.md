@@ -13,7 +13,7 @@
 - OpenAI-compatible 流式翻译 provider：调用兼容 `/v1/chat/completions` 的流式接口。
 - Claude / Anthropic 流式翻译 provider：调用 Anthropic Messages API 的 SSE 流式接口，支持 thinking 模式。
 - Mock provider：用于无真实 API Key 的本地验证。
-- 独立设置页与独立翻译弹窗：主窗口承载设置页（Vue 3 + Tailwind v4 + shadcn-vue），划词 / OCR 触发时弹出独立翻译弹窗并跟随光标定位，两者互不耦合。
+- 独立设置页与独立翻译弹窗：主窗口承载设置页（Vue 3 + Tailwind v4 + reka-ui + @lucide/vue），含通用/翻译/快捷键/服务/历史/高级 6 个分类面板，支持多服务实例管理；划词 / OCR 触发时弹出独立翻译弹窗并跟随光标定位，两者互不耦合。
 - 流式结果展示：Rust 后端通过 Tauri event 推送翻译状态和增量文本，前端实时渲染。
 - 翻译取消与重试：流式翻译过程中可取消，失败或取消后可一键重试。
 - OCR 错误指引：截图 OCR 失败（缺语言包 / 识别为空 / 区域过大等）时给出带阶段前缀与可操作指引的错误文案，并隐藏无意义的重试按钮。
@@ -46,15 +46,15 @@
 
 ## 配置
 
-主窗口为独立设置页（Vue 3 + Tailwind v4 + shadcn-vue + Iconify），当前支持：
+主窗口为独立设置页（Vue 3 + Tailwind v4 + reka-ui + @lucide/vue + @iconify/vue），当前支持：
 
-- 目标语言
-- Provider 选择（OpenAI Compatible / Claude / Mock）
-- API Key
-- Base URL
-- Model
-- Timeout 秒
-- 窗口策略（预创建翻译弹窗/截图窗口、token 用量采集）
+- 通用（开机启动/主题/语言/关闭行为/窗口预创建策略/更新）
+- 翻译（源语言/目标语言/默认服务实例/复制粘贴行为）
+- 快捷键（Alt+T 划词/Alt+O 截图 OCR/取词等 6 项，后端硬编码不可配）
+- 服务（内置 15 个渠道 + 自定义渠道，支持多实例、Key 管理、模型拉取、思维链深度、提示词编辑）
+- 历史（OCR 翻译历史，含时间戳/源语种/目标语种/原文/译文）
+- 高级（日志等级/导出/实验功能/匿名统计/配置导入导出/重置/关于）
+
 
 > translate / overlay 仍为纯静态 HTML/JS/CSS（`frontend/public/`），overlay 永久不迁。
 
@@ -89,8 +89,8 @@ SHIZI_LLM_PROVIDER=mock npm run tauri dev
 以下能力尚未实现：
 
 - Slint 原生高性能翻译弹窗。
-- API Key 系统安全存储。
-- 翻译历史记录、快捷键自定义。
+- 快捷键（Alt+T 划词/Alt+O 截图 OCR/取词等 6 项，后端硬编码不可配） 系统安全存储。
+- 快捷键自定义、深色模式、部分面板操作（历史/语音输入等）——已在设置页 UI 中以「实现中」标签预留。
 
 截图 OCR 已落地，但存在以下 MVP 已知限制：
 
