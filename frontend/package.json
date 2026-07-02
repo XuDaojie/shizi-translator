@@ -1,0 +1,9 @@
+{
+  "name": "shizi-frontend",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@lucide/vue": "^1.23.0",
+    "reka-ui": "^2.10.1"
+  }
+}
