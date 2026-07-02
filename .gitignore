@@ -4,6 +4,7 @@ src-tauri/target/
 src-tauri/gen/
 # src-tauri/icons/ (committed)
 frontend/node_modules/
+frontend/dist/
 node_modules/
 .idea
 pot-desktop/
