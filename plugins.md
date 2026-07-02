@@ -13,6 +13,14 @@
 - **来源**：https://github.com/jnMetaCode/superpowers-zh
 - **升级命令**：`npx superpowers-zh@latest`
 
+### Chrome DevTools MCP
+
+- **配置方式**：已添加到 ~/.codex/config.toml 的 [mcp_servers.chrome-devtools]
+- **功能**：让 AI 编码助手控制和检查 Chrome 浏览器，提供 DevTools 级别的能力：性能分析、网络请求、截图、控制浏览器等
+- **来源**：https://github.com/diegorafs/Chrome-DevTools-MCP
+- **升级命令**：
+px chrome-devtools-mcp@latest（自动使用最新版）
+
 ### ponytail
 
 - **安装方式**：`claude plugin marketplace add DietrichGebert/ponytail` 后运行 `claude plugin install ponytail@ponytail`
