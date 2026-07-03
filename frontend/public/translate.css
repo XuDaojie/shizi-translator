@@ -47,13 +47,14 @@ body {
 
 /* === 弹窗外壳 ===
    WebView2 窗口与 .popup 同尺寸（420x 自适应高），不再用 body padding
-   留阴影空间：阴影改由 .popup::after 在 .popup 内部底部用渐变渲染，
-   既消除「外圈透明带阴影边框」的视觉错觉，又避免阴影被 WebView2 窗口
-   边缘裁切。*/
+   留阴影空间：阴影改由 .popup::after 在 .popup 内部底部用渐变渲染。
+   border-radius 设为 0：WebView2 窗口在桌面合成时自身会带轻微圆角，
+   若 .popup 再叠 14px 圆角，4 角会被切成不一致的弧度；统一为锐角后
+   4 角就完全一致了。*/
 .popup {
   width: 100%;
   background: var(--bg-popup);
-  border-radius: var(--radius-lg);
+  border-radius: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
