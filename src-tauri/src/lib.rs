@@ -14,6 +14,7 @@ use core::config::ConfigStore;
 use tauri::Manager;
 use ui::{
     config::{get_app_config, save_app_config, open_settings},
+    ocr_popup::trigger_ocr_translation,
     overlay::{
         cancel_capture, ensure_overlay, get_capture_frame_bytes, get_capture_frame_meta,
         show_overlay, submit_capture_region,
@@ -37,6 +38,7 @@ pub fn run() {
         )
         .invoke_handler(tauri::generate_handler![
             start_translation,
+            trigger_ocr_translation,
             cancel_translation,
             retry_translation,
             take_pending_source_text,

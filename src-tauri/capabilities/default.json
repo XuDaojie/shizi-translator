@@ -4,6 +4,8 @@
   "windows": ["main", "screenshot-overlay", "translation-popup"],
   "permissions": [
     "core:default",
+    "core:window:allow-set-always-on-top",
+    "core:window:allow-set-size",
     "global-shortcut:default"
   ]
 }

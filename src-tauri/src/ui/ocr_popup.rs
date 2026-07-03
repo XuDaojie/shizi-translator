@@ -1,5 +1,5 @@
 use crate::{
-    app::state::AppState,
+    app::{popup_window, state::AppState},
     core::{capture::CaptureError, ocr::OcrError, ocr_translation::OcrTranslationError},
     platform::capture_screen,
     ui::{overlay, web_popup::show_translation_error},
@@ -59,6 +59,20 @@ pub async fn start_translation_from_ocr(app: tauri::AppHandle, state: AppState) 
         let _ = state.finish_capture();
         show_translation_error(&app, format!("无法打开截图窗口：{error}"));
     }
+}
+
+/// 翻译弹窗「截图翻译」按钮入口：先隐藏弹窗避免被抓进截图帧，再复用 Alt+O 的 OCR 链路。
+/// 框选完成后 submit_capture_region 内部 show_translation_popup 会重新 show 并定位弹窗。
+#[tauri::command]
+pub async fn trigger_ocr_translation(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    if let Some(popup) = app.get_webview_window(popup_window::POPUP_LABEL) {
+        let _ = popup.hide();
+    }
+    start_translation_from_ocr(app, state.inner().clone()).await;
+    Ok(())
 }
 
 pub fn friendly_ocr_error(error: OcrTranslationError) -> String {
