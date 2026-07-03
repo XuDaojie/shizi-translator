@@ -77,12 +77,25 @@ pub fn start_translation_from_input(
         .config_store
         .get()
         .map_err(|error| error.to_string())?;
-    let provider: Arc<dyn LlmProvider> = match config.provider.as_str() {
+    let service = config.services.iter()
+        .find(|s| s.enabled && s.api_key.is_some())
+        .or_else(|| config.services.iter().find(|s| s.enabled && s.protocol == "mock"))
+        .ok_or_else(|| "没有已启用并配置 API Key 的翻译服务".to_string())?;
+    let provider: Arc<dyn LlmProvider> = match service.protocol.as_str() {
         "mock" => Arc::new(MockLlmProvider),
-        "claude" => Arc::new(ClaudeProvider::new(ClaudeConfig::from(config.claude))),
-        _ => Arc::new(OpenAiCompatibleProvider::new(OpenAiCompatibleConfig::from(
-            config.openai_compatible,
-        ))),
+        "claude" => Arc::new(ClaudeProvider::new(ClaudeConfig {
+            api_key: service.api_key.clone(),
+            base_url: service.endpoint.clone(),
+            model: service.model.clone(),
+            timeout_seconds: service.timeout_seconds as u64,
+            enable_thinking: false,
+        })),
+        _ => Arc::new(OpenAiCompatibleProvider::new(OpenAiCompatibleConfig {
+            api_key: service.api_key.clone(),
+            base_url: service.endpoint.clone(),
+            model: service.model.clone(),
+            timeout_seconds: service.timeout_seconds as u64,
+        })),
     };
     let translation_service = TranslationService::new(provider);
 
