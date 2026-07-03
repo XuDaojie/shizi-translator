@@ -91,8 +91,8 @@ pub fn show_popup(app: &tauri::AppHandle, config: &AppConfig) -> Result<(), Stri
         .unwrap_or(1.0);
 
     if let Some((cx, cy, wx, wy, ww, wh)) = cursor_logical_context(scale) {
-        const POPUP_W: f64 = 400.0;
-        const POPUP_H: f64 = 300.0;
+        const POPUP_W: f64 = 452.0;
+        const POPUP_H: f64 = 512.0;
         let pos = compute_popup_position(
             LogicalPos { x: cx, y: cy },
             LogicalSize { width: POPUP_W, height: POPUP_H },
@@ -109,9 +109,10 @@ pub fn show_popup(app: &tauri::AppHandle, config: &AppConfig) -> Result<(), Stri
 fn build_popup(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, String> {
     let window = WebviewWindowBuilder::new(app, POPUP_LABEL, WebviewUrl::App("translate.html".into()))
         .title("Shizi 翻译")
-        .inner_size(400.0, 300.0)
-        .decorations(true)
-        .resizable(true)
+        .inner_size(452.0, 512.0)
+        .decorations(false)
+        .transparent(true)
+        .resizable(false)
         .visible(false)
         .build()
         .map_err(|e| format!("创建翻译弹窗失败: {e}"))?;
