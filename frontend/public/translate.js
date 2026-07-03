@@ -399,13 +399,13 @@ function adjustHeight() {
     lastHeight = h;
     if (getCurrentWindow) {
       getCurrentWindow()
-        .setSize({ type: 'Logical', width: 452, height: h + 32 })
+        .setSize({ type: 'Logical', width: 420, height: h })
         .catch(() => {});
     }
   });
 }
 function initMaxHeight() {
-  const maxPopupH = Math.floor(window.screen.availHeight * 0.8) - 32;
+  const maxPopupH = Math.floor(window.screen.availHeight * 0.8);
   popupEl.style.maxHeight = maxPopupH + 'px';
 }
 const resizeObserver = new ResizeObserver(adjustHeight);
