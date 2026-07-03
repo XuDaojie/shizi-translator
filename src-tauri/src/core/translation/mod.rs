@@ -3,5 +3,6 @@ pub mod types;
 
 pub use service::TranslationService;
 pub use types::{
-    TokenUsage, TranslationEvent, TranslationInput, TranslationRequest, TranslationSessionId,
+    TokenUsage, TranslationEvent, TranslationInput, TranslationRequest, TranslationServiceMeta,
+    TranslationSessionId,
 };

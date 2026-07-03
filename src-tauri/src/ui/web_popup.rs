@@ -15,7 +15,7 @@ use crate::{
         llm::{ClaudeConfig, ClaudeProvider, LlmProvider, MockLlmProvider, OpenAiCompatibleConfig, OpenAiCompatibleProvider},
         translation::{
             TranslationEvent, TranslationInput, TranslationRequest, TranslationService,
-            TranslationSessionId,
+            TranslationServiceMeta, TranslationSessionId,
         },
     },
 };
@@ -100,10 +100,17 @@ pub fn start_translation_from_input(
     let translation_service = TranslationService::new(provider);
 
     let session_id = create_session_id()?;
+    let service_meta = TranslationServiceMeta {
+        service_instance_id: service.id.clone(),
+        service_name: service.name.clone(),
+        service_type: service.service_type.clone(),
+        protocol: service.protocol.clone(),
+    };
     let request = TranslationRequest {
         session_id: TranslationSessionId(session_id.clone()),
         input,
         target_lang: config.target_lang,
+        service: service_meta.clone(),
     };
 
     state.try_begin_translation()?;
@@ -131,6 +138,7 @@ pub fn start_translation_from_input(
         &app,
         TranslationEvent::Started {
             session_id: request.session_id.clone(),
+            service: service_meta.clone(),
             source_text: request.source_text().to_string(),
             source_type: request.input.kind().to_string(),
         },
@@ -143,6 +151,7 @@ pub fn start_translation_from_input(
     let app_handle = app.clone();
     let state_for_task = state.clone();
     let collect_usage = config.collect_usage;
+    let failed_service = service_meta.clone();
 
     tauri::async_runtime::spawn(async move {
         let failed_session_id = request.session_id.clone();
@@ -158,6 +167,7 @@ pub fn start_translation_from_input(
                 &app_handle,
                 TranslationEvent::Failed {
                     session_id: failed_session_id,
+                    service: failed_service,
                     message: error.to_string(),
                     retryable,
                 },
@@ -184,6 +194,7 @@ pub fn show_translation_error(app: &tauri::AppHandle, message: impl Into<String>
         app,
         TranslationEvent::Failed {
             session_id: TranslationSessionId(session_id),
+            service: TranslationServiceMeta::default(),
             message: message.into(),
             retryable: false,
         },
