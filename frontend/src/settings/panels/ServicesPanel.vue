@@ -32,6 +32,7 @@ import {
 import type { AppSettings, ServiceId, ServiceInstance } from '../types'
 import { DEFAULT_PROMPTS, MOCK_PULLED_MODELS, serviceById } from '../tokens'
 import { useSettings } from '../stores/settings'
+import { validateServiceForEnable } from '@/settings/service-validation'
 
 const props = defineProps<{
   state: AppSettings
@@ -174,6 +175,17 @@ const cancelNameEdit = (): void => {
 const draggedId = ref<string | null>(null)
 const dropTargetId = ref<string | null>(null)
 const dropPosition = ref<'before' | 'after'>('before')
+
+function handleToggle(instance: ServiceInstance): void {
+  if (!instance.enabled) {
+    const err = validateServiceForEnable(instance, serviceById(instance.type))
+    if (err) {
+      toast.error('启用失败', err)
+      return
+    }
+  }
+  instance.enabled = !instance.enabled
+}
 
 const onDragStart = (e: DragEvent, id: string): void => {
   if (!e.dataTransfer) return
@@ -332,7 +344,7 @@ const onDragEnd = (): void => {
                   <SettingSwitch
                     :model-value="inst.enabled"
                     :aria-label="`${inst.enabled ? '停用' : '启用'} ${inst.name}`"
-                    @update:model-value="(v) => (inst.enabled = v)"
+                    @update:model-value="() => handleToggle(inst)"
                   />
                 </div>
                 <!-- Drop indicator(蓝色横线) -->
@@ -618,7 +630,27 @@ const onDragEnd = (): void => {
         </div>
       </header>
 
-      <SettingGroup v-if="activeService.needsEndpoint" title="接入点" bare>
+      <SettingGroup title="接入点" bare>
+        <SettingRow
+          v-if="activeService?.protocols?.length"
+          title="协议"
+          description="选择接入该服务的通信协议。"
+          vertical
+        >
+          <template v-if="(activeService?.protocols?.length ?? 0) > 1">
+            <select
+              v-model="activeInstance.protocol"
+              class="flex h-9 w-full rounded-md border border-input bg-background px-3 text-xs"
+            >
+              <option v-for="p in activeService?.protocols" :key="p.id" :value="p.id">
+                {{ p.label }}
+              </option>
+            </select>
+          </template>
+          <span v-else class="text-xs text-foreground">
+            {{ activeService?.protocols?.[0]?.label ?? '—' }}
+          </span>
+        </SettingRow>
         <SettingRow
           title="API Endpoint"
           description="OpenAI 兼容协议的完整地址,例如 https://api.openai.com/v1。"
