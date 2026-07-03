@@ -134,10 +134,7 @@ function setSourceBadge(sourceType) {
 
 /* === 翻译事件渲染 === */
 function getSessionId(payload) {
-  const sessionId = payload?.sessionId;
-  if (typeof sessionId === 'string') return sessionId;
-  if (sessionId && typeof sessionId === 'object') return sessionId[0] ?? sessionId['0'] ?? null;
-  return null;
+  return payload?.sessionId ?? null;
 }
 function shouldHandleSessionEvent(payload) {
   const sessionId = getSessionId(payload);
@@ -324,10 +321,8 @@ async function togglePin() {
 }
 
 function toggleFav() {
-  const active = favBtn.classList.toggle('active');
-  const svg = favBtn.querySelector('svg');
-  if (svg) svg.setAttribute('fill', active ? 'currentColor' : 'none');
-  showToast(active ? '已收藏' : '取消收藏');
+  favBtn.classList.toggle('active');
+  showToast(favBtn.classList.contains('active') ? '已收藏' : '取消收藏');
 }
 
 async function triggerOcr() {
