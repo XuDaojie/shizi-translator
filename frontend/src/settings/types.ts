@@ -1,3 +1,5 @@
+import type { ServiceProtocolId } from '@/types/config';
+
 export type ThemeMode = 'light' | 'dark' | 'system'
 export type UILanguage = 'zh-CN' | 'en-US'
 export type UpdateChannel = 'stable' | 'beta'
@@ -72,6 +74,7 @@ export interface ServiceInstance {
   /** 用户可编辑的显示名,默认 `${渠道名} N`。 */
   name: string
   enabled: boolean
+  protocol: ServiceProtocolId
   apiKey: string
   model: string
   endpoint: string
@@ -114,8 +117,6 @@ export interface ServiceInstance {
 export interface TranslationSettings {
   defaultSourceLang: string
   defaultTargetLang: string
-  /** 默认翻译服务指向某个 ServiceInstance.id;空字符串表示"未选择"。 */
-  defaultServiceInstanceId: string
   autoCopy: boolean
   restoreClipboard: boolean
   autoPaste: boolean
@@ -140,6 +141,15 @@ export interface ShortcutBinding {
 
 export interface ShortcutSettings {
   bindings: ShortcutBinding[]
+}
+
+export type ServiceProtocolMeta = {
+  id: ServiceProtocolId
+  label: string
+  defaultEndpoint: string
+  defaultModel: string
+  editableEndpoint: boolean
+  status: 'available' | 'planned'
 }
 
 /**
@@ -208,4 +218,6 @@ export type ServiceMeta = {
   category: 'llm' | 'ml'
   /** 是否需要用户自行提供 API Key。true = 「需要密钥」,false = 「内置」(系统自带/本地)。 */
   keyRequired: boolean
+  officialEndpoint?: string
+  protocols: ServiceProtocolMeta[]
 }

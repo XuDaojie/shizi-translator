@@ -2,28 +2,23 @@
 // 后端用 #[serde(rename_all = "camelCase")]，故前端字段全部 camelCase。
 // 任何一方增删字段，必须同步本文件与 spec、README 配置说明。
 
-export type Provider = 'openai-compatible' | 'claude' | 'mock';
+export type ServiceProtocolId = 'openai_chat' | 'claude_messages';
 
-export interface OpenAiCompatibleConfig {
+export interface ServiceInstanceConfig {
+  id: string;
+  serviceType: string;
+  name: string;
+  enabled: boolean;
+  protocol: ServiceProtocolId;
   apiKey: string | null;
-  baseUrl: string;
+  endpoint: string;
   model: string;
   timeoutSeconds: number;
-}
-
-export interface ClaudeConfig {
-  apiKey: string | null;
-  baseUrl: string;
-  model: string;
-  timeoutSeconds: number;
-  enableThinking: boolean;
 }
 
 export interface AppConfig {
-  provider: Provider;
   targetLang: string;
-  openaiCompatible: OpenAiCompatibleConfig;
-  claude: ClaudeConfig;
+  services: ServiceInstanceConfig[];
   popupPrecreate: boolean;
   overlayPrecreate: boolean;
   collectUsage: boolean;
