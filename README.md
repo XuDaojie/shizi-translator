@@ -56,6 +56,12 @@
 - 高级（日志等级/导出/实验功能/匿名统计/配置导入导出/重置/关于）
 
 
+### 服务协议与多结果翻译（v0.2）
+
+- 服务列表默认展示 DeepSeek 与智谱 AI，默认关闭；启用后按列表顺序参与翻译。
+- 服务实例通过 `protocol` 选择调用协议；当前可用协议为 OpenAI Chat 与 Claude Messages。
+- 翻译弹窗按启用服务渲染多个结果卡，单个服务失败不影响其他服务。
+
 > translate / overlay 仍为纯静态 HTML/JS/CSS（`frontend/public/`），overlay 永久不迁。
 
 配置会保存到 Tauri 的应用配置目录下的 `config.json`。
