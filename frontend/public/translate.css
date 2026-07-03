@@ -33,6 +33,8 @@
   font-size: 16px;
 }
 
+html { background: transparent; }
+
 body {
   font-family: var(--font-family);
   background: transparent;
@@ -63,6 +65,7 @@ body {
   justify-content: space-between;
   padding: 3px 6px;
   min-height: 26px;
+  -webkit-app-region: drag;
 }
 .toolbar-left, .toolbar-right { display: flex; align-items: center; gap: 1px; }
 .toolbar-btn {
@@ -73,6 +76,7 @@ body {
   display: flex; align-items: center; justify-content: center;
   color: var(--fg-2);
   transition: background .15s, color .15s;
+  -webkit-app-region: no-drag;
 }
 .toolbar-btn:hover  { background: rgba(28,25,23,0.05); color: var(--fg); }
 .toolbar-btn.active { color: var(--accent); }
