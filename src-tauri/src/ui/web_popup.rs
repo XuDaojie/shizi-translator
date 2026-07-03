@@ -1,9 +1,9 @@
 use std::{
-    sync::Arc,
     thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use futures_util::future::join_all;
 use tauri::Emitter;
 use tauri::Manager;
 use tokio_util::sync::CancellationToken;
@@ -11,10 +11,10 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     app::{popup_window, state::AppState},
     core::{
-        config::AppConfig,
-        llm::{ClaudeConfig, ClaudeProvider, LlmProvider, MockLlmProvider, OpenAiCompatibleConfig, OpenAiCompatibleProvider},
+        config::{AppConfig, ServiceInstanceConfig},
+        llm::provider_for_service,
         translation::{
-            TranslationEvent, TranslationInput, TranslationRequest, TranslationService,
+            batch, TranslationEvent, TranslationInput, TranslationService,
             TranslationServiceMeta, TranslationSessionId,
         },
     },
@@ -77,41 +77,22 @@ pub fn start_translation_from_input(
         .config_store
         .get()
         .map_err(|error| error.to_string())?;
-    let service = config.services.iter()
-        .find(|s| s.enabled && s.api_key.is_some())
-        .or_else(|| config.services.iter().find(|s| s.enabled && s.protocol == "mock"))
-        .ok_or_else(|| "没有已启用并配置 API Key 的翻译服务".to_string())?;
-    let provider: Arc<dyn LlmProvider> = match service.protocol.as_str() {
-        "mock" => Arc::new(MockLlmProvider),
-        "claude" => Arc::new(ClaudeProvider::new(ClaudeConfig {
-            api_key: service.api_key.clone(),
-            base_url: service.endpoint.clone(),
-            model: service.model.clone(),
-            timeout_seconds: service.timeout_seconds as u64,
-            enable_thinking: false,
-        })),
-        _ => Arc::new(OpenAiCompatibleProvider::new(OpenAiCompatibleConfig {
-            api_key: service.api_key.clone(),
-            base_url: service.endpoint.clone(),
-            model: service.model.clone(),
-            timeout_seconds: service.timeout_seconds as u64,
-        })),
-    };
-    let translation_service = TranslationService::new(provider);
 
-    let session_id = create_session_id()?;
-    let service_meta = TranslationServiceMeta {
-        service_instance_id: service.id.clone(),
-        service_name: service.name.clone(),
-        service_type: service.service_type.clone(),
-        protocol: service.protocol.clone(),
-    };
-    let request = TranslationRequest {
-        session_id: TranslationSessionId(session_id.clone()),
-        input,
-        target_lang: config.target_lang,
-        service: service_meta.clone(),
-    };
+    let batch_id = create_session_id()?;
+
+    let requests = batch::build_batch_requests(
+        input.clone(),
+        config.target_lang.clone(),
+        &config.services,
+        &batch_id,
+    )?;
+
+    let enabled_services: Vec<ServiceInstanceConfig> = config
+        .services
+        .iter()
+        .filter(|s| s.enabled)
+        .cloned()
+        .collect();
 
     state.try_begin_translation()?;
 
@@ -120,64 +101,94 @@ pub fn start_translation_from_input(
         let _ = state.finish_translation();
         return Err(error);
     }
-    if let Err(error) = state.set_last_translation_input(request.input.clone()) {
+    if let Err(error) = state.set_last_translation_input(input.clone()) {
         let _ = state.clear_current_cancel_token();
         let _ = state.finish_translation();
         return Err(error);
     }
     if let Err(error) =
-        cache_automatic_source_text_for_popup(&request.input, request.source_text(), state)
+        cache_automatic_source_text_for_popup(&input, input.text(), state)
     {
         let _ = state.clear_current_cancel_token();
         let _ = state.finish_translation();
         return Err(error);
     }
 
+    // ponytail: 短暂延迟让弹窗渲染完成
     thread::sleep(Duration::from_millis(120));
-    emit_translation_event(
-        &app,
-        TranslationEvent::Started {
-            session_id: request.session_id.clone(),
-            service: service_meta.clone(),
-            source_text: request.source_text().to_string(),
-            source_type: request.input.kind().to_string(),
-        },
-    )
-    .map_err(|error| {
-        let _ = state.clear_current_cancel_token();
-        let _ = state.finish_translation();
-        error.to_string()
-    })?;
+
+    // 为每个服务发送 Started 事件
+    for request in &requests {
+        emit_translation_event(
+            &app,
+            TranslationEvent::Started {
+                session_id: request.session_id.clone(),
+                service: request.service.clone(),
+                source_text: request.source_text().to_string(),
+                source_type: request.input.kind().to_string(),
+            },
+        )
+        .map_err(|error| {
+            let _ = state.clear_current_cancel_token();
+            let _ = state.finish_translation();
+            error.to_string()
+        })?;
+    }
+
     let app_handle = app.clone();
     let state_for_task = state.clone();
     let collect_usage = config.collect_usage;
-    let failed_service = service_meta.clone();
 
     tauri::async_runtime::spawn(async move {
-        let failed_session_id = request.session_id.clone();
-        let result = translation_service
-            .translate_with(request, collect_usage, cancel_token, |event| {
-                let _ = emit_translation_event(&app_handle, event);
-            })
-            .await;
+        let jobs = requests.into_iter().zip(enabled_services).map(|(request, service_config)| {
+            let app_handle = app_handle.clone();
+            let cancel = cancel_token.clone();
+            async move {
+                let failed_session_id = request.session_id.clone();
+                let failed_service = request.service.clone();
 
-        if let Err(error) = result {
-            let retryable = error.retryable();
-            let _ = emit_translation_event(
-                &app_handle,
-                TranslationEvent::Failed {
-                    session_id: failed_session_id,
-                    service: failed_service,
-                    message: error.to_string(),
-                    retryable,
-                },
-            );
-        }
+                match provider_for_service(&service_config) {
+                    Ok(provider) => {
+                        let translation_service = TranslationService::new(provider);
+                        let result = translation_service
+                            .translate_with(request, collect_usage, cancel, |event| {
+                                let _ = emit_translation_event(&app_handle, event);
+                            })
+                            .await;
+
+                        if let Err(error) = result {
+                            let _ = emit_translation_event(
+                                &app_handle,
+                                TranslationEvent::Failed {
+                                    session_id: failed_session_id,
+                                    service: failed_service,
+                                    message: error.to_string(),
+                                    retryable: error.retryable(),
+                                },
+                            );
+                        }
+                    }
+                    Err(message) => {
+                        let _ = emit_translation_event(
+                            &app_handle,
+                            TranslationEvent::Failed {
+                                session_id: failed_session_id,
+                                service: failed_service,
+                                message,
+                                retryable: false,
+                            },
+                        );
+                    }
+                }
+            }
+        });
+
+        join_all(jobs).await;
         let _ = state_for_task.clear_current_cancel_token();
         let _ = state_for_task.finish_translation();
     });
 
-    Ok(session_id)
+    Ok(batch_id)
 }
 
 pub fn show_translation_error(app: &tauri::AppHandle, message: impl Into<String>) {
