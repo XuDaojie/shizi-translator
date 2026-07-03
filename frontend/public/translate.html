@@ -8,24 +8,110 @@
   <script type="module" src="translate.js" defer></script>
 </head>
 <body>
-  <div class="container">
-    <div class="input-area">
-      <textarea id="inputText" placeholder="输入要翻译的文本..." rows="3"></textarea>
+  <div class="popup" id="popup">
+    <!-- 顶部工具栏（自绘标题栏，data-tauri-drag-region 拖拽） -->
+    <div class="toolbar" data-tauri-drag-region>
+      <div class="toolbar-left">
+        <button class="toolbar-btn" id="pinBtn" title="固定窗口">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg>
+        </button>
+      </div>
+      <div class="toolbar-right">
+        <button class="toolbar-btn" id="favBtn" title="收藏">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        </button>
+        <button class="toolbar-btn" id="ocrBtn" title="截图翻译">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6-6 6 6M6 15l6 6 6-6"/></svg>
+        </button>
+        <button class="toolbar-btn" id="bookmarkBtn" title="书签">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>
+        </button>
+        <button class="toolbar-btn" id="settingsBtn" title="设置">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+        </button>
+      </div>
     </div>
 
-    <div class="action-bar">
-      <button id="translateBtn">翻译</button>
-      <button id="cancelBtn" hidden>取消</button>
-      <button id="retryBtn" hidden>重试</button>
-      <button id="settingsBtn">设置</button>
-      <button id="clearBtn">清空</button>
+    <div class="content">
+      <div class="source-card">
+        <textarea class="source-input" id="sourceText" placeholder="输入要翻译的文本..." rows="3"></textarea>
+        <div class="source-meta">
+          <button class="meta-btn" id="speakSourceBtn" title="朗读原文">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07"/></svg>
+          </button>
+          <button class="meta-btn" id="copySourceBtn" title="复制原文">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+          </button>
+          <div class="meta-badges">
+            <span class="source-badge" id="sourceBadge"></span>
+            <span class="lang-badge">自动检测</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="lang-toolbar">
+        <button class="lang-side" id="langSource">
+          <span class="lang-label">自动检测</span>
+          <svg class="lang-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <button class="lang-swap" id="langSwap" title="交换语言">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16l-4-4 4-4"/><path d="M17 8l4 4-4 4"/><line x1="3" y1="12" x2="21" y2="12"/></svg>
+        </button>
+        <button class="lang-side" id="langTarget">
+          <span class="lang-label">简体中文</span>
+          <svg class="lang-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+      </div>
+
+      <div class="results" id="results">
+        <div class="result-card" id="resultCard">
+          <div class="result-card-header" id="resultHeader">
+            <svg class="result-engine-icon" id="resultEngineIcon" viewBox="0 0 20 20"><rect width="20" height="20" rx="5" fill="#94918A"/></svg>
+            <span class="result-engine-name" id="resultEngineName">翻译</span>
+            <button class="result-collapse-btn" id="collapseBtn" title="折叠">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+          </div>
+          <div class="result-card-body">
+            <div class="result-card-body-inner">
+              <div class="result-text" id="resultText"></div>
+              <div class="result-actions" id="resultActions" style="visibility:hidden">
+                <button class="result-action-btn" id="speakResultBtn" title="朗读翻译">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07"/></svg>
+                </button>
+                <button class="result-action-btn" id="copyResultBtn" title="复制翻译">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                </button>
+                <span class="result-tokens" id="resultTokens" title="输入 / 输出 Token" style="display:none">
+                  <span class="tok tok-input">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+                    <span class="tok-value">0</span>
+                  </span>
+                  <span class="tok-sep"></span>
+                  <span class="tok tok-output">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
+                    <span class="tok-value">0</span>
+                  </span>
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <div class="output-area">
-      <div id="sourceBadge" class="source-badge hidden"></div>
-      <div id="outputText" class="output-box">翻译结果将显示在这里</div>
-      <div id="usageFooter" class="usage-footer hidden"></div>
+    <div class="status-bar">
+      <div class="status-left">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusText">就绪</span>
+        <button class="status-action" id="statusAction" style="display:none"></button>
+      </div>
+      <span id="charCount">0 字</span>
     </div>
+
+    <div class="resize-handle"></div>
   </div>
+
+  <div class="toast" id="toast"></div>
 </body>
 </html>
