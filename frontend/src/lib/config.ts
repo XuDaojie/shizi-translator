@@ -44,6 +44,7 @@ export function projectToAppConfig(state: AppSettings): AppConfig {
       apiKey: service.apiKey.trim() || null,
       endpoint: service.endpoint.trim(),
       model: service.model.trim(),
+      // ponytail: 固定 60s，等 UI 暴露 timeout 字段后从 service 读取
       timeoutSeconds: 60,
     })),
     popupPrecreate: state.general.popupPrecreate,
