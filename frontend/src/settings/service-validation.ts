@@ -9,7 +9,7 @@ export function validateServiceForEnable(
     return '当前协议不可用'
   }
 
-  if (meta?.keyRequired !== false && !instance.apiKey.trim()) {
+  if (meta?.keyRequired !== false && !(instance.apiKey ?? '').trim()) {
     return '请先填写 API Key'
   }
 
