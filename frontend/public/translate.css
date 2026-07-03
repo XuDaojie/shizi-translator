@@ -8,7 +8,7 @@
 
   --fg:            #1F1E1B;
   --fg-2:          #5B584F;
-  --fg-3:          #94918A;
+  --fg-3:          #7A7770;
 
   --border:        #E6E2D8;
   --border-2:      #D8D3C5;
@@ -273,7 +273,6 @@ body {
 .result-card-body {
   display: grid;
   grid-template-rows: 1fr;
-  transition: grid-template-rows .3s ease, padding .3s ease, opacity .2s ease;
   padding: 0 12px 9px;
 }
 .result-card-body-inner {
@@ -379,25 +378,6 @@ body {
 .status-action:hover { color: var(--accent); }
 .status-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
-/* === 拖拽把手（视觉保留，resizable:false 下无功能） === */
-.resize-handle {
-  position: absolute;
-  bottom: 0; right: 0;
-  width: 14px; height: 14px;
-  cursor: nwse-resize;
-  opacity: 0;
-  transition: opacity .2s;
-}
-.popup:hover .resize-handle { opacity: .4; }
-.resize-handle::before {
-  content: '';
-  position: absolute;
-  bottom: 3px; right: 3px;
-  width: 7px; height: 7px;
-  border-right: 1.5px solid var(--fg-3);
-  border-bottom: 1.5px solid var(--fg-3);
-  border-radius: 0 0 2px 0;
-}
 
 /* === 流式光标 === */
 .stream-cursor {
