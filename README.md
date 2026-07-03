@@ -13,7 +13,7 @@
 - OpenAI-compatible 流式翻译 provider：调用兼容 `/v1/chat/completions` 的流式接口。
 - Claude / Anthropic 流式翻译 provider：调用 Anthropic Messages API 的 SSE 流式接口，支持 thinking 模式。
 - Mock provider：用于无真实 API Key 的本地验证。
-- 独立设置页与独立翻译弹窗：主窗口承载设置页（Vue 3 + Tailwind v4 + reka-ui + @lucide/vue），含通用/翻译/快捷键/服务/历史/高级 6 个分类面板，支持多服务实例管理；划词 / OCR 触发时弹出独立翻译弹窗并跟随光标定位，两者互不耦合。
+- 独立设置页与独立翻译弹窗：主窗口承载设置页（Vue 3 + Tailwind v4 + reka-ui + @lucide/vue），含通用/翻译/快捷键/服务/历史/高级 6 个分类面板，支持多服务实例管理；划词 / OCR 触发时弹出独立翻译弹窗并跟随光标定位，两者互不耦合。翻译弹窗已去除 Windows 原生标题栏，改为自绘顶部工具栏（图钉/收藏/截图翻译/书签/设置）作为标题栏并支持拖拽，宽固定 420px、高度随内容自适应（最高 80% 屏幕高），视觉对齐 OpenDesign 原型。
 - 流式结果展示：Rust 后端通过 Tauri event 推送翻译状态和增量文本，前端实时渲染。
 - 翻译取消与重试：流式翻译过程中可取消，失败或取消后可一键重试。
 - OCR 错误指引：截图 OCR 失败（缺语言包 / 识别为空 / 区域过大等）时给出带阶段前缀与可操作指引的错误文案，并隐藏无意义的重试按钮。

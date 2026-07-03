@@ -431,6 +431,7 @@ translation_total_ms
 在 Tauri UI（WebView）路线下持续提升前端体验，暂不切 Slint。
 
 - **设置页 Vue 3 重构**（骨架可交付，2026-07）：Vite 7 + Vue 3.5 + Tailwind CSS v4 + shadcn-vue（new-york）+ Iconify 替换原纯静态 HTML/JS/CSS。translate / overlay 平铺进 `frontend/public/` 保持纯静态（overlay 永久不迁）。构建产物 `frontend/dist/`。UI 视觉细节待 open design 原型图定稿后打磨。
+- **翻译弹窗 UI 打磨**（已完成，2026-07）：按 OpenDesign 原型整套重写 `frontend/public/translate.html` / `translate.js` / `translate.css`——去 Windows 原生标题栏改自绘工具栏（`data-tauri-drag-region` 拖拽）、`decorations:false`+`transparent:true`+`resizable:false`、宽 452/.popup 420 固定 + 高自适应（ResizeObserver → `setSize`）、单卡片 + 预留多卡数据结构、图钉/截图翻译/设置/朗读/复制接真实后端、收藏/书签/语言栏 toast 占位、取消/重试挂状态栏文字按钮；后端仅新增 `trigger_ocr_translation` 薄封装 + 两个窗口权限。
 - 翻译页 Vue 迁移（后续）
 - 最终视实际体验决定是否切 Slint
 
