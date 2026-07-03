@@ -3,7 +3,7 @@
 
 pub const POPUP_LABEL: &str = "translation-popup";
 
-use tauri::{LogicalPosition, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{webview::Color, LogicalPosition, Manager, WebviewUrl, WebviewWindowBuilder};
 
 use crate::core::config::AppConfig;
 use crate::platform::cursor_logical_context;
@@ -112,6 +112,7 @@ fn build_popup(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, String> {
         .inner_size(452.0, 512.0)
         .decorations(false)
         .transparent(true)
+        .background_color(Color(0, 0, 0, 0))
         .resizable(false)
         .visible(false)
         .build()
