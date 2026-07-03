@@ -63,41 +63,7 @@
         </button>
       </div>
 
-      <div class="results" id="results">
-        <div class="result-card" id="resultCard">
-          <div class="result-card-header" id="resultHeader">
-            <svg class="result-engine-icon" id="resultEngineIcon" viewBox="0 0 20 20"><rect width="20" height="20" rx="5" fill="#94918A"/></svg>
-            <span class="result-engine-name" id="resultEngineName">翻译</span>
-            <button class="result-collapse-btn" id="collapseBtn" title="折叠">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-            </button>
-          </div>
-          <div class="result-card-body">
-            <div class="result-card-body-inner">
-              <div class="result-text" id="resultText"></div>
-              <div class="result-actions" id="resultActions" style="visibility:hidden">
-                <button class="result-action-btn" id="speakResultBtn" title="朗读翻译">
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07"/></svg>
-                </button>
-                <button class="result-action-btn" id="copyResultBtn" title="复制翻译">
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-                </button>
-                <span class="result-tokens" id="resultTokens" title="输入 / 输出 Token" style="display:none">
-                  <span class="tok tok-input">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
-                    <span class="tok-value">0</span>
-                  </span>
-                  <span class="tok-sep"></span>
-                  <span class="tok tok-output">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
-                    <span class="tok-value">0</span>
-                  </span>
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+            <div class="results" id="resultsList"></div>
     </div>
 
     <div class="status-bar">

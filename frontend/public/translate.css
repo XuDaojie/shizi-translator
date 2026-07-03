@@ -268,15 +268,19 @@ body {
   gap: 6px;
   cursor: pointer;
   user-select: none;
+  background: var(--bg-soft);
+}
+.result-card-header:hover {
+  background: var(--bg-soft-2);
 }
 .result-engine-icon {
-  width: 14px; height: 14px;
+  width: 18px; height: 18px;
   border-radius: 3px;
   flex-shrink: 0;
 }
 .result-engine-name {
-  font-size: 0.6875rem;
-  font-weight: 500;
+  font-size: 0.75rem;
+  font-weight: 600;
   color: var(--fg-2);
   flex: 1;
 }
@@ -403,6 +407,13 @@ body {
 
 
 /* === 流式光标 === */
+.result-card.failed .result-text {
+  color: var(--danger);
+}
+.result-card.cancelled .result-text {
+  color: var(--fg-3);
+}
+
 .stream-cursor {
   display: inline-block;
   width: 1px;
