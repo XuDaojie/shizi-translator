@@ -9,7 +9,7 @@ const DEFAULT_MODEL: &str = "gpt-4o-mini";
 const DEFAULT_TIMEOUT_SECONDS: u32 = 60;
 const DEFAULT_CLAUDE_BASE_URL: &str = "https://api.anthropic.com";
 const DEFAULT_CLAUDE_MODEL: &str = "claude-haiku-4-5";
-const DEFAULT_PROTOCOL: &str = "openai-compatible";
+const DEFAULT_PROTOCOL: &str = "openai_chat";
 
 fn default_true() -> bool {
     true
@@ -52,7 +52,7 @@ impl ServiceInstanceConfig {
         self.model = normalize_string(self.model, DEFAULT_MODEL);
         if self.endpoint.trim().is_empty() {
             self.endpoint = match self.protocol.as_str() {
-                "claude" => DEFAULT_CLAUDE_BASE_URL.to_string(),
+                "claude_messages" => DEFAULT_CLAUDE_BASE_URL.to_string(),
                 _ => DEFAULT_BASE_URL.to_string(),
             };
         }
@@ -69,7 +69,7 @@ impl AppConfig {
             .unwrap_or_else(|_| DEFAULT_PROTOCOL.to_string());
 
         let (api_key, endpoint, model) = match protocol.as_str() {
-            "claude" => (
+            "claude_messages" => (
                 env::var("SHIZI_CLAUDE_API_KEY").ok(),
                 env::var("SHIZI_CLAUDE_BASE_URL")
                     .unwrap_or_else(|_| DEFAULT_CLAUDE_BASE_URL.to_string()),
@@ -86,7 +86,7 @@ impl AppConfig {
         };
 
         let name = match protocol.as_str() {
-            "claude" => "默认 Claude 服务".to_string(),
+            "claude_messages" => "默认 Claude 服务".to_string(),
             "mock" => "Mock 服务".to_string(),
             _ => "默认服务".to_string(),
         };
@@ -102,7 +102,7 @@ impl AppConfig {
             ]),
             services: vec![ServiceInstanceConfig {
                 id: "default".to_string(),
-                service_type: "llm".to_string(),
+                service_type: "openai".to_string(),
                 name,
                 enabled: true,
                 protocol,
@@ -174,7 +174,7 @@ mod tests {
             service_type: "llm".to_string(),
             name: "测试".to_string(),
             enabled: true,
-            protocol: "openai-compatible".to_string(),
+            protocol: "openai_chat".to_string(),
             api_key: Some("   ".to_string()),
             endpoint: "".to_string(),
             model: "".to_string(),
@@ -216,7 +216,7 @@ mod tests {
             service_type: "llm".to_string(),
             name: "副服务".to_string(),
             enabled: true,
-            protocol: "openai-compatible".to_string(),
+            protocol: "openai_chat".to_string(),
             api_key: Some("sk-2".to_string()),
             endpoint: "https://api.example.com".to_string(),
             model: "gpt-4".to_string(),
@@ -234,7 +234,7 @@ mod tests {
             service_type: "llm".to_string(),
             name: "已禁用".to_string(),
             enabled: false,
-            protocol: "openai-compatible".to_string(),
+            protocol: "openai_chat".to_string(),
             api_key: Some("sk-disabled".to_string()),
             endpoint: "https://api.example.com".to_string(),
             model: "gpt-4".to_string(),
@@ -282,7 +282,7 @@ mod tests {
                     "serviceType": "llm",
                     "name": "OpenAI",
                     "enabled": true,
-                    "protocol": "openai-compatible",
+                    "protocol": "openai_chat",
                     "apiKey": "sk-test",
                     "endpoint": "https://api.openai.com/v1",
                     "model": "gpt-4o-mini",
@@ -305,7 +305,7 @@ mod tests {
             service_type: "llm".to_string(),
             name: "测试".to_string(),
             enabled: true,
-            protocol: "openai-compatible".to_string(),
+            protocol: "openai_chat".to_string(),
             api_key: Some("sk-xxx".to_string()),
             endpoint: "https://test.example.com".to_string(),
             model: "gpt-4".to_string(),
@@ -328,5 +328,29 @@ mod tests {
     fn defaults_collect_usage_true() {
         let config = AppConfig::from_env();
         assert!(config.collect_usage);
+    }
+
+    #[test]
+    fn from_env_default_protocol_is_openai_chat() {
+        let config = AppConfig::from_env();
+        assert_eq!(config.services[0].protocol, "openai_chat");
+        assert_eq!(config.services[0].service_type, "openai");
+    }
+
+    #[test]
+    fn normalized_claude_messages_uses_claude_base_url() {
+        let svc = ServiceInstanceConfig {
+            id: "test".to_string(),
+            service_type: "claude".to_string(),
+            name: "Claude".to_string(),
+            enabled: true,
+            protocol: "claude_messages".to_string(),
+            api_key: None,
+            endpoint: "".to_string(),
+            model: "".to_string(),
+            timeout_seconds: 0,
+        }
+        .normalized();
+        assert_eq!(svc.endpoint, DEFAULT_CLAUDE_BASE_URL);
     }
 }
