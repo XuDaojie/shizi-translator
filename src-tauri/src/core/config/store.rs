@@ -47,10 +47,16 @@ impl ConfigStore {
 
         let path = config_dir.join("config.json");
         let config = if path.exists() {
-            let contents = fs::read_to_string(&path).map_err(ConfigError::Read)?;
-            serde_json::from_str::<AppConfig>(&contents)
-                .map_err(ConfigError::Parse)?
-                .normalized()
+            match fs::read_to_string(&path)
+                .map_err(ConfigError::Read)
+                .and_then(|contents| serde_json::from_str::<AppConfig>(&contents).map_err(ConfigError::Parse))
+            {
+                Ok(config) => config.normalized(),
+                Err(err) => {
+                    eprintln!("配置文件解析失败，使用默认配置：{err}");
+                    AppConfig::from_env()
+                }
+            }
         } else {
             AppConfig::from_env()
         };
