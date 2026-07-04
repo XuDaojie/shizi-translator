@@ -61,6 +61,7 @@
 - 服务实例通过 `protocol` 选择调用协议；协议 id 前后端统一为 `openai_chat` / `claude_messages` / `mock`，未知协议后端报错而非静默走 OpenAI 兼容。
 - 前后端配置以 `config.json` 为事实来源：设置页挂载时从后端拉取，后端 `services` 为空则推前端覆盖（用于旧格式残留 / 首次启动），后端非空则按实例 id 合并（后端核心字段覆盖前端、前端独有字段如提示词保留）。
 - 翻译弹窗按启用服务渲染多个结果卡，单个服务失败不影响其他服务；卡片图标按渠道 id（openai/deepseek/zhipu/claude/mock）区分。
+- 翻译弹窗打开时即展示所有启用服务的占位卡片，翻译开始后原地刷新内容，无需等待首个结果返回。
 - 未对接渠道（gemini/deepl/google/baidu/youdao/tencent/volcengine/iflytek/moonshot/siliconflow）在添加 Dialog 标"开发中"badge、服务列表启用开关置灰、详情页顶部横幅提示。
 
 > translate / overlay 仍为纯静态 HTML/JS/CSS（`frontend/public/`），overlay 永久不迁。
