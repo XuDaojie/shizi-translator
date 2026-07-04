@@ -78,7 +78,7 @@ impl ShortcutBindingError {
         }
     }
 
-    fn global(message: impl Into<String>) -> Self {
+    pub(crate) fn global(message: impl Into<String>) -> Self {
         Self::new("", message)
     }
 }
