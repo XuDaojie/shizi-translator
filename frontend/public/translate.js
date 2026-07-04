@@ -80,20 +80,27 @@ function copyText(text, btn) {
 }
 
 /* === 引擎图标/名映射 === */
+// 按 payload.serviceType（渠道 id）匹配；未匹配 fallback 取 serviceName 首字，灰底。
 const ENGINE_META = {
-  'openai-compatible': {
-    icon: '<rect width="20" height="20" rx="5" fill="#10A37F"/><circle cx="10" cy="10" r="6" fill="none" stroke="#fff" stroke-width="1.2"/><path d="M7.5 10c0-1.38 1.12-2.5 2.5-2.5s2.5 1.12 2.5 2.5" stroke="#fff" stroke-width="1.2" fill="none" stroke-linecap="round"/>',
-    name: 'OpenAI 翻译',
-  },
-  'claude': {
-    icon: '<rect width="20" height="20" rx="5" fill="#D97757"/><text x="10" y="14.5" text-anchor="middle" font-size="12" font-weight="700" fill="#fff" font-family="Segoe UI, system-ui, sans-serif">C</text>',
-    name: 'Claude 翻译',
-  },
-  'mock': {
-    icon: '<rect width="20" height="20" rx="5" fill="#94918A"/><text x="10" y="14.5" text-anchor="middle" font-size="12" font-weight="700" fill="#fff" font-family="Segoe UI, system-ui, sans-serif">M</text>',
-    name: 'Mock 翻译',
-  },
+  openai: { color: '#10A37F', letter: 'O' },
+  deepseek: { color: '#4D6BFE', letter: 'D' },
+  zhipu: { color: '#3B5BFE', letter: 'Z' },
+  claude: { color: '#D97757', letter: 'C' },
+  mock: { color: '#94918A', letter: 'M' },
 };
+
+function engineIcon(serviceType, serviceName) {
+  const meta = ENGINE_META[serviceType];
+  const color = meta ? meta.color : '#94918A';
+  const letter = meta
+    ? meta.letter
+    : ((serviceName || '?').trim().charAt(0).toUpperCase() || '?');
+  return (
+    '<rect width="20" height="20" rx="5" fill="' + color + '"/>' +
+    '<text x="10" y="14.5" text-anchor="middle" font-size="12" font-weight="700" fill="#fff" ' +
+    'font-family="Segoe UI, system-ui, sans-serif">' + letter + '</text>'
+  );
+}
 
 /* === 来源徽章 === */
 function setSourceBadge(sourceType) {
@@ -161,12 +168,10 @@ function getCard(payload) {
     '</div>',
   ].join('\n');
 
-  const meta = ENGINE_META[payload.serviceType];
-  if (meta) {
-    card.querySelector('.result-engine-icon').innerHTML = meta.icon;
-  } else {
-    card.querySelector('.result-engine-icon').innerHTML = ENGINE_META['mock'].icon;
-  }
+  card.querySelector('.result-engine-icon').innerHTML = engineIcon(
+    payload.serviceType,
+    payload.serviceName,
+  );
 
   const text = card.querySelector('.result-text');
   const actions = card.querySelector('.result-actions');
