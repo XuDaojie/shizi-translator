@@ -3,7 +3,9 @@ use std::{sync::Arc, sync::Mutex};
 use crate::core::llm::{LlmError, LlmProvider, LlmStreamEvent};
 use tokio_util::sync::CancellationToken;
 
-use super::{TokenUsage, TranslationEvent, TranslationRequest};
+use super::{
+    TokenUsage, TranslationEvent, TranslationRequest,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum TranslationError {
@@ -44,6 +46,7 @@ impl TranslationService {
         let delta_text = full_text.clone();
         let usage_slot = usage.clone();
         let delta_session_id = request.session_id.clone();
+        let delta_service = request.service.clone();
 
         self.provider
             .stream_translate(&request, &mut |ev| {
@@ -54,6 +57,7 @@ impl TranslationService {
                         }
                         emit(TranslationEvent::Delta {
                             session_id: delta_session_id.clone(),
+                            service: delta_service.clone(),
                             text,
                         });
                     }
@@ -76,6 +80,7 @@ impl TranslationService {
         if cancel.is_cancelled() {
             emit(TranslationEvent::Cancelled {
                 session_id: request.session_id,
+                service: request.service,
             });
         } else {
             let usage = usage
@@ -84,6 +89,7 @@ impl TranslationService {
                 .unwrap_or(None);
             emit(TranslationEvent::Finished {
                 session_id: request.session_id,
+                service: request.service,
                 full_text,
                 usage,
             });
@@ -97,7 +103,11 @@ impl TranslationService {
 mod tests {
     use super::*;
     use crate::core::llm::{LlmProvider, LlmStreamEvent};
-    use crate::core::translation::{TokenUsage, TranslationInput, TranslationRequest, TranslationSessionId};
+    use crate::core::translation::{
+        TokenUsage, TranslationInput, TranslationRequest,
+        TranslationServiceMeta,
+        TranslationSessionId,
+    };
     use std::sync::{Arc, Mutex};
     use tokio_util::sync::CancellationToken;
 
@@ -145,11 +155,21 @@ mod tests {
         }
     }
 
+    fn fake_service() -> TranslationServiceMeta {
+        TranslationServiceMeta {
+            service_instance_id: "test".to_string(),
+            service_name: "test".to_string(),
+            service_type: "llm".to_string(),
+            protocol: "mock".to_string(),
+        }
+    }
+
     fn request() -> TranslationRequest {
         TranslationRequest {
             session_id: TranslationSessionId("test-session".to_string()),
             input: TranslationInput::ManualText("hi".to_string()),
             target_lang: "中文".to_string(),
+            service: fake_service(),
         }
     }
 
@@ -278,3 +298,5 @@ mod tests {
         assert_eq!(usage, None);
     }
 }
+
+

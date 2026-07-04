@@ -1,6 +1,6 @@
 # 快捷键绑定实现计划
 
-> **面向 AI 代理的工作者：** 必需子技能：使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans 逐任务实现此计划。步骤使用复选框（`- [ ]`）语法来跟踪进度。
+> **面向 AI 代理的工作者：** 必需子技能：使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans 逐任务实现此计划。步骤使用复选框（`- [x]`）语法来跟踪进度。
 
 **目标：** 让设置页 6 条快捷键绑定保存到后端，其中划词翻译、截图翻译、剪贴板翻译、显示主窗口、打开设置可立即重注册生效，取词翻译只保存不触发。
 
@@ -53,7 +53,7 @@
 **文件：**
 - 修改：`src-tauri/src/core/config/types.rs`
 
-- [ ] **步骤 1：编写失败的 Rust 单元测试**
+- [x] **步骤 1：编写失败的 Rust 单元测试**
 
 在 `src-tauri/src/core/config/types.rs` 的 `#[cfg(test)] mod tests` 中追加：
 
@@ -139,13 +139,13 @@ fn app_config_deserializes_shortcuts_defaults_when_missing() {
 }
 ```
 
-- [ ] **步骤 2：运行测试确认失败**
+- [x] **步骤 2：运行测试确认失败**
 
 运行：`cd src-tauri && cargo test core::config::types::tests::app_config_defaults_shortcuts core::config::types::tests::app_config_normalized_backfills_missing_shortcuts_and_preserves_empty_disable core::config::types::tests::app_config_deserializes_shortcuts_defaults_when_missing`
 
 预期：FAIL，报错包含 `no field shortcuts on type AppConfig`。
 
-- [ ] **步骤 3：实现最少配置模型代码**
+- [x] **步骤 3：实现最少配置模型代码**
 
 在 `src-tauri/src/core/config/types.rs` 顶部把导入改为：
 
@@ -202,13 +202,13 @@ fn normalize_shortcuts(shortcuts: ShortcutConfig) -> ShortcutConfig {
         self.shortcuts = normalize_shortcuts(self.shortcuts);
 ```
 
-- [ ] **步骤 4：运行测试验证通过**
+- [x] **步骤 4：运行测试验证通过**
 
 运行：`cd src-tauri && cargo test core::config::types::tests::app_config_defaults_shortcuts core::config::types::tests::app_config_normalized_backfills_missing_shortcuts_and_preserves_empty_disable core::config::types::tests::app_config_deserializes_shortcuts_defaults_when_missing`
 
 预期：PASS。
 
-- [ ] **步骤 5：Commit**
+- [x] **步骤 5：Commit**
 
 ```bash
 git add src-tauri/src/core/config/types.rs
@@ -222,7 +222,7 @@ git commit -m "feat(config): 增加快捷键配置默认值"
 **文件：**
 - 修改：`src-tauri/src/app/shortcuts.rs`
 
-- [ ] **步骤 1：编写失败的 Rust 单元测试**
+- [x] **步骤 1：编写失败的 Rust 单元测试**
 
 替换 `src-tauri/src/app/shortcuts.rs` 中现有 `#[cfg(test)] mod tests` 为：
 
@@ -302,13 +302,13 @@ mod tests {
 }
 ```
 
-- [ ] **步骤 2：运行测试确认失败**
+- [x] **步骤 2：运行测试确认失败**
 
 运行：`cd src-tauri && cargo test app::shortcuts::tests`
 
 预期：FAIL，报错包含 `this function takes 1 argument but 2 arguments were supplied` 或 `cannot find function configured_shortcuts`。
 
-- [ ] **步骤 3：实现纯解析、去重、反查代码**
+- [x] **步骤 3：实现纯解析、去重、反查代码**
 
 在 `src-tauri/src/app/shortcuts.rs` 顶部导入调整为：
 
@@ -441,13 +441,13 @@ fn classify_shortcut(shortcut: &Shortcut, config: &AppConfig) -> Option<Shortcut
 }
 ```
 
-- [ ] **步骤 4：运行测试验证通过**
+- [x] **步骤 4：运行测试验证通过**
 
 运行：`cd src-tauri && cargo test app::shortcuts::tests`
 
 预期：PASS。
 
-- [ ] **步骤 5：Commit**
+- [x] **步骤 5：Commit**
 
 ```bash
 git add src-tauri/src/app/shortcuts.rs
@@ -462,7 +462,7 @@ git commit -m "feat(shortcuts): 按配置解析并反查快捷键动作"
 - 修改：`src-tauri/src/core/selection/mod.rs`
 - 修改：`src-tauri/src/app/shortcuts.rs`
 
-- [ ] **步骤 1：编写失败的剪贴板文本归一化测试**
+- [x] **步骤 1：编写失败的剪贴板文本归一化测试**
 
 在 `src-tauri/src/core/selection/mod.rs` 末尾追加测试模块：
 
@@ -496,13 +496,13 @@ mod tests {
 }
 ```
 
-- [ ] **步骤 2：运行测试确认失败**
+- [x] **步骤 2：运行测试确认失败**
 
 运行：`cd src-tauri && cargo test core::selection::tests`
 
 预期：FAIL，报错包含 `cannot find function normalize_clipboard_text` 和 `no variant or associated item named EmptyClipboard`。
 
-- [ ] **步骤 3：实现剪贴板读取入口**
+- [x] **步骤 3：实现剪贴板读取入口**
 
 在 `SelectionError` 中追加：
 
@@ -528,13 +528,13 @@ fn normalize_clipboard_text(text: Option<String>) -> Result<String, SelectionErr
 }
 ```
 
-- [ ] **步骤 4：运行剪贴板测试验证通过**
+- [x] **步骤 4：运行剪贴板测试验证通过**
 
 运行：`cd src-tauri && cargo test core::selection::tests`
 
 预期：PASS。
 
-- [ ] **步骤 5：实现注册替换和快捷键动作分发**
+- [x] **步骤 5：实现注册替换和快捷键动作分发**
 
 在 `src-tauri/src/app/shortcuts.rs` 中把旧 `register_global_shortcuts`、`handle_global_shortcut`、`handle_selection_translate` 替换为：
 
@@ -663,7 +663,7 @@ fn start_popup_translation(app_handle: tauri::AppHandle, input: TranslationInput
 }
 ```
 
-- [ ] **步骤 6：运行后端测试和编译验证**
+- [x] **步骤 6：运行后端测试和编译验证**
 
 运行：`cd src-tauri && cargo test app::shortcuts::tests core::selection::tests`
 
@@ -673,7 +673,7 @@ fn start_popup_translation(app_handle: tauri::AppHandle, input: TranslationInput
 
 预期：FAIL，报错来自 `src-tauri/src/lib.rs` 仍按旧签名调用 `register_global_shortcuts(app)`；下一任务修正启动路径。
 
-- [ ] **步骤 7：Commit**
+- [x] **步骤 7：Commit**
 
 ```bash
 git add src-tauri/src/core/selection/mod.rs src-tauri/src/app/shortcuts.rs
@@ -688,7 +688,7 @@ git commit -m "feat(shortcuts): 注册配置快捷键并接入剪贴板翻译"
 - 修改：`src-tauri/src/lib.rs`
 - 修改：`src-tauri/src/ui/config.rs`
 
-- [ ] **步骤 1：修改启动时注册逻辑**
+- [x] **步骤 1：修改启动时注册逻辑**
 
 在 `src-tauri/src/lib.rs` 的 `.setup(|app| { ... })` 中，把当前 `register_global_shortcuts(app)` 调用移动到读取配置之后，形成：
 
@@ -708,7 +708,7 @@ git commit -m "feat(shortcuts): 注册配置快捷键并接入剪贴板翻译"
 
 保留后面的主窗口显隐逻辑继续使用同一个 `config`。
 
-- [ ] **步骤 2：修改保存 command 的签名和保存顺序**
+- [x] **步骤 2：修改保存 command 的签名和保存顺序**
 
 把 `src-tauri/src/ui/config.rs` 改为：
 
@@ -756,7 +756,7 @@ pub async fn save_app_config(
 }
 ```
 
-- [ ] **步骤 3：运行后端验证**
+- [x] **步骤 3：运行后端验证**
 
 运行：`cd src-tauri && cargo test`
 
@@ -766,7 +766,7 @@ pub async fn save_app_config(
 
 预期：PASS。
 
-- [ ] **步骤 4：Commit**
+- [x] **步骤 4：Commit**
 
 ```bash
 git add src-tauri/src/lib.rs src-tauri/src/ui/config.rs
@@ -782,7 +782,7 @@ git commit -m "feat(config): 保存配置时即时重注册快捷键"
 - 修改：`frontend/src/lib/config.ts`
 - 修改：`frontend/src/lib/config.test.ts`
 
-- [ ] **步骤 1：编写失败的前端单元测试**
+- [x] **步骤 1：编写失败的前端单元测试**
 
 在 `frontend/src/lib/config.test.ts` 顶部导入改为：
 
@@ -844,13 +844,13 @@ describe('validateShortcutBindings', () => {
 });
 ```
 
-- [ ] **步骤 2：运行测试确认失败**
+- [x] **步骤 2：运行测试确认失败**
 
 运行：`npm run test -- --run frontend/src/lib/config.test.ts`
 
 预期：FAIL，报错包含 `validateShortcutBindings is not a function` 或 `Property 'shortcuts' is missing`。
 
-- [ ] **步骤 3：同步前端 AppConfig 类型**
+- [x] **步骤 3：同步前端 AppConfig 类型**
 
 在 `frontend/src/types/config.ts` 中加入：
 
@@ -864,7 +864,7 @@ export type ShortcutConfig = Record<string, string>;
   shortcuts: ShortcutConfig;
 ```
 
-- [ ] **步骤 4：实现投影和重复校验**
+- [x] **步骤 4：实现投影和重复校验**
 
 在 `frontend/src/lib/config.ts` 的类型导入改为：
 
@@ -908,13 +908,13 @@ export function validateShortcutBindings(bindings: ShortcutLike[]): Record<strin
     shortcuts: projectShortcuts(state),
 ```
 
-- [ ] **步骤 5：运行前端测试验证通过**
+- [x] **步骤 5：运行前端测试验证通过**
 
 运行：`npm run test -- --run frontend/src/lib/config.test.ts`
 
 预期：PASS。
 
-- [ ] **步骤 6：Commit**
+- [x] **步骤 6：Commit**
 
 ```bash
 git add frontend/src/types/config.ts frontend/src/lib/config.ts frontend/src/lib/config.test.ts
@@ -929,7 +929,7 @@ git commit -m "feat(settings): 投影快捷键配置并校验重复绑定"
 - 修改：`frontend/src/settings/stores/settings.ts`
 - 修改：`frontend/src/settings/panels/ShortcutPanel.vue`
 
-- [ ] **步骤 1：修改设置 store 的导入**
+- [x] **步骤 1：修改设置 store 的导入**
 
 把 `frontend/src/settings/stores/settings.ts` 中导入改为：
 
@@ -937,7 +937,7 @@ git commit -m "feat(settings): 投影快捷键配置并校验重复绑定"
 import { projectToAppConfig, validateConfig, validateShortcutBindings } from '@/lib/config'
 ```
 
-- [ ] **步骤 2：新增快捷键错误辅助函数**
+- [x] **步骤 2：新增快捷键错误辅助函数**
 
 在 `markDirty` 函数后加入：
 
@@ -968,7 +968,7 @@ const applyBackendShortcutError = (error: unknown): string | null => {
 }
 ```
 
-- [ ] **步骤 3：保存前执行前端去重，后端错误回填**
+- [x] **步骤 3：保存前执行前端去重，后端错误回填**
 
 把 `useSettings().save()` 开头改为：
 
@@ -995,7 +995,7 @@ const applyBackendShortcutError = (error: unknown): string | null => {
       }
 ```
 
-- [ ] **步骤 4：解锁快捷键面板**
+- [x] **步骤 4：解锁快捷键面板**
 
 把 `frontend/src/settings/panels/ShortcutPanel.vue` 的 `<script setup>` 改为：
 
@@ -1029,7 +1029,7 @@ defineProps<{
       />
 ```
 
-- [ ] **步骤 5：运行前端验证**
+- [x] **步骤 5：运行前端验证**
 
 运行：`npm run test`
 
@@ -1039,7 +1039,7 @@ defineProps<{
 
 预期：PASS。
 
-- [ ] **步骤 6：Commit**
+- [x] **步骤 6：Commit**
 
 ```bash
 git add frontend/src/settings/stores/settings.ts frontend/src/settings/panels/ShortcutPanel.vue
@@ -1057,7 +1057,7 @@ git commit -m "feat(settings): 解锁快捷键编辑并回填保存错误"
 - 修改：`docs/architecture/screenshot-ocr-architecture.md`
 - 修改：`docs/roadmap/progressive-development-plan.md`
 
-- [ ] **步骤 1：更新 README 当前能力与限制**
+- [x] **步骤 1：更新 README 当前能力与限制**
 
 把 `README.md` 顶部快捷键能力改为：
 
@@ -1071,7 +1071,7 @@ git commit -m "feat(settings): 解锁快捷键编辑并回填保存错误"
 - 取词翻译、快捷键分组 / profile、导入导出仍未实现；`word-lookup` 绑定当前只保存不触发。
 ```
 
-- [ ] **步骤 2：同步 AGENTS.md 与 CLAUDE.md 全局快捷键说明**
+- [x] **步骤 2：同步 AGENTS.md 与 CLAUDE.md 全局快捷键说明**
 
 把两份文件的「全局快捷键」架构关键点改为同一段：
 
@@ -1079,7 +1079,7 @@ git commit -m "feat(settings): 解锁快捷键编辑并回填保存错误"
 - **全局快捷键**：默认 `Alt+T` 划词复制并自动翻译，`Alt+O` 触发截图 OCR 翻译；设置页会把 6 条快捷键保存到 `AppConfig.shortcuts`，保存成功后后端通过统一入口 `unregister_all()` + `register()` 立即重注册。已触发动作包括划词翻译、剪贴板翻译、截图 OCR 翻译、显示主窗口、打开设置；`word-lookup` 当前只保存绑定，不注册触发。由 `tauri-plugin-global-shortcut` 注册，逻辑集中在 `src-tauri/src/app/shortcuts.rs`。
 ```
 
-- [ ] **步骤 3：更新截图 OCR 架构文档**
+- [x] **步骤 3：更新截图 OCR 架构文档**
 
 把 `docs/architecture/screenshot-ocr-architecture.md` 中“## 快捷键与 Tauri 权限”下现状段落改为：
 
@@ -1095,7 +1095,7 @@ Tauri 官方文档说明 global shortcut 插件默认不启用危险能力，需
 - 默认注册 `Alt+O` 作为截图 OCR 快捷键；用户可在设置页改绑或清空，保存后立即生效。
 ```
 
-- [ ] **步骤 4：更新 roadmap 进度**
+- [x] **步骤 4：更新 roadmap 进度**
 
 在 `docs/roadmap/progressive-development-plan.md` 的“快捷键、OCR、截图、弹窗体验打磨”附近加入：
 
@@ -1103,7 +1103,7 @@ Tauri 官方文档说明 global shortcut 插件默认不启用危险能力，需
 - **快捷键绑定配置**（已完成，2026-07）：设置页 6 条快捷键接入后端 `AppConfig.shortcuts`；划词翻译、截图 OCR 翻译、剪贴板翻译、显示主窗口、打开设置支持改绑 / 清空 / 保存后即时生效；重复或系统占用时阻止保存并回填对应行错误；`word-lookup` 仅保存绑定。
 ```
 
-- [ ] **步骤 5：运行完整验证**
+- [x] **步骤 5：运行完整验证**
 
 运行：`cd src-tauri && cargo test`
 
@@ -1121,7 +1121,7 @@ Tauri 官方文档说明 global shortcut 插件默认不启用危险能力，需
 
 预期：PASS。
 
-- [ ] **步骤 6：手动验收**
+- [x] **步骤 6：手动验收**
 
 运行：`SHIZI_LLM_PROVIDER=mock npm run tauri dev`
 
@@ -1137,7 +1137,7 @@ Tauri 官方文档说明 global shortcut 插件默认不启用危险能力，需
 8. 设置系统占用快捷键，后端拒绝保存并在对应行显示注册失败原因。
 9. 重启应用后，保存过的快捷键仍生效。
 
-- [ ] **步骤 7：Commit**
+- [x] **步骤 7：Commit**
 
 ```bash
 git add README.md AGENTS.md CLAUDE.md docs/architecture/screenshot-ocr-architecture.md docs/roadmap/progressive-development-plan.md

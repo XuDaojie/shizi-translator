@@ -2,6 +2,25 @@ import { Plug, WandSparkles } from '@lucide/vue'
 import type { Component } from 'vue'
 import type { CustomServiceType, ServiceId, ServiceMeta } from './types'
 
+// ── 协议元数据 ────────────────────────────────────────────
+const OPENAI_CHAT = (defaultEndpoint: string, defaultModel: string) => ({
+  id: 'openai_chat' as const,
+  label: 'OpenAI Chat',
+  defaultEndpoint,
+  defaultModel,
+  editableEndpoint: true,
+  status: 'available' as const,
+})
+
+const CLAUDE_MESSAGES = {
+  id: 'claude_messages' as const,
+  label: 'Claude Messages',
+  defaultEndpoint: 'https://api.anthropic.com',
+  defaultModel: 'claude-haiku-4-5',
+  editableEndpoint: true,
+  status: 'available' as const,
+}
+
 /**
  * 厂商官方 logo（Iconify simple-icons 集）有则填，无则统一用 lucide `Plug` 兜底。
  * Logo 候选来源：https://api.iconify.design/?prefix=simple-icons
@@ -29,6 +48,7 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     iconifyId: 'simple-icons:openai',
     category: 'llm',
     keyRequired: true,
+    protocols: [OPENAI_CHAT('https://api.openai.com', 'gpt-4o-mini')],
   },
   {
     id: 'deepseek',
@@ -41,18 +61,20 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     iconifyId: 'simple-icons:deepseek',
     category: 'llm',
     keyRequired: true,
+    protocols: [OPENAI_CHAT('https://api.deepseek.com', 'deepseek-chat')],
   },
   {
     id: 'claude',
     name: 'Claude',
-    description: 'Anthropic Claude 3.5 系列，长文与写作更自然。',
+    description: 'Anthropic Claude 系列，长文与写作更自然。',
     builtin: true,
-    defaultModel: 'claude-3-5-sonnet-latest',
-    models: ['claude-3-5-sonnet-latest', 'claude-3-5-haiku-latest', 'claude-3-opus-latest'],
+    defaultModel: 'claude-haiku-4-5',
+    models: ['claude-haiku-4-5', 'claude-3-5-sonnet-latest', 'claude-3-5-haiku-latest'],
     hasModelApi: true,
     iconifyId: 'simple-icons:anthropic',
     category: 'llm',
     keyRequired: true,
+    protocols: [CLAUDE_MESSAGES],
   },
   {
     id: 'gemini',
@@ -65,6 +87,7 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     iconifyId: 'simple-icons:google',
     category: 'llm',
     keyRequired: true,
+    protocols: [],
   },
   {
     id: 'deepl',
@@ -75,6 +98,7 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     iconifyId: 'simple-icons:deepl',
     category: 'ml',
     keyRequired: true,
+    protocols: [],
   },
   {
     id: 'google',
@@ -85,6 +109,7 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     iconifyId: 'simple-icons:googletranslate',
     category: 'ml',
     keyRequired: false,
+    protocols: [],
   },
   {
     id: 'baidu',
@@ -95,6 +120,7 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     iconifyId: 'simple-icons:baidu',
     category: 'ml',
     keyRequired: true,
+    protocols: [],
   },
   {
     id: 'youdao',
@@ -104,6 +130,7 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     defaultModel: 'youdao',
     category: 'ml',
     keyRequired: true,
+    protocols: [],
   },
   {
     id: 'tencent',
@@ -113,6 +140,7 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     defaultModel: 'tencent',
     category: 'ml',
     keyRequired: true,
+    protocols: [],
   },
   {
     id: 'volcengine',
@@ -123,6 +151,7 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     hasModelApi: true,
     category: 'ml',
     keyRequired: true,
+    protocols: [],
   },
   {
     id: 'iflytek',
@@ -132,17 +161,19 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     defaultModel: 'iflytek',
     category: 'ml',
     keyRequired: true,
+    protocols: [],
   },
   {
     id: 'zhipu',
     name: '智谱 AI',
-    description: 'GLM 系列,中文写作与编程能力稳定。',
+    description: 'GLM 系列，中文写作与编程能力稳定。',
     builtin: true,
-    defaultModel: 'glm-4-plus',
+    defaultModel: 'glm-4-flash',
     models: ['glm-4-plus', 'glm-4-air', 'glm-4-flash'],
     hasModelApi: true,
     category: 'llm',
     keyRequired: true,
+    protocols: [OPENAI_CHAT('https://open.bigmodel.cn/api/paas/v4', 'glm-4-flash')],
   },
   {
     id: 'moonshot',
@@ -155,6 +186,7 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     iconifyId: 'simple-icons:moonshotai',
     category: 'llm',
     keyRequired: true,
+    protocols: [],
   },
   {
     id: 'siliconflow',
@@ -174,6 +206,7 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     hasModelApi: true,
     category: 'llm',
     keyRequired: true,
+    protocols: [],
   },
   {
     id: 'custom',
@@ -185,6 +218,7 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     hasModelApi: true,
     category: 'llm',
     keyRequired: true,
+    protocols: [],
   },
 ]
 
@@ -224,6 +258,7 @@ export const buildServices = (customTypes: CustomServiceType[]): ServiceMeta[] =
     hasModelApi: false,
     category: 'llm',
     keyRequired: true,
+    protocols: [],
   }))
   return [...BUILTIN_SERVICES, ...customs]
 }
@@ -284,4 +319,3 @@ export const MOCK_PULLED_MODELS: Record<ServiceId, string[]> = {
   ],
   custom: [],
 }
-

@@ -254,11 +254,21 @@ mod tests {
     use super::*;
     use crate::core::translation::{TranslationInput, TranslationSessionId};
 
+        fn fake_service() -> crate::core::translation::TranslationServiceMeta {
+        crate::core::translation::TranslationServiceMeta {
+            service_instance_id: "test".to_string(),
+            service_name: "test".to_string(),
+            service_type: "llm".to_string(),
+            protocol: "mock".to_string(),
+        }
+    }
+
     fn request() -> TranslationRequest {
         TranslationRequest {
             session_id: TranslationSessionId("test".to_string()),
             input: TranslationInput::ManualText("hi".to_string()),
             target_lang: "中文".to_string(),
+            service: fake_service(),
         }
     }
 
@@ -298,3 +308,5 @@ mod tests {
         assert_eq!(json["streamOptions"]["includeUsage"], true);
     }
 }
+
+

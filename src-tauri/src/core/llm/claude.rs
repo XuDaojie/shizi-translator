@@ -398,6 +398,7 @@ mod tests {
             session_id: crate::core::translation::TranslationSessionId("test".to_string()),
             input: crate::core::translation::TranslationInput::ManualText("hello".to_string()),
             target_lang: "中文".to_string(),
+            service: crate::core::translation::TranslationServiceMeta::default(),
         };
         let cancel = tokio_util::sync::CancellationToken::new();
         let result = provider
@@ -451,3 +452,5 @@ mod tests {
         );
     }
 }
+
+

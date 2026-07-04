@@ -8,8 +8,7 @@ import type {
   ServiceMeta,
 } from '../types'
 import { BUILTIN_SERVICES, buildServices, DEFAULT_PROMPTS } from '../tokens'
-import { projectToAppConfig, validateConfig, validateShortcutBindings } from '@/lib/config'
-import type { Provider } from '@/types/config'
+import { projectToAppConfig, validateConfig } from '@/lib/config'
 import { invokeSaveAppConfig, isTauriReady } from '@/lib/tauri'
 import { toast } from '@/lib/toast'
 
@@ -28,29 +27,21 @@ const newInstanceId = (): string => {
 /** 历史记录 id 同理,前缀 `hist-` 方便排查。 */
 const newHistoryId = (): string => `hist-${newInstanceId().slice(5)}`
 
-/** 按渠道 type 返回后端默认 baseUrl（与 src-tauri/src/core/config/types.rs from_env 一致）。 */
-const defaultEndpointFor = (type: ServiceId): string => {
-  switch (type) {
-    case 'openai':
-    case 'custom':
-      return 'https://api.openai.com/v1'
-    case 'claude':
-      return 'https://api.anthropic.com'
-    default:
-      return ''
-  }
-}
+const firstAvailableProtocol = (meta?: ServiceMeta) =>
+  meta?.protocols.find((p) => p.status === 'available')
 
-const defaultInstanceFor = (type: ServiceId, name: string): ServiceInstance => {
+const defaultInstanceFor = (type: ServiceId, name: string, enabled = false): ServiceInstance => {
   const meta = BUILTIN_SERVICES.find((s) => s.id === type)
+  const protocol = firstAvailableProtocol(meta)
   return {
     id: newInstanceId(),
     type,
     name,
-    enabled: true,
+    enabled,
+    protocol: protocol?.id ?? 'openai_chat',
     apiKey: '',
-    model: meta?.defaultModel ?? '',
-    endpoint: defaultEndpointFor(type),
+    model: protocol?.defaultModel ?? meta?.defaultModel ?? '',
+    endpoint: protocol?.defaultEndpoint ?? '',
     note: '',
     pulledModels: [],
     keyStatus: 'idle',
@@ -62,12 +53,12 @@ const defaultInstanceFor = (type: ServiceId, name: string): ServiceInstance => {
   }
 }
 
-/** 首启仅 seed openai + claude 两个实例（精简后其余渠道由用户自行添加）。 */
+/** 首启仅展示 DeepSeek 和智谱 AI，默认关闭。其余渠道由用户自行添加。 */
 const seedInstances = (): ServiceInstance[] =>
-  ['openai', 'claude']
+  ['deepseek', 'zhipu']
     .map((id) => BUILTIN_SERVICES.find((s) => s.id === id))
     .filter((m): m is ServiceMeta => !!m)
-    .map((svc) => defaultInstanceFor(svc.id, svc.name))
+    .map((svc) => defaultInstanceFor(svc.id, svc.name, false))
 
 /**
  * 默认 OCR 历史样本,首次启动(无 localStorage)时展示。
@@ -173,7 +164,6 @@ const buildDefaults = (): AppSettings => {
     translation: {
       defaultSourceLang: 'auto',
       defaultTargetLang: '中文',
-      defaultServiceInstanceId: instances[0]?.id ?? '',
       autoCopy: true,
       restoreClipboard: true,
       autoPaste: false,
@@ -253,6 +243,7 @@ const migrateLegacyServices = (
       type: svc.id,
       name: svc.name,
       enabled: old?.enabled ?? false,
+      protocol: firstAvailableProtocol(svc)?.id ?? 'openai_chat',
       apiKey: old?.apiKey ?? '',
       model: old?.model ?? svc.defaultModel ?? '',
       endpoint: old?.endpoint ?? '',
@@ -331,17 +322,6 @@ const loadFromStorage = (): AppSettings => {
       translation: {
         ...defaults.translation,
         ...parsed.translation,
-        // 旧字段名 `defaultService` 兼容:把 ServiceId 映射到该类型首个 instance.id
-        defaultServiceInstanceId:
-          (parsed.translation as { defaultServiceInstanceId?: string } | undefined)
-            ?.defaultServiceInstanceId ??
-          ((parsed.translation as { defaultService?: ServiceId } | undefined)?.defaultService
-            ? services.find(
-                (s) =>
-                  s.type ===
-                  (parsed.translation as { defaultService?: ServiceId }).defaultService,
-              )?.id ?? defaults.translation.defaultServiceInstanceId
-            : defaults.translation.defaultServiceInstanceId),
       },
       shortcut: {
         bindings:
@@ -363,9 +343,6 @@ const loadFromStorage = (): AppSettings => {
 
 const state = reactive<AppSettings>(loadFromStorage())
 
-/** 内存持有上次成功保存的 provider，供非支持类型实例 fallback（spec §4.3）。首次为 openai-compatible。 */
-let lastSavedProvider: Provider = 'openai-compatible'
-
 const dirty = reactive({ value: false })
 const baseline = JSON.parse(JSON.stringify(state)) as AppSettings
 
@@ -378,31 +355,6 @@ const serializeForDirty = (s: AppSettings): string =>
 
 const markDirty = (): void => {
   dirty.value = serializeForDirty(state) !== serializeForDirty(baseline)
-}
-
-const clearShortcutErrors = (): void => {
-  for (const binding of state.shortcut.bindings) {
-    binding.error = undefined
-  }
-}
-
-const applyShortcutErrors = (errors: Record<string, string>): void => {
-  for (const binding of state.shortcut.bindings) {
-    binding.error = errors[binding.id]
-  }
-}
-
-const applyBackendShortcutError = (error: unknown): string | null => {
-  if (!error || typeof error !== 'object') return null
-  const payload = error as { id?: unknown; message?: unknown }
-  if (typeof payload.message !== 'string') return null
-
-  if (typeof payload.id === 'string' && payload.id) {
-    const binding = state.shortcut.bindings.find((item) => item.id === payload.id)
-    if (binding) binding.error = payload.message
-  }
-
-  return payload.message
 }
 
 watch(state, markDirty, { deep: true })
@@ -441,16 +393,7 @@ export const useSettings = () => ({
   state,
   dirty,
   async save(): Promise<void> {
-    clearShortcutErrors()
-
-    const shortcutErrors = validateShortcutBindings(state.shortcut.bindings)
-    if (Object.keys(shortcutErrors).length > 0) {
-      applyShortcutErrors(shortcutErrors)
-      toast.error('保存失败', '请先解决重复快捷键')
-      return
-    }
-
-    const { config, unsupported, unsupportedName } = projectToAppConfig(state, lastSavedProvider)
+    const config = projectToAppConfig(state)
     const err = validateConfig(config)
     if (err) {
       toast.error('保存失败', err)
@@ -459,17 +402,11 @@ export const useSettings = () => ({
     if (isTauriReady()) {
       try {
         await invokeSaveAppConfig(config)
-        lastSavedProvider = config.provider
         Object.assign(baseline, JSON.parse(JSON.stringify(state)))
         dirty.value = false
-        if (unsupported) {
-          toast.info('已本地保存', `默认服务「${unsupportedName}」暂未接入后端，仅本地保存`)
-        } else {
-          toast.success('配置已保存')
-        }
+        toast.success('配置已保存')
       } catch (e) {
-        const shortcutMessage = applyBackendShortcutError(e)
-        toast.error('保存失败', shortcutMessage ?? String(e))
+        toast.error('保存失败', String(e))
       }
     } else {
       Object.assign(baseline, JSON.parse(JSON.stringify(state)))
@@ -484,22 +421,16 @@ export const useSettings = () => ({
   discard(): void {
     Object.assign(state, JSON.parse(JSON.stringify(baseline)))
   },
-  /** 在 services 数组末尾添加一条新实例并返回它;若 defaultService 仍为空,自动指向新实例。 */
+  /** 在 services 数组末尾添加一条新实例并返回它。 */
   addService(type: ServiceId): ServiceInstance {
     const inst = defaultInstanceFor(type, nextDefaultName(type))
     state.services.push(inst)
-    if (!state.translation.defaultServiceInstanceId) {
-      state.translation.defaultServiceInstanceId = inst.id
-    }
     return inst
   },
   removeService(instanceId: string): void {
     const idx = state.services.findIndex((s) => s.id === instanceId)
     if (idx < 0) return
     state.services.splice(idx, 1)
-    if (state.translation.defaultServiceInstanceId === instanceId) {
-      state.translation.defaultServiceInstanceId = state.services[0]?.id ?? ''
-    }
   },
   renameService(instanceId: string, name: string): void {
     const inst = state.services.find((s) => s.id === instanceId)
