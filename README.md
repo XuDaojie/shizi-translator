@@ -58,8 +58,10 @@
 ### 服务协议与多结果翻译（v0.2）
 
 - 服务列表默认展示 DeepSeek 与智谱 AI，默认关闭；启用后按列表顺序参与翻译。
-- 服务实例通过 `protocol` 选择调用协议；当前可用协议为 OpenAI Chat 与 Claude Messages。
-- 翻译弹窗按启用服务渲染多个结果卡，单个服务失败不影响其他服务。
+- 服务实例通过 `protocol` 选择调用协议；协议 id 前后端统一为 `openai_chat` / `claude_messages` / `mock`，未知协议后端报错而非静默走 OpenAI 兼容。
+- 前后端配置以 `config.json` 为事实来源：设置页挂载时从后端拉取，后端 `services` 为空则推前端覆盖（用于旧格式残留 / 首次启动），后端非空则按实例 id 合并（后端核心字段覆盖前端、前端独有字段如提示词保留）。
+- 翻译弹窗按启用服务渲染多个结果卡，单个服务失败不影响其他服务；卡片图标按渠道 id（openai/deepseek/zhipu/claude/mock）区分。
+- 未对接渠道（gemini/deepl/google/baidu/youdao/tencent/volcengine/iflytek/moonshot/siliconflow）在添加 Dialog 标"开发中"badge、服务列表启用开关置灰、详情页顶部横幅提示。
 
 > translate / overlay 仍为纯静态 HTML/JS/CSS（`frontend/public/`），overlay 永久不迁。
 
@@ -70,7 +72,7 @@
 首次没有本地配置文件时，会从以下环境变量读取默认值：
 
 ```bash
-SHIZI_LLM_PROVIDER=mock | openai-compatible | claude
+SHIZI_LLM_PROVIDER=mock | openai_chat | claude_messages
 SHIZI_TARGET_LANG=中文
 SHIZI_OPENAI_API_KEY=...
 SHIZI_OPENAI_BASE_URL=https://api.openai.com/v1

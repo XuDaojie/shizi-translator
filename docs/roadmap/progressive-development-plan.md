@@ -75,6 +75,7 @@ src-tauri/src/ui/settings_commands.rs
 - 配置最小闭环：本地 JSON 配置、`get_app_config` / `save_app_config`、主窗口内嵌设置面板。
 - `Alt+T` 划词复制翻译：模拟 `Ctrl+C`、读取选中文本、触发翻译。
 - 翻译窗口交互状态收敛：busy 保护、按钮状态、事件 session 过滤、输出自动滚动。
+- 服务模块打磨（v0.2.1）：协议 id 前后端统一为 `openai_chat`/`claude_messages`/`mock`，未知协议报错；设置页挂载时与后端 `config.json` 双向同步；未对接渠道标记"开发中"并置灰启用；翻译弹窗卡片图标按渠道 id 区分。
 
 暂未完成 / 后续演进：
 
