@@ -268,8 +268,14 @@ function renderTranslationEvent(payload) {
       const isNewBatch = batchId !== currentBatchId;
       if (isNewBatch) {
         currentBatchId = batchId;
-        resultCards.clear();
-        resultsList.innerHTML = '';
+        resultCards.forEach(function (c) {
+          c.status = 'pending';
+          c.text.textContent = '';
+          c.text.style.color = '';
+          c.actions.style.visibility = 'hidden';
+          c.tokens.style.display = 'none';
+          c.el.classList.remove('failed', 'cancelled');
+        });
         sourceText.value = payload.sourceText ?? sourceText.value;
         autoResize();
         updateCharCount();
@@ -486,11 +492,32 @@ function initMaxHeight() {
   const maxPopupH = Math.floor(window.screen.availHeight * 0.8);
   popupEl.style.maxHeight = maxPopupH + 'px';
 }
+
+/* === 弹窗打开时预建所有启用服务的占位卡片 === */
+async function initCards() {
+  if (!invoke) return;
+  let config;
+  try { config = await invoke("get_app_config"); } catch { return; }
+  if (!config.services || config.services.length === 0) return;
+  const enabled = config.services.filter(function (s) { return s.enabled; });
+  if (enabled.length === 0) return;
+  for (var i = 0; i < enabled.length; i++) {
+    var svc = enabled[i];
+    var payload = {
+      serviceInstanceId: svc.id,
+      serviceType: svc.serviceType,
+      serviceName: svc.name,
+    };
+    getCard(payload);
+  }
+}
+
 const resizeObserver = new ResizeObserver(adjustHeight);
 resizeObserver.observe(popupEl);
 
 /* === 初始化 === */
 initMaxHeight();
+initCards();
 autoResize();
 updateCharCount();
 applyPendingSourceText();
