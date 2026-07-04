@@ -2,10 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mergeBackendIntoServices, useSettings } from './settings';
 import { DEFAULT_PROMPTS } from '../tokens';
 import type { ServiceInstanceConfig } from '@/types/config';
+import { invokeGetAppConfig, invokeSaveAppConfig, isTauriReady } from '@/lib/tauri';
 import type { ServiceInstance } from '../types';
 
 // Mock tauri module so tests don't need window.__TAURI__
 vi.mock('@/lib/tauri', () => ({
+  invokeGetAppConfig: vi.fn(),
   invokeSaveAppConfig: vi.fn(),
   isTauriReady: vi.fn(() => false),
 }));
@@ -27,6 +29,8 @@ vi.stubGlobal('crypto', { randomUUID: () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxx
 
 beforeEach(() => {
   fakeLocalStorage.clear();
+  useSettings().reset();
+  vi.clearAllMocks();
 });
 
 describe('settings defaults', () => {
@@ -151,3 +155,86 @@ describe('mergeBackendIntoServices', () => {
     expect(result.map((s) => s.id)).toEqual(['b', 'a'])
   })
 })
+
+describe('syncFromBackend', () => {
+  it('Tauri 未就绪时静默降级，不调用任何 invoke', async () => {
+    vi.mocked(isTauriReady).mockReturnValue(false);
+    const settings = useSettings();
+    await settings.syncFromBackend();
+    expect(invokeGetAppConfig).not.toHaveBeenCalled();
+    expect(invokeSaveAppConfig).not.toHaveBeenCalled();
+  });
+
+  it('后端 services 为空时推前端配置覆盖后端', async () => {
+    vi.mocked(isTauriReady).mockReturnValue(true);
+    vi.mocked(invokeGetAppConfig).mockResolvedValue({
+      targetLang: '中文',
+      services: [],
+      popupPrecreate: true,
+      overlayPrecreate: true,
+      collectUsage: true,
+      shortcuts: {},
+    });
+
+    const settings = useSettings();
+    const expectedIds = settings.state.services.map((s) => s.id);
+    await settings.syncFromBackend();
+
+    expect(invokeSaveAppConfig).toHaveBeenCalledTimes(1);
+    const saved = vi.mocked(invokeSaveAppConfig).mock.calls[0][0];
+    expect(saved.services.map((s) => s.id)).toEqual(expectedIds);
+  });
+
+  it('invokeGetAppConfig 抛错时静默降级', async () => {
+    vi.mocked(isTauriReady).mockReturnValue(true);
+    vi.mocked(invokeGetAppConfig).mockRejectedValue(new Error('boom'));
+    const settings = useSettings();
+    await settings.syncFromBackend();
+    expect(invokeSaveAppConfig).not.toHaveBeenCalled();
+  });
+
+  it('后端非空时按 id 合并到 state，不推覆盖', async () => {
+    vi.mocked(isTauriReady).mockReturnValue(true);
+    const settings = useSettings();
+    const localId = settings.state.services[0].id;
+
+    vi.mocked(invokeGetAppConfig).mockResolvedValue({
+      targetLang: '中文',
+      services: [
+        {
+          id: localId,
+          serviceType: 'deepseek',
+          name: 'DeepSeek',
+          enabled: true,
+          protocol: 'openai_chat',
+          apiKey: 'backend-key',
+          endpoint: 'https://api.deepseek.com',
+          model: 'deepseek-chat',
+          timeoutSeconds: 60,
+        },
+        {
+          id: 'extra',
+          serviceType: 'claude',
+          name: 'Claude',
+          enabled: false,
+          protocol: 'claude_messages',
+          apiKey: null,
+          endpoint: 'https://api.anthropic.com',
+          model: 'claude-haiku-4-5',
+          timeoutSeconds: 60,
+        },
+      ],
+      popupPrecreate: true,
+      overlayPrecreate: true,
+      collectUsage: true,
+      shortcuts: {},
+    });
+
+    await settings.syncFromBackend();
+
+    expect(settings.state.services.map((s) => s.id)).toEqual([localId, 'extra']);
+    expect(settings.state.services[0].apiKey).toBe('backend-key');
+    expect(settings.state.services[0].enabled).toBe(true);
+    expect(invokeSaveAppConfig).not.toHaveBeenCalled();
+  });
+});

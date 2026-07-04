@@ -105,6 +105,7 @@ describe('validateConfig', () => {
     popupPrecreate: true,
     overlayPrecreate: true,
     collectUsage: true,
+    shortcuts: {},
   };
 
   it('没有启用服务时允许保存', () => {

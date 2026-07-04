@@ -50,5 +50,6 @@ export function projectToAppConfig(state: AppSettings): AppConfig {
     popupPrecreate: state.general.popupPrecreate,
     overlayPrecreate: state.general.overlayPrecreate,
     collectUsage: state.advanced.collectUsage,
+    shortcuts: {},
   };
 }

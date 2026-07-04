@@ -7,10 +7,10 @@ import type {
   ServiceInstance,
   ServiceMeta,
 } from '../types'
-import type { ServiceInstanceConfig } from '@/types/config'
+import type { AppConfig, ServiceInstanceConfig } from '@/types/config'
 import { BUILTIN_SERVICES, buildServices, DEFAULT_PROMPTS } from '../tokens'
 import { projectToAppConfig, validateConfig } from '@/lib/config'
-import { invokeSaveAppConfig, isTauriReady } from '@/lib/tauri'
+import { invokeGetAppConfig, invokeSaveAppConfig, isTauriReady } from '@/lib/tauri'
 import { toast } from '@/lib/toast'
 
 const STORAGE_KEY = 'app:settings:v1'
@@ -39,6 +39,8 @@ const defaultInstanceFor = (type: ServiceId, name: string, enabled = false): Ser
     type,
     name,
     enabled,
+    // protocols 为空的渠道（gemini/deepl 等）走 'openai_chat' 占位；
+    // 这类渠道在 ServicesPanel 启用开关被置灰，不会进入翻译批次，protocol 值不影响运行。
     protocol: protocol?.id ?? 'openai_chat',
     apiKey: '',
     model: protocol?.defaultModel ?? meta?.defaultModel ?? '',
@@ -457,6 +459,28 @@ export const useSettings = () => ({
       dirty.value = false
       toast.info('Tauri 未就绪，仅本地保存')
     }
+  },
+  /** 启动时从后端 config.json 同步：后端空则推前端覆盖，后端非空则按 id 合并。失败静默降级。 */
+  async syncFromBackend(): Promise<void> {
+    if (!isTauriReady()) return
+    let backend: AppConfig
+    try {
+      backend = await invokeGetAppConfig()
+    } catch {
+      return
+    }
+    if (!backend.services || backend.services.length === 0) {
+      // 后端空（旧格式残留 / 首次启动）→ 前端推后端覆盖
+      try {
+        await invokeSaveAppConfig(projectToAppConfig(state))
+      } catch {
+        // 忽略：下次启动再试
+      }
+      return
+    }
+    state.services = mergeBackendIntoServices(state.services, backend.services)
+    Object.assign(baseline, JSON.parse(JSON.stringify(state)))
+    dirty.value = false
   },
   reset(): void {
     const defaults = buildDefaults()
