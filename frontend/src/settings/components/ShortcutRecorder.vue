@@ -50,6 +50,10 @@ const onKeydown = (e: KeyboardEvent): void => {
     recording.value = false
     return
   }
+  // ponytail: 跳过纯修饰键 keydown，等实际按键到达再捕获完整组合键
+  if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) {
+    return
+  }
   const combo = formatKeys(e)
   if (combo) {
     emit('update:modelValue', combo)
