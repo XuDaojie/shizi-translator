@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::env;
 
 use serde::{Deserialize, Serialize};
@@ -32,6 +33,8 @@ pub struct ServiceInstanceConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppConfig {
+    #[serde(default)]
+    pub shortcuts: HashMap<String, String>,
     #[serde(default)]
     pub services: Vec<ServiceInstanceConfig>,
     pub target_lang: String,
@@ -89,6 +92,14 @@ impl AppConfig {
         };
 
         Self {
+            shortcuts: HashMap::from([
+                ("translate-selection".to_string(), env::var("SHIZI_SHORTCUT_TRANSLATE_SELECTION").unwrap_or_else(|_| "Alt+T".to_string())),
+                ("translate-screenshot".to_string(), env::var("SHIZI_SHORTCUT_TRANSLATE_SCREENSHOT").unwrap_or_else(|_| "Alt+O".to_string())),
+                ("translate-clipboard".to_string(), env::var("SHIZI_SHORTCUT_TRANSLATE_CLIPBOARD").unwrap_or_else(|_| "".to_string())),
+                ("word-lookup".to_string(), env::var("SHIZI_SHORTCUT_WORD_LOOKUP").unwrap_or_else(|_| "".to_string())),
+                ("show-window".to_string(), env::var("SHIZI_SHORTCUT_SHOW_WINDOW").unwrap_or_else(|_| "".to_string())),
+                ("open-settings".to_string(), env::var("SHIZI_SHORTCUT_OPEN_SETTINGS").unwrap_or_else(|_| "".to_string())),
+            ]),
             services: vec![ServiceInstanceConfig {
                 id: "default".to_string(),
                 service_type: "llm".to_string(),
@@ -112,6 +123,7 @@ impl AppConfig {
     }
 
     pub fn normalized(mut self) -> Self {
+        self.shortcuts.retain(|_, v| !v.trim().is_empty());
         self.services = self.services.into_iter().map(|s| s.normalized()).collect();
         self.target_lang = normalize_string(self.target_lang, DEFAULT_TARGET_LANG);
         self
