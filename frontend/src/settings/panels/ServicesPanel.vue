@@ -69,6 +69,10 @@ const activeService = computed(() =>
   activeInstance.value ? serviceById(activeInstance.value.type) : undefined,
 )
 
+/** 渠道 protocols 为空即视为"尚未对接"，在 UI 上标记开发中并置灰启用。 */
+const isDeveloping = (type: ServiceId): boolean =>
+  serviceById(type)?.protocols.length === 0
+
 const filteredInstances = computed(() => {
   const q = search.value.trim().toLowerCase()
   const list = props.state.services
@@ -341,11 +345,17 @@ const onDragEnd = (): void => {
                   >
                     密钥
                   </Badge>
-                  <SettingSwitch
-                    :model-value="inst.enabled"
-                    :aria-label="`${inst.enabled ? '停用' : '启用'} ${inst.name}`"
-                    @update:model-value="() => handleToggle(inst)"
-                  />
+                  <span
+                    :title="isDeveloping(inst.type) ? '该渠道尚未对接，暂不可用' : undefined"
+                    class="inline-flex"
+                  >
+                    <SettingSwitch
+                      :model-value="inst.enabled"
+                      :disabled="isDeveloping(inst.type)"
+                      :aria-label="`${inst.enabled ? '停用' : '启用'} ${inst.name}`"
+                      @update:model-value="() => handleToggle(inst)"
+                    />
+                  </span>
                 </div>
                 <!-- Drop indicator(蓝色横线) -->
                 <span
@@ -395,8 +405,15 @@ const onDragEnd = (): void => {
                     {{ svc.description }}
                   </span>
                   <span
+                    v-if="svc.protocols.length === 0"
+                    class="absolute right-1.5 top-1.5 rounded bg-amber-100 px-1 py-0.5 text-[9px] font-normal text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+                    title="该渠道尚未对接，暂不可用"
+                  >
+                    开发中
+                  </span>
+                  <span
                     v-if="!svc.builtin"
-                    class="absolute right-1.5 top-1.5 rounded bg-muted px-1 py-0.5 text-[9px] text-muted-foreground"
+                    class="absolute bottom-1.5 right-1.5 rounded bg-muted px-1 py-0.5 text-[9px] text-muted-foreground"
                   >
                     自定义
                   </span>
@@ -629,6 +646,14 @@ const onDragEnd = (): void => {
           </p>
         </div>
       </header>
+
+      <div
+        v-if="activeService.protocols.length === 0"
+        class="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+      >
+        <CircleAlert class="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <span>该渠道尚未对接，暂不可用。</span>
+      </div>
 
       <SettingGroup title="接入点" bare>
         <SettingRow
