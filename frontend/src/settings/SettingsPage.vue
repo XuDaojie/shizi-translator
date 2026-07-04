@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import SettingsLayout from './SettingsLayout.vue'
 import GeneralPanel from './panels/GeneralPanel.vue'
 import TranslatePanel from './panels/TranslatePanel.vue'
@@ -34,7 +34,10 @@ const onUpdateActive = (value: string): void => {
   }
 }
 
-useSettings()
+const settings = useSettings()
+onMounted(() => {
+  void settings.syncFromBackend()
+})
 </script>
 
 <template>
