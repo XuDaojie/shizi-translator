@@ -8,7 +8,7 @@ use crate::{
     app::{state::AppState, window::show_window},
     core::{
         config::AppConfig,
-        selection::copy_selected_text,
+        selection::{copy_selected_text, read_clipboard_text},
         translation::TranslationInput,
     },
     ui::{
@@ -18,10 +18,39 @@ use crate::{
 };
 
 pub fn register_global_shortcuts(
-    app: &tauri::App,
-) -> Result<(), tauri_plugin_global_shortcut::Error> {
-    app.global_shortcut().register("Alt+T")?;
-    app.global_shortcut().register("Alt+O")
+    app: &tauri::AppHandle,
+    config: &AppConfig,
+) -> Result<(), ShortcutBindingError> {
+    let entries = configured_shortcuts(config)?;
+
+    app.global_shortcut()
+        .unregister_all()
+        .map_err(|error| ShortcutBindingError::global(format!("无法清理旧快捷键: {error}")))?;
+
+    for entry in entries.into_iter().filter(|entry| entry.action.is_some()) {
+        app.global_shortcut()
+            .register(entry.keys.as_str())
+            .map_err(|error| {
+                ShortcutBindingError::new(
+                    entry.id,
+                    format!("注册快捷键「{}」失败: {error}", entry.keys),
+                )
+            })?;
+    }
+
+    Ok(())
+}
+
+pub fn replace_global_shortcuts(
+    app: &tauri::AppHandle,
+    old_config: &AppConfig,
+    new_config: &AppConfig,
+) -> Result<(), ShortcutBindingError> {
+    if let Err(error) = register_global_shortcuts(app, new_config) {
+        let _ = register_global_shortcuts(app, old_config);
+        return Err(error);
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -139,16 +168,27 @@ pub fn handle_global_shortcut(
         return;
     }
 
-    match classify_shortcut(shortcut) {
-        ShortcutAction::OcrTranslate => {
+    let state: State<'_, AppState> = app.state();
+    let config = match state.config_store.get() {
+        Ok(config) => config,
+        Err(error) => {
+            show_translation_error(app, error.to_string());
+            return;
+        }
+    };
+
+    match classify_shortcut(shortcut, &config) {
+        Some(ShortcutAction::SelectionTranslate) => handle_selection_translate(app),
+        Some(ShortcutAction::ClipboardTranslate) => handle_clipboard_translate(app),
+        Some(ShortcutAction::OcrTranslate) => {
             let app_handle = app.clone();
-            let state: State<'_, AppState> = app_handle.state();
             let state = state.inner().clone();
             tauri::async_runtime::spawn(async move {
                 start_translation_from_ocr(app_handle, state).await;
             });
         }
-        ShortcutAction::SelectionTranslate => handle_selection_translate(app),
+        Some(ShortcutAction::ShowWindow | ShortcutAction::OpenSettings) => show_window(app),
+        None => {}
     }
 }
 
@@ -165,28 +205,45 @@ fn handle_selection_translate(app: &tauri::AppHandle) {
             }
         };
 
-        let state: State<'_, AppState> = app_handle.state();
-        if let Err(error) = state.set_pending_source_text(selected_text.clone()) {
+        start_popup_translation(app_handle, TranslationInput::SelectedText(selected_text));
+    });
+}
+
+fn handle_clipboard_translate(app: &tauri::AppHandle) {
+    let app_handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let text = match read_clipboard_text() {
+            Ok(text) => text,
+            Err(error) => {
+                show_translation_error(&app_handle, error.to_string());
+                return;
+            }
+        };
+
+        start_popup_translation(app_handle, TranslationInput::ManualText(text));
+    });
+}
+
+fn start_popup_translation(app_handle: tauri::AppHandle, input: TranslationInput) {
+    let source_text = input.text().to_string();
+    let state: State<'_, AppState> = app_handle.state();
+
+    if let Err(error) = state.set_pending_source_text(source_text) {
+        show_translation_error(&app_handle, error);
+        return;
+    }
+
+    let config = state.config_store.get();
+    if let Ok(config) = &config {
+        if let Err(error) = show_translation_popup(&app_handle, config) {
             show_translation_error(&app_handle, error);
             return;
         }
+    }
 
-        let config = state.config_store.get();
-        if let Ok(config) = &config {
-            if let Err(error) = show_translation_popup(&app_handle, config) {
-                show_translation_error(&app_handle, error);
-                return;
-            }
-        }
-
-        if let Err(error) = start_translation_from_input(
-            TranslationInput::SelectedText(selected_text),
-            app_handle.clone(),
-            state.inner(),
-        ) {
-            show_translation_error(&app_handle, error);
-        }
-    });
+    if let Err(error) = start_translation_from_input(input, app_handle.clone(), state.inner()) {
+        show_translation_error(&app_handle, error);
+    }
 }
 
 #[cfg(test)]
