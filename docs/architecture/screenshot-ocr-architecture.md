@@ -314,7 +314,7 @@ pub enum OcrError {
 
 ## 快捷键与 Tauri 权限
 
-现有 `Alt+T` 使用 `tauri-plugin-global-shortcut` 的 Rust handler 模式。截图 OCR 快捷键建议继续在 Rust 侧注册和分发，例如后续可使用 `Alt+O` 或用户配置项。
+现有全局快捷键统一由 `src-tauri/src/app/shortcuts.rs` 注册、解析和分发。启动时从 `AppConfig.shortcuts` 读取配置；设置页保存配置时先重注册快捷键，成功后再写入 `ConfigStore`，因此划词翻译、截图 OCR 翻译、剪贴板翻译、显示主窗口和打开设置无需重启即可生效。`word-lookup` 绑定会保存，但本阶段不注册触发。
 
 Tauri 官方文档说明 global shortcut 插件默认不启用危险能力，需要通过 capabilities 显式授权。当前项目已有 `src-tauri/capabilities/default.json`，新增快捷键或前端 command 时需要同步检查权限配置。
 
@@ -424,7 +424,7 @@ Windows OCR spike 已验证 `Windows.Media.Ocr` 接入路径：
 - 已将 `WindowsScreenCapture` 接入 `ScreenCapture` trait（`capture_interactive` 委托 `capture_full_screen`，`capture_region` 暂返回 `UnsupportedPlatform`）。
 - 已新增 `platform::capture_and_recognize` 平台分发缝，Windows 侧串联 `WindowsScreenCapture` + `WindowsOcrEngine`，非 Windows 返回 `UnsupportedPlatform`。
 - 已新增 `ui::ocr_popup::start_translation_from_ocr`，负责 busy 预检、用户取消静默、OCR 错误文案映射，成功后复用 `start_translation_from_input`。
-- 已注册 `Alt+O` 全局快捷键并在 `handle_global_shortcut` 中按快捷键分流划词与 OCR。
+- 默认注册 `Alt+O` 作为截图 OCR 快捷键；用户可在设置页改绑或清空，保存后立即生效。
 - 不新增前端代码或事件类型；OCR 前置失败统一经 `translation:event::Failed` 展示。
 
 已知简化（未在本切片修复）：`capture_full_screen` 在用户取消系统 picker 时返回 `BackendUnavailable` 而非 `Ok(None)`，用户取消当前会触发「截图失败」提示而非静默。区域截图（`capture_region`）仍未实现，留给 DXGI/自建 overlay 阶段。

@@ -27,4 +27,5 @@ export interface AppConfig {
   popupPrecreate: boolean;
   overlayPrecreate: boolean;
   collectUsage: boolean;
+  shortcuts: Record<string, string>;
 }

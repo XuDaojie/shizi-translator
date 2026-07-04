@@ -1,11 +1,16 @@
 use std::{thread, time::Duration};
 
+use serde::Serialize;
 use tauri::{Manager, State};
-use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 use crate::{
-    app::state::AppState,
-    core::{selection::copy_selected_text, translation::TranslationInput},
+    app::{state::AppState, window::show_window},
+    core::{
+        config::AppConfig,
+        selection::{copy_selected_text, read_clipboard_text},
+        translation::TranslationInput,
+    },
     ui::{
         ocr_popup::start_translation_from_ocr,
         web_popup::{show_translation_error, show_translation_popup, start_translation_from_input},
@@ -13,27 +18,145 @@ use crate::{
 };
 
 pub fn register_global_shortcuts(
-    app: &tauri::App,
-) -> Result<(), tauri_plugin_global_shortcut::Error> {
-    app.global_shortcut().register("Alt+T")?;
-    app.global_shortcut().register("Alt+O")
-}
+    app: &tauri::AppHandle,
+    config: &AppConfig,
+) -> Result<(), ShortcutBindingError> {
+    let entries = configured_shortcuts(config)?;
 
-#[derive(Debug, PartialEq, Eq)]
-enum ShortcutAction {
-    OcrTranslate,
-    SelectionTranslate,
-}
+    app.global_shortcut()
+        .unregister_all()
+        .map_err(|error| ShortcutBindingError::global(format!("无法清理旧快捷键: {error}")))?;
 
-// ponytail: 用 Shortcut 结构体相等比较，而非 to_string() 字符串比较——
-// HotKey::into_string() 输出小写修饰键 + "KeyO"（"alt+KeyO"），与 "Alt+O" 不匹配。
-fn classify_shortcut(shortcut: &Shortcut) -> ShortcutAction {
-    let ocr = Shortcut::new(Some(Modifiers::ALT), Code::KeyO);
-    if shortcut == &ocr {
-        ShortcutAction::OcrTranslate
-    } else {
-        ShortcutAction::SelectionTranslate
+    for entry in entries.into_iter().filter(|entry| entry.action.is_some()) {
+        app.global_shortcut()
+            .register(entry.keys.as_str())
+            .map_err(|error| {
+                ShortcutBindingError::new(
+                    entry.id,
+                    format!("注册快捷键「{}」失败: {error}", entry.keys),
+                )
+            })?;
     }
+
+    Ok(())
+}
+
+pub fn replace_global_shortcuts(
+    app: &tauri::AppHandle,
+    old_config: &AppConfig,
+    new_config: &AppConfig,
+) -> Result<(), ShortcutBindingError> {
+    if let Err(error) = register_global_shortcuts(app, new_config) {
+        let _ = register_global_shortcuts(app, old_config);
+        return Err(error);
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ShortcutAction {
+    ClipboardTranslate,
+    OcrTranslate,
+    OpenSettings,
+    SelectionTranslate,
+    ShowWindow,
+}
+
+#[derive(Debug, Clone, Serialize, thiserror::Error)]
+#[error("{message}")]
+#[serde(rename_all = "camelCase")]
+pub struct ShortcutBindingError {
+    pub id: String,
+    pub message: String,
+}
+
+impl ShortcutBindingError {
+    fn new(id: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            message: message.into(),
+        }
+    }
+
+    pub(crate) fn global(message: impl Into<String>) -> Self {
+        Self::new("", message)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ConfiguredShortcut {
+    id: String,
+    keys: String,
+    shortcut: Shortcut,
+    action: Option<ShortcutAction>,
+}
+
+fn action_for_id(id: &str) -> Option<ShortcutAction> {
+    match id {
+        "translate-selection" => Some(ShortcutAction::SelectionTranslate),
+        "translate-clipboard" => Some(ShortcutAction::ClipboardTranslate),
+        "translate-screenshot" => Some(ShortcutAction::OcrTranslate),
+        "show-window" => Some(ShortcutAction::ShowWindow),
+        "open-settings" => Some(ShortcutAction::OpenSettings),
+        "word-lookup" => None,
+        _ => None,
+    }
+}
+
+fn label_for_id(id: &str) -> &'static str {
+    match id {
+        "translate-selection" => "划词翻译",
+        "translate-clipboard" => "剪贴板翻译",
+        "translate-screenshot" => "截图翻译",
+        "word-lookup" => "取词翻译",
+        "show-window" => "显示主窗口",
+        "open-settings" => "打开设置",
+        _ => "未知动作",
+    }
+}
+
+fn configured_shortcuts(
+    config: &AppConfig,
+) -> Result<Vec<ConfiguredShortcut>, ShortcutBindingError> {
+    let mut entries: Vec<ConfiguredShortcut> = Vec::new();
+
+    for (id, keys) in &config.shortcuts {
+        let keys = keys.trim();
+        if keys.is_empty() {
+            continue;
+        }
+
+        let shortcut = keys.parse::<Shortcut>().map_err(|error| {
+            ShortcutBindingError::new(id, format!("无法解析快捷键「{keys}」: {error}"))
+        })?;
+
+        if let Some(existing) = entries
+            .iter()
+            .find(|entry| entry.shortcut == shortcut)
+        {
+            return Err(ShortcutBindingError::new(
+                id,
+                format!("与「{}」重复", label_for_id(&existing.id)),
+            ));
+        }
+
+        entries.push(ConfiguredShortcut {
+            id: id.clone(),
+            keys: keys.to_string(),
+            shortcut,
+            action: action_for_id(id),
+        });
+    }
+
+    Ok(entries)
+}
+
+fn classify_shortcut(shortcut: &Shortcut, config: &AppConfig) -> Option<ShortcutAction> {
+    configured_shortcuts(config)
+        .ok()?
+        .into_iter()
+        .find(|entry| entry.shortcut == *shortcut)
+        .and_then(|entry| entry.action)
 }
 
 pub fn handle_global_shortcut(
@@ -45,16 +168,27 @@ pub fn handle_global_shortcut(
         return;
     }
 
-    match classify_shortcut(shortcut) {
-        ShortcutAction::OcrTranslate => {
+    let state: State<'_, AppState> = app.state();
+    let config = match state.config_store.get() {
+        Ok(config) => config,
+        Err(error) => {
+            show_translation_error(app, error.to_string());
+            return;
+        }
+    };
+
+    match classify_shortcut(shortcut, &config) {
+        Some(ShortcutAction::SelectionTranslate) => handle_selection_translate(app),
+        Some(ShortcutAction::ClipboardTranslate) => handle_clipboard_translate(app),
+        Some(ShortcutAction::OcrTranslate) => {
             let app_handle = app.clone();
-            let state: State<'_, AppState> = app_handle.state();
             let state = state.inner().clone();
             tauri::async_runtime::spawn(async move {
                 start_translation_from_ocr(app_handle, state).await;
             });
         }
-        ShortcutAction::SelectionTranslate => handle_selection_translate(app),
+        Some(ShortcutAction::ShowWindow | ShortcutAction::OpenSettings) => show_window(app),
+        None => {}
     }
 }
 
@@ -71,47 +205,119 @@ fn handle_selection_translate(app: &tauri::AppHandle) {
             }
         };
 
-        let state: State<'_, AppState> = app_handle.state();
-        if let Err(error) = state.set_pending_source_text(selected_text.clone()) {
+        start_popup_translation(app_handle, TranslationInput::SelectedText(selected_text));
+    });
+}
+
+fn handle_clipboard_translate(app: &tauri::AppHandle) {
+    let app_handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let text = match read_clipboard_text() {
+            Ok(text) => text,
+            Err(error) => {
+                show_translation_error(&app_handle, error.to_string());
+                return;
+            }
+        };
+
+        start_popup_translation(app_handle, TranslationInput::ManualText(text));
+    });
+}
+
+fn start_popup_translation(app_handle: tauri::AppHandle, input: TranslationInput) {
+    let source_text = input.text().to_string();
+    let state: State<'_, AppState> = app_handle.state();
+
+    if let Err(error) = state.set_pending_source_text(source_text) {
+        show_translation_error(&app_handle, error);
+        return;
+    }
+
+    let config = state.config_store.get();
+    if let Ok(config) = &config {
+        if let Err(error) = show_translation_popup(&app_handle, config) {
             show_translation_error(&app_handle, error);
             return;
         }
+    }
 
-        let config = state.config_store.get();
-        if let Ok(config) = &config {
-            if let Err(error) = show_translation_popup(&app_handle, config) {
-                show_translation_error(&app_handle, error);
-                return;
-            }
-        }
-
-        if let Err(error) = start_translation_from_input(
-            TranslationInput::SelectedText(selected_text),
-            app_handle.clone(),
-            state.inner(),
-        ) {
-            show_translation_error(&app_handle, error);
-        }
-    });
+    if let Err(error) = start_translation_from_input(input, app_handle.clone(), state.inner()) {
+        show_translation_error(&app_handle, error);
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::config::AppConfig;
 
-    #[test]
-    fn classify_alt_o_as_ocr() {
-        // 复现 register("Alt+O") 的真实路径：插件内部用 FromStr 解析字符串为 Shortcut。
-        let shortcut = "Alt+O".parse::<Shortcut>().expect("Alt+O 应可解析");
-        assert_eq!(classify_shortcut(&shortcut), ShortcutAction::OcrTranslate);
+    fn config_with(bindings: &[(&str, &str)]) -> AppConfig {
+        let mut config = AppConfig::from_env();
+        for (id, keys) in bindings {
+            config
+                .shortcuts
+                .insert((*id).to_string(), (*keys).to_string());
+        }
+        config.normalized()
     }
 
     #[test]
-    fn classify_alt_t_as_selection() {
-        let shortcut = "Alt+T".parse::<Shortcut>().expect("Alt+T 应可解析");
+    fn classifies_configured_selection_shortcut() {
+        let config = config_with(&[("translate-selection", "Ctrl+Alt+T")]);
+        let shortcut = "Ctrl+Alt+T"
+            .parse::<Shortcut>()
+            .expect("快捷键应可解析");
+
         assert_eq!(
-            classify_shortcut(&shortcut),
-            ShortcutAction::SelectionTranslate
+            classify_shortcut(&shortcut, &config),
+            Some(ShortcutAction::SelectionTranslate)
         );
+    }
+
+    #[test]
+    fn classifies_configured_ocr_shortcut() {
+        let config = config_with(&[("translate-screenshot", "Ctrl+Alt+O")]);
+        let shortcut = "Ctrl+Alt+O"
+            .parse::<Shortcut>()
+            .expect("快捷键应可解析");
+
+        assert_eq!(
+            classify_shortcut(&shortcut, &config),
+            Some(ShortcutAction::OcrTranslate)
+        );
+    }
+
+    #[test]
+    fn classifies_unregistered_empty_binding_as_none() {
+        let config = config_with(&[("translate-selection", "")]);
+        let shortcut = "Alt+T".parse::<Shortcut>().expect("Alt+T 应可解析");
+
+        assert_eq!(classify_shortcut(&shortcut, &config), None);
+    }
+
+    #[test]
+    fn validates_duplicate_shortcuts_across_all_bindings() {
+        let config = config_with(&[
+            ("translate-selection", "Alt+T"),
+            ("word-lookup", "Alt+T"),
+        ]);
+
+        let error = configured_shortcuts(&config).expect_err("重复快捷键应失败");
+
+        assert_eq!(error.id, "word-lookup");
+        assert!(error.message.contains("划词翻译"));
+    }
+
+    #[test]
+    fn keeps_word_lookup_unimplemented_after_validation() {
+        let config = config_with(&[("word-lookup", "Ctrl+Alt+W")]);
+        let entries = configured_shortcuts(&config).expect("配置应可解析");
+
+        let word_lookup = entries
+            .iter()
+            .find(|entry| entry.id == "word-lookup")
+            .expect("应保留取词绑定用于保存和去重");
+
+        assert_eq!(word_lookup.action, None);
     }
 }

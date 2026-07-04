@@ -14,6 +14,21 @@ pub enum SelectionError {
     CopyShortcutFailed,
     #[error("未读取到选中文本，请先选中文本后再按 Alt+T")]
     EmptySelection,
+    #[error("剪贴板中没有可翻译的文本")]
+    EmptyClipboard,
+}
+
+pub fn read_clipboard_text() -> Result<String, SelectionError> {
+    normalize_clipboard_text(clipboard::read_text()?)
+}
+
+fn normalize_clipboard_text(text: Option<String>) -> Result<String, SelectionError> {
+    let text = text.unwrap_or_default().trim().to_string();
+    if text.is_empty() {
+        Err(SelectionError::EmptyClipboard)
+    } else {
+        Ok(text)
+    }
 }
 
 pub fn copy_selected_text() -> Result<String, SelectionError> {
@@ -46,4 +61,32 @@ fn selection_sentinel() -> String {
         .map(|duration| duration.as_millis())
         .unwrap_or_default();
     format!("__SHIZI_SELECTION_SENTINEL_{millis}__")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clipboard_text_trims_non_empty_value() {
+        assert_eq!(
+            normalize_clipboard_text(Some("  hello  ".to_string())).expect("应读取到文本"),
+            "hello"
+        );
+    }
+
+    #[test]
+    fn clipboard_text_rejects_empty_value() {
+        let error = normalize_clipboard_text(Some("   ".to_string()))
+            .expect_err("空文本应失败");
+
+        assert!(matches!(error, SelectionError::EmptyClipboard));
+    }
+
+    #[test]
+    fn clipboard_text_rejects_missing_value() {
+        let error = normalize_clipboard_text(None).expect_err("无文本应失败");
+
+        assert!(matches!(error, SelectionError::EmptyClipboard));
+    }
 }

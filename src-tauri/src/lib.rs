@@ -57,11 +57,12 @@ pub fn run() {
             app.manage(AppState::new(config_store));
             setup_tray(app)?;
             setup_close_to_hide(app);
-            register_global_shortcuts(app)
+
+            let config = app.state::<AppState>().config_store.get().unwrap_or_else(|_| AppConfig::from_env());
+            register_global_shortcuts(app.handle(), &config)
                 .map_err(|error| tauri::Error::Anyhow(error.into()))?;
 
             // 按窗口策略预创建弹窗与 overlay
-            let config = app.state::<AppState>().config_store.get().unwrap_or_else(|_| AppConfig::from_env());
             let _ = ensure_popup_window(app.handle(), &config);
             let _ = ensure_overlay(app.handle());
 

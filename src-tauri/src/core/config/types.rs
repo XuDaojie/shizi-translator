@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::env;
 
 use serde::{Deserialize, Serialize};
@@ -16,6 +17,32 @@ fn default_true() -> bool {
     true
 }
 
+pub type ShortcutConfig = BTreeMap<String, String>;
+
+fn default_shortcuts() -> ShortcutConfig {
+    [
+        ("translate-selection", "Alt+T"),
+        ("translate-clipboard", "Ctrl+Shift+C"),
+        ("translate-screenshot", "Alt+O"),
+        ("word-lookup", ""),
+        ("show-window", "Ctrl+Shift+Space"),
+        ("open-settings", "Ctrl+,"),
+    ]
+    .into_iter()
+    .map(|(id, keys)| (id.to_string(), keys.to_string()))
+    .collect()
+}
+
+fn normalize_shortcuts(shortcuts: ShortcutConfig) -> ShortcutConfig {
+    let mut normalized = default_shortcuts();
+    for (id, keys) in shortcuts {
+        if normalized.contains_key(&id) {
+            normalized.insert(id, keys.trim().to_string());
+        }
+    }
+    normalized
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppConfig {
@@ -30,6 +57,8 @@ pub struct AppConfig {
     pub overlay_precreate: bool,
     #[serde(default = "default_true")]
     pub collect_usage: bool,
+    #[serde(default = "default_shortcuts")]
+    pub shortcuts: ShortcutConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,6 +94,7 @@ impl AppConfig {
             collect_usage: env::var("SHIZI_COLLECT_USAGE")
                 .map(|value| value.eq_ignore_ascii_case("true"))
                 .unwrap_or(true),
+            shortcuts: default_shortcuts(),
         }
         .normalized()
     }
@@ -74,6 +104,7 @@ impl AppConfig {
         self.target_lang = normalize_string(self.target_lang, DEFAULT_TARGET_LANG);
         self.openai_compatible = self.openai_compatible.normalized();
         self.claude = self.claude.normalized();
+        self.shortcuts = normalize_shortcuts(self.shortcuts);
         self
     }
 
@@ -366,5 +397,85 @@ mod tests {
             .expect("缺少 collect_usage 字段应可反序列化")
             .normalized();
         assert!(config.collect_usage);
+    }
+
+    #[test]
+    fn app_config_defaults_shortcuts() {
+        let config = AppConfig::from_env();
+
+        assert_eq!(
+            config.shortcuts.get("translate-selection").map(String::as_str),
+            Some("Alt+T")
+        );
+        assert_eq!(
+            config.shortcuts.get("translate-clipboard").map(String::as_str),
+            Some("Ctrl+Shift+C")
+        );
+        assert_eq!(
+            config.shortcuts.get("translate-screenshot").map(String::as_str),
+            Some("Alt+O")
+        );
+        assert_eq!(
+            config.shortcuts.get("word-lookup").map(String::as_str),
+            Some("")
+        );
+        assert_eq!(
+            config.shortcuts.get("show-window").map(String::as_str),
+            Some("Ctrl+Shift+Space")
+        );
+        assert_eq!(
+            config.shortcuts.get("open-settings").map(String::as_str),
+            Some("Ctrl+,")
+        );
+    }
+
+    #[test]
+    fn app_config_normalized_backfills_missing_shortcuts_and_preserves_empty_disable() {
+        let mut config = AppConfig::from_env();
+        config.shortcuts = [("translate-selection".to_string(), "  ".to_string())]
+            .into_iter()
+            .collect();
+
+        let config = config.normalized();
+
+        assert_eq!(
+            config.shortcuts.get("translate-selection").map(String::as_str),
+            Some("")
+        );
+        assert_eq!(
+            config.shortcuts.get("translate-screenshot").map(String::as_str),
+            Some("Alt+O")
+        );
+        assert_eq!(
+            config.shortcuts.get("open-settings").map(String::as_str),
+            Some("Ctrl+,")
+        );
+    }
+
+    #[test]
+    fn app_config_deserializes_shortcuts_defaults_when_missing() {
+        let json = r#"{
+            "provider": "openai-compatible",
+            "targetLang": "中文",
+            "openaiCompatible": {
+                "apiKey": "sk-x",
+                "baseUrl": "https://api.openai.com/v1",
+                "model": "gpt-4o-mini",
+                "timeoutSeconds": 60
+            }
+        }"#;
+
+        let config = serde_json::from_str::<AppConfig>(json)
+            .expect("缺少 shortcuts 字段应可反序列化")
+            .normalized();
+
+        assert_eq!(
+            config.shortcuts.get("translate-selection").map(String::as_str),
+            Some("Alt+T")
+        );
+        assert_eq!(
+            config.shortcuts.get("word-lookup").map(String::as_str),
+            Some("")
+        );
     }
 }
