@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { validateConfig } from './config';
+import { projectToAppConfig, validateConfig, validateShortcutBindings } from './config';
 import type { AppConfig } from '@/types/config';
-import { projectToAppConfig } from './config';
 import type { AppSettings, ServiceInstance } from '@/settings/types';
 
 const base: AppConfig = {
@@ -12,6 +11,10 @@ const base: AppConfig = {
   popupPrecreate: true,
   overlayPrecreate: true,
   collectUsage: true,
+  shortcuts: {
+    'translate-selection': 'Alt+T',
+    'translate-screenshot': 'Alt+O',
+  },
 };
 
 describe('validateConfig', () => {
@@ -202,5 +205,42 @@ describe('projectToAppConfig', () => {
     expect(config.popupPrecreate).toBe(false);
     expect(config.overlayPrecreate).toBe(true);
     expect(config.collectUsage).toBe(false);
+  });
+
+  it('投影快捷键绑定到后端 shortcuts 字段', () => {
+    const s = makeState(
+      [makeInstance({ id: 'i1', type: 'openai' })],
+      'i1',
+    );
+    s.shortcut.bindings = [
+      { id: 'translate-selection', label: '划词翻译', description: '', keys: 'Ctrl+Alt+T' },
+      { id: 'translate-screenshot', label: '截图翻译', description: '', keys: '' },
+    ];
+
+    const { config } = projectToAppConfig(s, 'openai-compatible');
+
+    expect(config.shortcuts).toEqual({
+      'translate-selection': 'Ctrl+Alt+T',
+      'translate-screenshot': '',
+    });
+  });
+});
+
+describe('validateShortcutBindings', () => {
+  it('空快捷键不参与重复校验', () => {
+    expect(validateShortcutBindings([
+      { id: 'a', label: 'A', keys: '' },
+      { id: 'b', label: 'B', keys: '' },
+    ])).toEqual({});
+  });
+
+  it('重复快捷键返回两行错误', () => {
+    expect(validateShortcutBindings([
+      { id: 'selection', label: '划词翻译', keys: 'Alt+T' },
+      { id: 'lookup', label: '取词翻译', keys: 'alt+t' },
+    ])).toEqual({
+      selection: '与「取词翻译」重复',
+      lookup: '与「划词翻译」重复',
+    });
   });
 });

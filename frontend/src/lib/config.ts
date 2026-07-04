@@ -1,5 +1,5 @@
 import type { AppConfig } from '@/types/config';
-import type { AppSettings, ServiceInstance } from '@/settings/types';
+import type { AppSettings, ServiceInstance, ShortcutBinding } from '@/settings/types';
 import type { Provider } from '@/types/config';
 
 /** 走 OpenAI 兼容协议、后端能用 openai-compatible provider 接入的渠道 type 集合。 */
@@ -18,6 +18,32 @@ const DEFAULT_CLAUDE = {
   timeoutSeconds: 60,
   enableThinking: false,
 };
+
+type ShortcutLike = Pick<ShortcutBinding, 'id' | 'label' | 'keys'>;
+
+const projectShortcuts = (state: AppSettings): Record<string, string> =>
+  Object.fromEntries(state.shortcut.bindings.map((binding) => [binding.id, binding.keys.trim()]));
+
+export function validateShortcutBindings(bindings: ShortcutLike[]): Record<string, string> {
+  const errors: Record<string, string> = {};
+  const seen = new Map<string, ShortcutLike>();
+
+  for (const binding of bindings) {
+    const keys = binding.keys.trim();
+    if (!keys) continue;
+
+    const normalized = keys.toLowerCase();
+    const existing = seen.get(normalized);
+    if (existing) {
+      errors[binding.id] = `与「${existing.label}」重复`;
+      errors[existing.id] ??= `与「${binding.label}」重复`;
+    } else {
+      seen.set(normalized, binding);
+    }
+  }
+
+  return errors;
+}
 
 /**
  * 校验配置，返回错误文案；无错返回 null。
@@ -105,6 +131,7 @@ function makeOpenAiConfig(instance: ServiceInstance, state: AppSettings): AppCon
     popupPrecreate: state.general.popupPrecreate,
     overlayPrecreate: state.general.overlayPrecreate,
     collectUsage: state.advanced.collectUsage,
+    shortcuts: projectShortcuts(state),
   };
 }
 
@@ -123,6 +150,7 @@ function makeClaudeConfig(instance: ServiceInstance, state: AppSettings): AppCon
     popupPrecreate: state.general.popupPrecreate,
     overlayPrecreate: state.general.overlayPrecreate,
     collectUsage: state.advanced.collectUsage,
+    shortcuts: projectShortcuts(state),
   };
 }
 
@@ -135,5 +163,6 @@ function makeDefaultConfig(provider: Provider, state: AppSettings): AppConfig {
     popupPrecreate: state.general.popupPrecreate,
     overlayPrecreate: state.general.overlayPrecreate,
     collectUsage: state.advanced.collectUsage,
+    shortcuts: projectShortcuts(state),
   };
 }
