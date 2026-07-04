@@ -8,7 +8,7 @@ import type {
   ServiceMeta,
 } from '../types'
 import { BUILTIN_SERVICES, buildServices, DEFAULT_PROMPTS } from '../tokens'
-import { projectToAppConfig, validateConfig } from '@/lib/config'
+import { projectToAppConfig, validateConfig, validateShortcutBindings } from '@/lib/config'
 import type { Provider } from '@/types/config'
 import { invokeSaveAppConfig, isTauriReady } from '@/lib/tauri'
 import { toast } from '@/lib/toast'
@@ -380,6 +380,31 @@ const markDirty = (): void => {
   dirty.value = serializeForDirty(state) !== serializeForDirty(baseline)
 }
 
+const clearShortcutErrors = (): void => {
+  for (const binding of state.shortcut.bindings) {
+    binding.error = undefined
+  }
+}
+
+const applyShortcutErrors = (errors: Record<string, string>): void => {
+  for (const binding of state.shortcut.bindings) {
+    binding.error = errors[binding.id]
+  }
+}
+
+const applyBackendShortcutError = (error: unknown): string | null => {
+  if (!error || typeof error !== 'object') return null
+  const payload = error as { id?: unknown; message?: unknown }
+  if (typeof payload.message !== 'string') return null
+
+  if (typeof payload.id === 'string' && payload.id) {
+    const binding = state.shortcut.bindings.find((item) => item.id === payload.id)
+    if (binding) binding.error = payload.message
+  }
+
+  return payload.message
+}
+
 watch(state, markDirty, { deep: true })
 
 watch(
@@ -416,6 +441,15 @@ export const useSettings = () => ({
   state,
   dirty,
   async save(): Promise<void> {
+    clearShortcutErrors()
+
+    const shortcutErrors = validateShortcutBindings(state.shortcut.bindings)
+    if (Object.keys(shortcutErrors).length > 0) {
+      applyShortcutErrors(shortcutErrors)
+      toast.error('保存失败', '请先解决重复快捷键')
+      return
+    }
+
     const { config, unsupported, unsupportedName } = projectToAppConfig(state, lastSavedProvider)
     const err = validateConfig(config)
     if (err) {
@@ -434,7 +468,8 @@ export const useSettings = () => ({
           toast.success('配置已保存')
         }
       } catch (e) {
-        toast.error('保存失败', String(e))
+        const shortcutMessage = applyBackendShortcutError(e)
+        toast.error('保存失败', shortcutMessage ?? String(e))
       }
     } else {
       Object.assign(baseline, JSON.parse(JSON.stringify(state)))

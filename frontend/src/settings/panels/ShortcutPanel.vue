@@ -5,9 +5,6 @@ import type { AppSettings } from '../types'
 defineProps<{
   state: AppSettings
 }>()
-
-/** 后端硬编码、不可配置的快捷键 id（只读展示真实绑定）。 */
-const READONLY_IDS = new Set(['translate-selection', 'translate-screenshot'])
 </script>
 
 <template>
@@ -20,15 +17,14 @@ const READONLY_IDS = new Set(['translate-selection', 'translate-screenshot'])
       :key="binding.id"
       :title="binding.label"
       :description="binding.description"
-      status="wip"
+      :status="binding.id === 'word-lookup' ? 'planned' : undefined"
     >
       <ShortcutRecorder
         :model-value="binding.keys"
         :error="binding.error"
-        :disabled="READONLY_IDS.has(binding.id)"
         @update:model-value="(v) => {
           binding.keys = v
-          if (v) binding.error = undefined
+          binding.error = undefined
         }"
       />
     </SettingRow>
