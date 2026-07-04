@@ -7,6 +7,7 @@ import type {
   ServiceInstance,
   ServiceMeta,
 } from '../types'
+import type { ServiceInstanceConfig } from '@/types/config'
 import { BUILTIN_SERVICES, buildServices, DEFAULT_PROMPTS } from '../tokens'
 import { projectToAppConfig, validateConfig } from '@/lib/config'
 import { invokeSaveAppConfig, isTauriReady } from '@/lib/tauri'
@@ -274,6 +275,49 @@ const newCustomTypeId = (name: string): string => {
   const slug = slugify(name) || 'type'
   const tail = Math.random().toString(36).slice(2, 6)
   return `custom_${slug}_${tail}`
+}
+
+/** 后端 ServiceInstanceConfig -> 前端 ServiceInstance,前端独有字段用默认值。 */
+const backendInstanceToLocal = (backend: ServiceInstanceConfig): ServiceInstance => ({
+  id: backend.id,
+  type: backend.serviceType as ServiceId,
+  name: backend.name,
+  enabled: backend.enabled,
+  protocol: backend.protocol,
+  apiKey: backend.apiKey ?? '',
+  model: backend.model,
+  endpoint: backend.endpoint,
+  note: '',
+  pulledModels: [],
+  keyStatus: 'idle',
+  chainOfThought: 'off',
+  systemPrompt: DEFAULT_PROMPTS.system,
+  translationPrompt: DEFAULT_PROMPTS.translation,
+  reflectionPrompt: DEFAULT_PROMPTS.reflection,
+  reflectionEnabled: false,
+})
+
+export const mergeBackendIntoServices = (
+  local: ServiceInstance[],
+  backend: ServiceInstanceConfig[],
+): ServiceInstance[] => {
+  const backendIds = new Set(backend.map((b) => b.id))
+  const localById = new Map(local.map((s) => [s.id, s]))
+
+  return backend.map((b) => {
+    const existing = localById.get(b.id)
+    if (existing) {
+      return {
+        ...existing,
+        enabled: b.enabled,
+        apiKey: b.apiKey ?? '',
+        endpoint: b.endpoint,
+        model: b.model,
+        protocol: b.protocol,
+      }
+    }
+    return backendInstanceToLocal(b)
+  })
 }
 
 const loadFromStorage = (): AppSettings => {
