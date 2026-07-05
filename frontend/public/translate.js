@@ -47,6 +47,11 @@ function updateCharCount() {
 sourceText.addEventListener('input', () => {
   autoResize();
   updateCharCount();
+  if (sourceText.value.trim() === '') {
+    resultCards.forEach((card) => {
+      card.el.classList.add('collapsed');
+    });
+  }
 });
 sourceText.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) {
@@ -202,6 +207,9 @@ function getCard(payload) {
 
   const ref = { el: card, text, actions, tokens, inputTokens, outputTokens, status: 'pending' };
   resultCards.set(id, ref);
+  if (sourceText.value.trim() === '') {
+    card.classList.add('collapsed');
+  }
   return ref;
 }
 
@@ -284,6 +292,7 @@ function renderTranslationEvent(payload) {
         setStatus({ text: '翻译中…', loading: true, action: { label: '取消', onClick: cancelTranslation } });
       }
       const card = getCard(payload);
+      card.el.classList.remove('collapsed');
       card.status = 'translating';
       card.text.textContent = '';
       card.text.style.color = '';
