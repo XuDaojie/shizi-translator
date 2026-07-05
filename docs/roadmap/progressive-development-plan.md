@@ -79,6 +79,14 @@ src-tauri/src/ui/settings_commands.rs
 
 暂未完成 / 后续演进：
 
+**2026-07 当前 UI 未实现能力打磨**（已完成）：
+
+- 设置页服务模块：API Key 校验和模型拉取已接通真实服务接口。
+- 翻译行为：自动复制结果、划词剪贴板恢复、OCR 历史已接通。
+- 提示词与思维链：系统提示词、用户提示词模板、chainOfThought 已接入 LLM 请求；Claude 支持 manual/adaptive thinking。
+- 未接通入口已从 UI 隐藏或降级为只读展示。
+- 高级页配置导出/导入已接通（导出剔除 API Key，导入保留本地 Key）。
+
 - ~~Anthropic / Claude 专用 provider~~ ✅。
 - `TranslationInput` / `TranslationMode` 的完整输入模型。
 - ~~`Cancelled` 事件~~ ✅、~~usage/token 统计~~ ✅、~~取消/重试交互~~ ✅。
