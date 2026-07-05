@@ -292,18 +292,17 @@ const backendInstanceToLocal = (backend: ServiceInstanceConfig): ServiceInstance
   note: '',
   pulledModels: [],
   keyStatus: 'idle',
-  chainOfThought: 'off',
-  systemPrompt: DEFAULT_PROMPTS.system,
-  translationPrompt: DEFAULT_PROMPTS.translation,
-  reflectionPrompt: DEFAULT_PROMPTS.reflection,
-  reflectionEnabled: false,
+  chainOfThought: backend.chainOfThought || 'off',
+  systemPrompt: backend.systemPrompt ?? DEFAULT_PROMPTS.system,
+  translationPrompt: backend.translationPrompt ?? DEFAULT_PROMPTS.translation,
+  reflectionPrompt: backend.reflectionPrompt ?? DEFAULT_PROMPTS.reflection,
+  reflectionEnabled: backend.reflectionEnabled,
 })
 
 export const mergeBackendIntoServices = (
   local: ServiceInstance[],
   backend: ServiceInstanceConfig[],
 ): ServiceInstance[] => {
-  const backendIds = new Set(backend.map((b) => b.id))
   const localById = new Map(local.map((s) => [s.id, s]))
 
   return backend.map((b) => {
@@ -316,6 +315,11 @@ export const mergeBackendIntoServices = (
         endpoint: b.endpoint,
         model: b.model,
         protocol: b.protocol,
+        systemPrompt: b.systemPrompt ?? existing.systemPrompt,
+        translationPrompt: b.translationPrompt ?? existing.translationPrompt,
+        reflectionPrompt: b.reflectionPrompt ?? existing.reflectionPrompt,
+        reflectionEnabled: b.reflectionEnabled,
+        chainOfThought: b.chainOfThought,
       }
     }
     return backendInstanceToLocal(b)
@@ -492,6 +496,11 @@ export const useSettings = () => ({
       return
     }
     state.services = mergeBackendIntoServices(state.services, backend.services)
+    state.translation.defaultSourceLang =
+      backend.defaultSourceLang ?? state.translation.defaultSourceLang
+    state.translation.autoCopy = backend.autoCopy ?? state.translation.autoCopy
+    state.translation.restoreClipboard =
+      backend.restoreClipboard ?? state.translation.restoreClipboard
     state.shortcut.bindings = mergeBackendIntoShortcuts(state.shortcut.bindings, backend.shortcuts ?? {})
     Object.assign(baseline, JSON.parse(JSON.stringify(state)))
     dirty.value = false

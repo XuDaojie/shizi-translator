@@ -49,6 +49,11 @@ mod tests {
             endpoint: "https://api.deepseek.com".to_string(),
             model: "deepseek-chat".to_string(),
             timeout_seconds: 60,
+            system_prompt: String::new(),
+            translation_prompt: String::new(),
+            reflection_prompt: String::new(),
+            reflection_enabled: false,
+            chain_of_thought: "off".to_string(),
         }
     }
 

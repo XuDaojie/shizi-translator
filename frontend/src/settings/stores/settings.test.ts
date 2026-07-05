@@ -86,6 +86,11 @@ const makeBackend = (over: Partial<ServiceInstanceConfig>): ServiceInstanceConfi
   endpoint: 'https://api.deepseek.com',
   model: 'deepseek-chat',
   timeoutSeconds: 60,
+  systemPrompt: '',
+  translationPrompt: '',
+  reflectionPrompt: '',
+  reflectionEnabled: false,
+  chainOfThought: 'off',
   ...over,
 })
 
@@ -111,6 +116,11 @@ describe('mergeBackendIntoServices', () => {
         endpoint: 'https://new',
         model: 'new-model',
         protocol: 'openai_chat',
+        systemPrompt: '后端系统',
+        translationPrompt: '后端翻译',
+        reflectionPrompt: '后端反思',
+        reflectionEnabled: true,
+        chainOfThought: 'short',
       }),
     ]
 
@@ -121,15 +131,26 @@ describe('mergeBackendIntoServices', () => {
     expect(result[0].enabled).toBe(true)
     expect(result[0].endpoint).toBe('https://new')
     expect(result[0].model).toBe('new-model')
-    expect(result[0].systemPrompt).toBe('我的提示词')
-    expect(result[0].chainOfThought).toBe('long')
+    expect(result[0].systemPrompt).toBe('后端系统')
+    expect(result[0].translationPrompt).toBe('后端翻译')
+    expect(result[0].reflectionPrompt).toBe('后端反思')
+    expect(result[0].reflectionEnabled).toBe(true)
+    expect(result[0].chainOfThought).toBe('short')
     expect(result[0].note).toBe('我的备注')
   })
 
   it('后端多出的实例补进前端，独有字段用默认值', () => {
     const local: ServiceInstance[] = []
     const backend = [
-      makeBackend({ id: 'extra', name: '新服务', serviceType: 'claude', protocol: 'claude_messages' }),
+      makeBackend({
+        id: 'extra',
+        name: '新服务',
+        serviceType: 'claude',
+        protocol: 'claude_messages',
+        systemPrompt: undefined,
+        translationPrompt: undefined,
+        reflectionPrompt: undefined,
+      }),
     ]
 
     const result = mergeBackendIntoServices(local, backend)
@@ -141,6 +162,46 @@ describe('mergeBackendIntoServices', () => {
     expect(result[0].keyStatus).toBe('idle')
     expect(result[0].chainOfThought).toBe('off')
     expect(result[0].pulledModels).toEqual([])
+  })
+
+  it('后端空提示词覆盖本地旧自定义提示词', () => {
+    const local = [
+      makeLocal({
+        id: 'a',
+        systemPrompt: '旧系统提示词',
+        translationPrompt: '旧翻译提示词',
+        reflectionPrompt: '旧反思提示词',
+      }),
+    ]
+    const backend = [
+      makeBackend({
+        id: 'a',
+        systemPrompt: '',
+        translationPrompt: '',
+        reflectionPrompt: '',
+      }),
+    ]
+
+    const result = mergeBackendIntoServices(local, backend)
+
+    expect(result[0].systemPrompt).toBe('')
+    expect(result[0].translationPrompt).toBe('')
+    expect(result[0].reflectionPrompt).toBe('')
+  })
+
+  it('后端新增服务的空提示词保持为空', () => {
+    const result = mergeBackendIntoServices([], [
+      makeBackend({
+        id: 'extra',
+        systemPrompt: '',
+        translationPrompt: '',
+        reflectionPrompt: '',
+      }),
+    ])
+
+    expect(result[0].systemPrompt).toBe('')
+    expect(result[0].translationPrompt).toBe('')
+    expect(result[0].reflectionPrompt).toBe('')
   })
 
   it('前端多出的实例被删除', () => {
@@ -178,6 +239,9 @@ describe('syncFromBackend', () => {
     vi.mocked(isTauriReady).mockReturnValue(true);
     vi.mocked(invokeGetAppConfig).mockResolvedValue({
       targetLang: '中文',
+      defaultSourceLang: 'auto',
+      autoCopy: true,
+      restoreClipboard: true,
       services: [],
       popupPrecreate: true,
       overlayPrecreate: true,
@@ -220,6 +284,11 @@ describe('syncFromBackend', () => {
           endpoint: 'https://api.deepseek.com',
           model: 'deepseek-chat',
           timeoutSeconds: 60,
+          systemPrompt: '系统提示',
+          translationPrompt: '翻译提示',
+          reflectionPrompt: '反思提示',
+          reflectionEnabled: true,
+          chainOfThought: 'medium',
         },
         {
           id: 'extra',
@@ -231,8 +300,16 @@ describe('syncFromBackend', () => {
           endpoint: 'https://api.anthropic.com',
           model: 'claude-haiku-4-5',
           timeoutSeconds: 60,
+          systemPrompt: '',
+          translationPrompt: '',
+          reflectionPrompt: '',
+          reflectionEnabled: false,
+          chainOfThought: 'off',
         },
       ],
+      defaultSourceLang: 'en',
+      autoCopy: false,
+      restoreClipboard: false,
       popupPrecreate: true,
       overlayPrecreate: true,
       collectUsage: true,
@@ -244,6 +321,14 @@ describe('syncFromBackend', () => {
     expect(settings.state.services.map((s) => s.id)).toEqual([localId, 'extra']);
     expect(settings.state.services[0].apiKey).toBe('backend-key');
     expect(settings.state.services[0].enabled).toBe(true);
+    expect(settings.state.services[0].systemPrompt).toBe('系统提示');
+    expect(settings.state.services[0].translationPrompt).toBe('翻译提示');
+    expect(settings.state.services[0].reflectionPrompt).toBe('反思提示');
+    expect(settings.state.services[0].reflectionEnabled).toBe(true);
+    expect(settings.state.services[0].chainOfThought).toBe('medium');
+    expect(settings.state.translation.defaultSourceLang).toBe('en');
+    expect(settings.state.translation.autoCopy).toBe(false);
+    expect(settings.state.translation.restoreClipboard).toBe(false);
     expect(invokeSaveAppConfig).not.toHaveBeenCalled();
   });
   it('后端非空时把 shortcuts 合并回本地绑定，只覆盖 keys', async () => {
@@ -254,8 +339,11 @@ describe('syncFromBackend', () => {
 
     vi.mocked(invokeGetAppConfig).mockResolvedValue({
       targetLang: '中文',
+      defaultSourceLang: 'auto',
+      autoCopy: true,
+      restoreClipboard: true,
       services: [
-        {
+        makeBackend({
           id: localId,
           serviceType: 'deepseek',
           name: 'DeepSeek',
@@ -265,7 +353,7 @@ describe('syncFromBackend', () => {
           endpoint: 'https://api.deepseek.com',
           model: 'deepseek-chat',
           timeoutSeconds: 60,
-        },
+        }),
       ],
       popupPrecreate: true,
       overlayPrecreate: true,

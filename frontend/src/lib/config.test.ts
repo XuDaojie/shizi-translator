@@ -97,6 +97,37 @@ describe('projectToAppConfig', () => {
     });
   });
 
+  it('投影翻译行为与提示词字段到后端配置', () => {
+    const state = makeState([
+      makeInstance({
+        id: 'deepseek-1',
+        enabled: true,
+        apiKey: 'sk-ds',
+        systemPrompt: ' 系统 ',
+        translationPrompt: ' 翻译 {text} ',
+        reflectionPrompt: ' 反思 ',
+        reflectionEnabled: true,
+        chainOfThought: 'medium',
+      }),
+    ]);
+    state.translation.defaultSourceLang = 'en-US';
+    state.translation.autoCopy = false;
+    state.translation.restoreClipboard = false;
+
+    const config = projectToAppConfig(state);
+
+    expect(config.defaultSourceLang).toBe('en-US');
+    expect(config.autoCopy).toBe(false);
+    expect(config.restoreClipboard).toBe(false);
+    expect(config.services[0]).toMatchObject({
+      systemPrompt: '系统',
+      translationPrompt: '翻译 {text}',
+      reflectionPrompt: '反思',
+      reflectionEnabled: true,
+      chainOfThought: 'medium',
+    });
+  });
+
   it('投影快捷键绑定到后端 shortcuts 并保留空字符串', () => {
     const state = makeState([]);
     state.shortcut.bindings = [
@@ -118,6 +149,9 @@ describe('projectToAppConfig', () => {
 describe('validateConfig', () => {
   const base: AppConfig = {
     targetLang: '中文',
+    defaultSourceLang: 'auto',
+    autoCopy: true,
+    restoreClipboard: true,
     services: [],
     popupPrecreate: true,
     overlayPrecreate: true,
@@ -142,6 +176,11 @@ describe('validateConfig', () => {
         endpoint: 'https://api.deepseek.com',
         model: 'deepseek-chat',
         timeoutSeconds: 60,
+        systemPrompt: '',
+        translationPrompt: '',
+        reflectionPrompt: '',
+        reflectionEnabled: false,
+        chainOfThought: 'off',
       }],
     })).toBe('DeepSeek 请先填写 API Key');
   });
@@ -159,6 +198,11 @@ describe('validateConfig', () => {
         endpoint: 'ftp://api.deepseek.com',
         model: 'deepseek-chat',
         timeoutSeconds: 60,
+        systemPrompt: '',
+        translationPrompt: '',
+        reflectionPrompt: '',
+        reflectionEnabled: false,
+        chainOfThought: 'off',
       }],
     })).toBe('DeepSeek Endpoint 请输入有效的 http(s) 地址');
   });

@@ -35,6 +35,9 @@ export function validateConfig(config: AppConfig): string | null {
 export function projectToAppConfig(state: AppSettings): AppConfig {
   return {
     targetLang: state.translation.defaultTargetLang,
+    defaultSourceLang: state.translation.defaultSourceLang,
+    autoCopy: state.translation.autoCopy,
+    restoreClipboard: state.translation.restoreClipboard,
     services: state.services.map((service) => ({
       id: service.id,
       serviceType: service.type,
@@ -46,6 +49,11 @@ export function projectToAppConfig(state: AppSettings): AppConfig {
       model: service.model.trim(),
       // ponytail: 固定 60s，等 UI 暴露 timeout 字段后从 service 读取
       timeoutSeconds: 60,
+      systemPrompt: service.systemPrompt.trim(),
+      translationPrompt: service.translationPrompt.trim(),
+      reflectionPrompt: service.reflectionPrompt.trim(),
+      reflectionEnabled: service.reflectionEnabled,
+      chainOfThought: service.chainOfThought,
     })),
     popupPrecreate: state.general.popupPrecreate,
     overlayPrecreate: state.general.overlayPrecreate,

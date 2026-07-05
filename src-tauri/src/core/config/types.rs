@@ -15,6 +15,14 @@ fn default_true() -> bool {
     true
 }
 
+fn default_source_lang() -> String {
+    "auto".to_string()
+}
+
+fn default_chain_of_thought() -> String {
+    "off".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ServiceInstanceConfig {
@@ -28,6 +36,16 @@ pub struct ServiceInstanceConfig {
     pub endpoint: String,
     pub model: String,
     pub timeout_seconds: u32,
+    #[serde(default)]
+    pub system_prompt: String,
+    #[serde(default)]
+    pub translation_prompt: String,
+    #[serde(default)]
+    pub reflection_prompt: String,
+    #[serde(default)]
+    pub reflection_enabled: bool,
+    #[serde(default = "default_chain_of_thought")]
+    pub chain_of_thought: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -38,6 +56,12 @@ pub struct AppConfig {
     #[serde(default)]
     pub services: Vec<ServiceInstanceConfig>,
     pub target_lang: String,
+    #[serde(default = "default_source_lang")]
+    pub default_source_lang: String,
+    #[serde(default = "default_true")]
+    pub auto_copy: bool,
+    #[serde(default = "default_true")]
+    pub restore_clipboard: bool,
     #[serde(default = "default_true")]
     pub popup_precreate: bool,
     #[serde(default = "default_true")]
@@ -59,6 +83,10 @@ impl ServiceInstanceConfig {
         if self.timeout_seconds == 0 {
             self.timeout_seconds = DEFAULT_TIMEOUT_SECONDS;
         }
+        self.system_prompt = self.system_prompt.trim().to_string();
+        self.translation_prompt = self.translation_prompt.trim().to_string();
+        self.reflection_prompt = self.reflection_prompt.trim().to_string();
+        self.chain_of_thought = normalize_chain_of_thought(self.chain_of_thought);
         self
     }
 }
@@ -156,9 +184,17 @@ impl AppConfig {
                 endpoint,
                 model,
                 timeout_seconds: DEFAULT_TIMEOUT_SECONDS,
+                system_prompt: String::new(),
+                translation_prompt: String::new(),
+                reflection_prompt: String::new(),
+                reflection_enabled: false,
+                chain_of_thought: default_chain_of_thought(),
             }],
             target_lang: env::var("SHIZI_TARGET_LANG")
                 .unwrap_or_else(|_| DEFAULT_TARGET_LANG.to_string()),
+            default_source_lang: default_source_lang(),
+            auto_copy: true,
+            restore_clipboard: true,
             popup_precreate: true,
             overlay_precreate: true,
             collect_usage: env::var("SHIZI_COLLECT_USAGE")
@@ -172,6 +208,7 @@ impl AppConfig {
         self.shortcuts = normalize_shortcuts(self.shortcuts);
         self.services = self.services.into_iter().map(|s| s.normalized()).collect();
         self.target_lang = normalize_string(self.target_lang, DEFAULT_TARGET_LANG);
+        self.default_source_lang = normalize_string(self.default_source_lang, "auto");
         self
     }
 
@@ -201,6 +238,13 @@ fn non_empty_string(value: String) -> Option<String> {
     }
 }
 
+fn normalize_chain_of_thought(value: String) -> String {
+    match value.trim() {
+        "short" | "medium" | "long" => value.trim().to_string(),
+        _ => "off".to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -225,11 +269,36 @@ mod tests {
             endpoint: "".to_string(),
             model: "".to_string(),
             timeout_seconds: 0,
+            system_prompt: String::new(),
+            translation_prompt: String::new(),
+            reflection_prompt: String::new(),
+            reflection_enabled: false,
+            chain_of_thought: default_chain_of_thought(),
         }.normalized();
         assert!(svc.api_key.is_none());
         assert_eq!(svc.endpoint, DEFAULT_BASE_URL);
         assert_eq!(svc.model, DEFAULT_MODEL);
         assert_eq!(svc.timeout_seconds, DEFAULT_TIMEOUT_SECONDS);
+    }
+
+    #[test]
+    fn normalized_fills_ui_runtime_defaults() {
+        let mut config = AppConfig::from_env();
+        config.default_source_lang = "".to_string();
+        config.auto_copy = false;
+        config.restore_clipboard = false;
+        config.services[0].system_prompt = "  ".to_string();
+        config.services[0].translation_prompt = "  ".to_string();
+        config.services[0].chain_of_thought = "bad".to_string();
+
+        let normalized = config.normalized();
+
+        assert_eq!(normalized.default_source_lang, "auto");
+        assert!(!normalized.auto_copy);
+        assert!(!normalized.restore_clipboard);
+        assert_eq!(normalized.services[0].system_prompt, "");
+        assert_eq!(normalized.services[0].translation_prompt, "");
+        assert_eq!(normalized.services[0].chain_of_thought, "off");
     }
 
     #[test]
@@ -267,6 +336,11 @@ mod tests {
             endpoint: "https://api.example.com".to_string(),
             model: "gpt-4".to_string(),
             timeout_seconds: 30,
+            system_prompt: String::new(),
+            translation_prompt: String::new(),
+            reflection_prompt: String::new(),
+            reflection_enabled: false,
+            chain_of_thought: default_chain_of_thought(),
         });
         assert!(config.is_configured());
     }
@@ -285,6 +359,11 @@ mod tests {
             endpoint: "https://api.example.com".to_string(),
             model: "gpt-4".to_string(),
             timeout_seconds: 30,
+            system_prompt: String::new(),
+            translation_prompt: String::new(),
+            reflection_prompt: String::new(),
+            reflection_enabled: false,
+            chain_of_thought: default_chain_of_thought(),
         });
         assert!(!config.is_configured());
     }
@@ -356,6 +435,11 @@ mod tests {
             endpoint: "https://test.example.com".to_string(),
             model: "gpt-4".to_string(),
             timeout_seconds: 30,
+            system_prompt: String::new(),
+            translation_prompt: String::new(),
+            reflection_prompt: String::new(),
+            reflection_enabled: false,
+            chain_of_thought: default_chain_of_thought(),
         };
         let json = serde_json::to_string(&svc).expect("序列化");
         assert!(json.contains("\"serviceType\""), "应输出 serviceType: {json}");
@@ -395,6 +479,11 @@ mod tests {
             endpoint: "".to_string(),
             model: "".to_string(),
             timeout_seconds: 0,
+            system_prompt: String::new(),
+            translation_prompt: String::new(),
+            reflection_prompt: String::new(),
+            reflection_enabled: false,
+            chain_of_thought: default_chain_of_thought(),
         }
         .normalized();
         assert_eq!(svc.endpoint, DEFAULT_CLAUDE_BASE_URL);

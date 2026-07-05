@@ -3,6 +3,7 @@
 // 任何一方增删字段，必须同步本文件与 spec、README 配置说明。
 
 export type ServiceProtocolId = 'openai_chat' | 'claude_messages';
+export type ChainOfThought = 'off' | 'short' | 'medium' | 'long';
 
 export interface ServiceInstanceConfig {
   id: string;
@@ -14,10 +15,18 @@ export interface ServiceInstanceConfig {
   endpoint: string;
   model: string;
   timeoutSeconds: number;
+  systemPrompt: string;
+  translationPrompt: string;
+  reflectionPrompt: string;
+  reflectionEnabled: boolean;
+  chainOfThought: ChainOfThought;
 }
 
 export interface AppConfig {
   targetLang: string;
+  defaultSourceLang: string;
+  autoCopy: boolean;
+  restoreClipboard: boolean;
   services: ServiceInstanceConfig[];
   popupPrecreate: boolean;
   overlayPrecreate: boolean;
