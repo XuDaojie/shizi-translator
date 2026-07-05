@@ -2,9 +2,9 @@
 
 > **面向 AI 代理的工作者：** 必需子技能：使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans 逐任务实现此计划。步骤使用复选框（`- [ ]`）语法来跟踪进度。
 
-**目标：** 修复全局快捷键触发与配置同步漂移，把默认快捷键迁移到 `Alt+D` / `Alt+E`，并统一设置页与托盘图标语义。
+**目标：** 修复全局快捷键触发与配置同步漂移，把默认快捷键迁移到 `Alt+D` / `Alt+E`，并统一 Windows 窗口左上角与系统托盘图标语义。
 
-**架构：** 后端 `AppConfig.normalized()` 继续作为快捷键默认值与迁移的唯一入口，`shortcuts.rs` 只负责注册和按 `Pressed` 事件分发。前端只把设置状态投影到后端 `shortcuts`，启动时用后端返回值覆盖 `keys`，不再维护第二套迁移器。图标走最短路径：设置页内联一个小徽记，托盘复用 `src-tauri/icons/icon.ico`。
+**架构：** 后端 `AppConfig.normalized()` 继续作为快捷键默认值与迁移的唯一入口，`shortcuts.rs` 只负责注册和按 `Pressed` 事件分发。前端只把设置状态投影到后端 `shortcuts`，启动时用后端返回值覆盖 `keys`，不再维护第二套迁移器。图标走最短路径：`tauri.conf.json` 声明 `bundle.icon = ["icons/icon.ico"]`，托盘继续通过 `app.default_window_icon()` 复用同一应用图标资源。
 
 **技术栈：** Rust / Tauri 2 / tauri-plugin-global-shortcut 2 / Vue 3 / Vitest / PowerShell .NET 图标生成。
 
@@ -27,10 +27,10 @@
   - 新增 `mergeBackendIntoShortcuts()`，`syncFromBackend()` 在后端非空时同步快捷键。
 - 修改：`frontend/src/settings/stores/settings.test.ts`
   - 增加默认快捷键和后端快捷键合并测试。
-- 修改：`frontend/src/settings/SettingsSidebar.vue`
-  - 左上角从纯“设置”改为 `文A` 徽记 + `Shizi`。
+- 修改：`src-tauri/tauri.conf.json`
+  - 声明 `bundle.icon = ["icons/icon.ico"]`，确保窗口左上角使用应用图标。
 - 修改：`src-tauri/icons/icon.ico`
-  - 更新为同语义 `文A` 深色底块图标。
+  - 更新为同语义 `文A` 深色底块图标；托盘通过 `app.default_window_icon()` 复用。
 - 修改：`README.md`（如存在）、`AGENTS.md`、`CLAUDE.md`
   - 同步默认快捷键说明为 `Alt+D` / `Alt+E`。
 
@@ -453,55 +453,10 @@ git commit -m "fix(settings): 同步后端快捷键配置"
 
 ---
 
-### 任务 5：设置页左上角品牌徽记
+### 任务 5：更新窗口与托盘复用图标
 
 **文件：**
-- 修改：`frontend/src/settings/SettingsSidebar.vue:79-86`
-- 测试：`npm run typecheck`
-
-- [ ] **步骤 1：编写最小实现**
-
-把顶部区域替换为：
-
-```vue
-<div class="px-4 pb-4">
-  <div class="flex items-center gap-3">
-    <div
-      class="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-slate-950 text-[13px] font-semibold text-white shadow-sm"
-      aria-hidden="true"
-    >
-      文A
-    </div>
-    <div class="min-w-0">
-      <h2 class="text-sm font-semibold text-foreground">Shizi</h2>
-      <p class="mt-0.5 text-xs text-muted-foreground">应用设置</p>
-    </div>
-  </div>
-</div>
-```
-
-- [ ] **步骤 2：运行类型检查**
-
-运行：
-
-```bash
-npm run typecheck
-```
-
-预期：PASS。
-
-- [ ] **步骤 3：Commit**
-
-```bash
-git add frontend/src/settings/SettingsSidebar.vue
-git commit -m "style(settings): 更新设置页品牌徽记"
-```
-
----
-
-### 任务 6：更新托盘复用图标
-
-**文件：**
+- 修改：`src-tauri/tauri.conf.json`
 - 修改：`src-tauri/icons/icon.ico`
 - 临时创建后删除：`.superpowers/tmp/generate-shizi-icon.ps1`
 - 测试：`src-tauri/icons/icon.ico`
@@ -598,16 +553,30 @@ Get-Item src-tauri/icons/icon.ico | Select-Object Name,Length
 
 预期：`icon.ico` 存在，`Length` 大于 `0`。
 
-- [ ] **步骤 3：Commit**
+- [ ] **步骤 3：确保 Tauri bundle 使用该图标**
+
+在 `src-tauri/tauri.conf.json` 中确认：
+
+```json
+"bundle": {
+  "icon": [
+    "icons/icon.ico"
+  ]
+}
+```
+
+托盘无需额外分支：`src-tauri/src/app/tray.rs` 已使用 `app.default_window_icon()`。
+
+- [ ] **步骤 4：Commit**
 
 ```bash
-git add src-tauri/icons/icon.ico
-git commit -m "style(app): 更新翻译应用图标"
+git add src-tauri/tauri.conf.json src-tauri/icons/icon.ico
+git commit -m "style(app): 更新窗口与托盘应用图标"
 ```
 
 ---
 
-### 任务 7：文档同步与整体验证
+### 任务 6：文档同步与整体验证
 
 **文件：**
 - 修改：`README.md`（如存在）
@@ -671,10 +640,10 @@ git commit -m "docs(shortcut): 同步默认快捷键说明"
 - [ ] 按 `Alt+E`，确认截图 OCR overlay 打开。
 - [ ] 在设置页改快捷键并保存，确认新键立即生效，旧键失效。
 - [ ] 重启后确认自定义快捷键保持不变。
-- [ ] 查看设置页左上角和系统托盘，确认都是 `文A` 翻译语义图标。
+- [ ] 查看 Windows 窗口左上角和系统托盘，确认都是 `文A` 翻译语义图标。
 
 ## 自检
 
-- 规格覆盖：计划覆盖 `Pressed` 事件、默认值迁移、前后端 `shortcuts` 保存和同步、设置页品牌徽记、托盘图标、文档同步。
+- 规格覆盖：计划覆盖 `Pressed` 事件、默认值迁移、前后端 `shortcuts` 保存和同步、窗口/托盘应用图标、文档同步。
 - 占位符扫描：无未填内容或泛化执行项。
 - 类型一致性：前端继续使用 `AppConfig['shortcuts']` 与 `AppSettings['shortcut']['bindings']`，后端继续使用 `HashMap<String, String>`，不新增协议结构。

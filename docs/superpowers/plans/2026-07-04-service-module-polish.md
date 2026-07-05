@@ -1164,6 +1164,14 @@ git commit -m "docs: 同步服务模块打磨（配置同步/协议 id/开发中
 - `frontend/public/translate.js` 新增 `initCards()`：弹窗加载时调 `invoke('get_app_config')` 获取启用服务列表，预建所有占位卡片（含引擎图标和名称）
 - `started` 事件 `isNewBranch` 逻辑：不再 `resultCards.clear()` + `resultsList.innerHTML = ''`，改为 `forEach` 重置已有卡片到 `pending` 状态，`getCard` 原地复用
 
+**空内容卡片默认收缩**（提交 `de358d8`）：
+
+用户反馈翻译弹窗在没有翻译内容或输入文本为空时，结果卡不应展开占据空间。改动：
+
+- `getCard()` 新建卡片时，若 `sourceText.value.trim()` 为空则添加 `collapsed`
+- `sourceText` 输入事件中，输入被清空时遍历现有 `resultCards` 并收缩
+- `started` 事件拿到对应卡片后移除 `collapsed`，保证流式翻译内容可见
+
 ## 最终验证结果
 
 | 检查项 | 结果 |
