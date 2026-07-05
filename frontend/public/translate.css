@@ -218,29 +218,24 @@ body {
   font-family: var(--font-family);
   font-size: 0.75rem;
   color: var(--fg);
-  cursor: pointer;
+  cursor: default;
   user-select: none;
   transition: background .15s, color .15s;
   min-width: 0;
   height: 28px;
   border-radius: 6px;
 }
-.lang-side:hover  { background: var(--bg-soft); }
-.lang-side:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .lang-side .lang-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lang-side .lang-chevron { width: 10px; height: 10px; color: var(--fg-2); flex-shrink: 0; }
 .lang-swap {
   width: 28px; height: 28px;
   flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
   background: transparent; border: none;
   color: var(--fg-2);
-  cursor: pointer;
+  cursor: default;
   border-radius: 6px;
   transition: background .15s, color .15s;
 }
-.lang-swap:hover  { background: var(--bg-soft); color: var(--accent); }
-.lang-swap:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .lang-swap svg { width: 12px; height: 12px; }
 
 /* === 翻译结果区 === */
@@ -448,3 +443,5 @@ body {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
 }
+
+

@@ -47,7 +47,6 @@ const buildChannel = 'dev'
     </SettingRow>
   </SettingGroup>
 
-  <SettingGroup title="实验性功能" description="尚在迭代中的能力,默认关闭,可能在未来版本移除或调整。">
 
   <SettingGroup title="隐私" description="匿名使用统计帮助改进产品，不包含翻译内容与 API Key。">
     <SettingRow
@@ -55,20 +54,6 @@ const buildChannel = 'dev'
       description="重启后生效。"
     >
       <SettingSwitch v-model="state.advanced.collectUsage" aria-label="收集匿名使用统计" />
-    </SettingRow>
-  </SettingGroup>
-    <SettingRow
-      title="启用取词翻译增强"
-      description="对 PDF、终端等特殊窗口的取词提供额外兼容。"
-    >
-      <SettingSwitch v-model="state.advanced.betaLookup" aria-label="取词增强" />
-    </SettingRow>
-    <SettingRow
-      title="启用语音输入"
-      description="在翻译面板中按住空格录入语音并翻译。"
-      status="wip"
-    >
-      <SettingSwitch v-model="state.advanced.betaVoice" aria-label="语音输入" />
     </SettingRow>
   </SettingGroup>
 
@@ -191,3 +176,6 @@ const buildChannel = 'dev'
     </SettingRow>
   </SettingGroup>
 </template>
+
+
+

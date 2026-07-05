@@ -57,45 +57,12 @@ const languageOptions = LANGUAGES.map((l) => ({ label: l.label, value: l.value }
         aria-label="翻译后恢复原剪贴板"
       />
     </SettingRow>
-    <SettingRow
-      title="翻译后自动粘贴"
-      description="在光标处直接输入译文,需要相关权限。"
-    >
-      <SettingSwitch
-        v-model="state.translation.autoPaste"
-        aria-label="翻译后自动粘贴"
-      />
-    </SettingRow>
-    <SettingRow
-      title="显示音标"
-      description="在词组翻译结果中显示音标。"
-      status="wip"
-    >
-      <SettingSwitch v-model="state.translation.showPhonetic" aria-label="显示音标" />
-    </SettingRow>
-    <SettingRow
-      title="显示备选翻译"
-      description="对单词展示多个候选释义,便于挑选最合适的表达。"
-      status="wip"
-    >
-      <SettingSwitch v-model="state.translation.showAlternatives" aria-label="显示备选翻译" />
-    </SettingRow>
   </SettingGroup>
 
   <SettingGroup
     title="取词与历史"
     description="调整取词响应速度与历史记录的存储上限。"
   >
-    <SettingRow
-      title="取词延迟"
-      description="光标悬停多久后触发取词,单位毫秒。"
-    >
-      <SettingInput
-        v-model="state.translation.wordLookupDelay"
-        type="number"
-        placeholder="300"
-      />
-    </SettingRow>
     <SettingRow
       title="历史记录上限"
       description="超过上限的旧记录会被自动清理。"
@@ -108,3 +75,4 @@ const languageOptions = LANGUAGES.map((l) => ({ label: l.label, value: l.value }
     </SettingRow>
   </SettingGroup>
 </template>
+

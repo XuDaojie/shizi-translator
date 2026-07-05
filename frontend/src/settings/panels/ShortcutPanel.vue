@@ -13,12 +13,10 @@ defineProps<{
     description="点按输入框,按下想要设置的组合键,Esc 取消。"
   >
     <SettingRow
-      v-for="binding in state.shortcut.bindings"
+      v-for="binding in state.shortcut.bindings.filter((b) => b.id !== 'word-lookup')"
       :key="binding.id"
       :title="binding.label"
-      :description="binding.description"
-      :status="binding.id === 'word-lookup' ? 'planned' : undefined"
-    >
+      :description="binding.description">
       <ShortcutRecorder
         :model-value="binding.keys"
         :error="binding.error"
@@ -42,3 +40,6 @@ defineProps<{
     </SettingRow>
   </SettingGroup>
 </template>
+
+
+
