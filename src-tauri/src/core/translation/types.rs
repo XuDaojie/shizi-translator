@@ -22,16 +22,74 @@ pub struct TranslationServiceMeta {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct TranslationPromptConfig {
+    pub source_lang: String,
+    pub system_prompt: String,
+    pub translation_prompt: String,
+    pub chain_of_thought: String,
+}
+
+impl Default for TranslationPromptConfig {
+    fn default() -> Self {
+        Self {
+            source_lang: String::new(),
+            system_prompt: String::new(),
+            translation_prompt: String::new(),
+            chain_of_thought: "off".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TranslationRequest {
     pub session_id: TranslationSessionId,
     pub input: TranslationInput,
     pub target_lang: String,
     pub service: TranslationServiceMeta,
+    pub prompts: TranslationPromptConfig,
 }
 
 impl TranslationRequest {
     pub fn source_text(&self) -> &str {
         self.input.text()
+    }
+
+    pub fn system_prompt(&self) -> String {
+        let prompt = self.prompts.system_prompt.trim();
+        if prompt.is_empty() {
+            "你是一个专业翻译引擎。只输出译文，不要解释。".to_string()
+        } else {
+            prompt.to_string()
+        }
+    }
+
+    pub fn user_prompt(&self) -> String {
+        let template = self.prompts.translation_prompt.trim();
+        if template.is_empty() {
+            return format!(
+                "请将以下文本翻译为{}：\n\n{}",
+                self.target_lang,
+                self.source_text()
+            );
+        }
+
+        let rendered = template
+            .replace("{source_lang}", &self.prompts.source_lang)
+            .replace("{target_lang}", &self.target_lang)
+            .replace("{text}", self.source_text());
+        if template.contains("{text}") {
+            rendered
+        } else {
+            format!("{rendered}\n\n{}", self.source_text())
+        }
+    }
+
+    pub fn thinking_enabled(&self) -> bool {
+        matches!(
+            self.prompts.chain_of_thought.trim(),
+            "short" | "medium" | "long"
+        )
     }
 }
 
@@ -64,7 +122,11 @@ impl TranslationInput {
 }
 
 #[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase", rename_all_fields = "camelCase", tag = "type")]
+#[serde(
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    tag = "type"
+)]
 pub enum TranslationEvent {
     Started {
         session_id: TranslationSessionId,
@@ -160,9 +222,90 @@ mod tests {
             input: TranslationInput::SelectedText("hello".to_string()),
             target_lang: "中文".to_string(),
             service: fake_service(),
+            prompts: TranslationPromptConfig::default(),
         };
 
         assert_eq!(request.source_text(), "hello");
+    }
+
+    #[test]
+    fn request_uses_custom_prompts_with_placeholders() {
+        let request = TranslationRequest {
+            session_id: TranslationSessionId("s1".to_string()),
+            input: TranslationInput::ManualText("hello".to_string()),
+            target_lang: "中文".to_string(),
+            service: fake_service(),
+            prompts: TranslationPromptConfig {
+                source_lang: "English".to_string(),
+                system_prompt: "sys".to_string(),
+                translation_prompt: "from {source_lang} to {target_lang}: {text}".to_string(),
+                chain_of_thought: "off".to_string(),
+            },
+        };
+
+        assert_eq!(request.system_prompt(), "sys");
+        assert_eq!(request.user_prompt(), "from English to 中文: hello");
+    }
+
+    #[test]
+    fn prompt_without_text_placeholder_keeps_source_text() {
+        let request = TranslationRequest {
+            session_id: TranslationSessionId("s1".to_string()),
+            input: TranslationInput::ManualText("hello".to_string()),
+            target_lang: "中文".to_string(),
+            service: fake_service(),
+            prompts: TranslationPromptConfig {
+                source_lang: "English".to_string(),
+                system_prompt: "sys".to_string(),
+                translation_prompt: "translate to {target_lang}".to_string(),
+                chain_of_thought: "off".to_string(),
+            },
+        };
+
+        assert!(request.user_prompt().contains("hello"));
+    }
+
+    #[test]
+    fn thinking_enabled_only_for_supported_chain_of_thought_values() {
+        let mut request = TranslationRequest {
+            session_id: TranslationSessionId("s1".to_string()),
+            input: TranslationInput::ManualText("hello".to_string()),
+            target_lang: "中文".to_string(),
+            service: fake_service(),
+            prompts: TranslationPromptConfig::default(),
+        };
+
+        assert!(!request.thinking_enabled());
+
+        for value in ["", "off", "invalid"] {
+            request.prompts.chain_of_thought = value.to_string();
+            assert!(!request.thinking_enabled(), "{value} 不应启用 thinking");
+        }
+
+        for value in ["short", "medium", "long"] {
+            request.prompts.chain_of_thought = value.to_string();
+            assert!(request.thinking_enabled(), "{value} 应启用 thinking");
+        }
+    }
+
+    #[test]
+    fn request_falls_back_to_default_prompts() {
+        let request = TranslationRequest {
+            session_id: TranslationSessionId("s1".to_string()),
+            input: TranslationInput::ManualText("hello".to_string()),
+            target_lang: "中文".to_string(),
+            service: fake_service(),
+            prompts: TranslationPromptConfig {
+                source_lang: "auto".to_string(),
+                system_prompt: "".to_string(),
+                translation_prompt: "".to_string(),
+                chain_of_thought: "off".to_string(),
+            },
+        };
+
+        assert!(request.system_prompt().contains("专业翻译"));
+        assert!(request.user_prompt().contains("中文"));
+        assert!(request.user_prompt().contains("hello"));
     }
 
     #[test]
@@ -187,7 +330,10 @@ mod tests {
         assert!(payload.get("session_id").is_none());
         assert!(payload.get("source_text").is_none());
         assert!(payload.get("source_type").is_none());
-        assert!(payload.get("service").is_none(), "service 应打平，不作为嵌套字段");
+        assert!(
+            payload.get("service").is_none(),
+            "service 应打平，不作为嵌套字段"
+        );
     }
 
     #[test]

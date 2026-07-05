@@ -4,6 +4,6 @@ pub mod batch;
 
 pub use service::TranslationService;
 pub use types::{
-    TokenUsage, TranslationEvent, TranslationInput, TranslationRequest, TranslationServiceMeta,
-    TranslationSessionId,
+    TokenUsage, TranslationEvent, TranslationInput, TranslationPromptConfig, TranslationRequest,
+    TranslationServiceMeta, TranslationSessionId,
 };

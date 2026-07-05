@@ -1,13 +1,15 @@
 use crate::core::{
     config::ServiceInstanceConfig,
     translation::{
-        TranslationInput, TranslationRequest, TranslationServiceMeta, TranslationSessionId,
+        TranslationInput, TranslationPromptConfig, TranslationRequest, TranslationServiceMeta,
+        TranslationSessionId,
     },
 };
 
 pub fn build_batch_requests(
     input: TranslationInput,
     target_lang: String,
+    source_lang: String,
     services: &[ServiceInstanceConfig],
     batch_id: &str,
 ) -> Result<Vec<TranslationRequest>, String> {
@@ -23,6 +25,12 @@ pub fn build_batch_requests(
                 service_name: s.name.clone(),
                 service_type: s.service_type.clone(),
                 protocol: s.protocol.clone(),
+            },
+            prompts: TranslationPromptConfig {
+                source_lang: source_lang.clone(),
+                system_prompt: s.system_prompt.clone(),
+                translation_prompt: s.translation_prompt.clone(),
+                chain_of_thought: s.chain_of_thought.clone(),
             },
         })
         .collect();
@@ -63,20 +71,52 @@ mod tests {
         let requests = build_batch_requests(
             input,
             "中文".to_string(),
+            "auto".to_string(),
             &[service("a", true), service("b", false), service("c", true)],
             "batch-1",
         )
         .expect("应生成批次");
 
         assert_eq!(
-            requests.iter().map(|r| r.session_id.0.as_str()).collect::<Vec<_>>(),
+            requests
+                .iter()
+                .map(|r| r.session_id.0.as_str())
+                .collect::<Vec<_>>(),
             vec!["batch-1:a", "batch-1:c"]
         );
         assert_eq!(
-            requests.iter().map(|r| r.service.service_instance_id.as_str()).collect::<Vec<_>>(),
+            requests
+                .iter()
+                .map(|r| r.service.service_instance_id.as_str())
+                .collect::<Vec<_>>(),
             vec!["a", "c"]
         );
         assert_eq!(requests[0].service.service_name, "svc-a");
+    }
+
+    #[test]
+    fn build_batch_copies_prompt_config() {
+        let mut svc = service("a", true);
+        svc.system_prompt = "sys".to_string();
+        svc.translation_prompt = "{text} => {target_lang}".to_string();
+        svc.chain_of_thought = "adaptive".to_string();
+
+        let requests = build_batch_requests(
+            TranslationInput::ManualText("hello".to_string()),
+            "中文".to_string(),
+            "English".to_string(),
+            &[svc],
+            "batch-1",
+        )
+        .expect("应生成批次");
+
+        assert_eq!(requests[0].prompts.source_lang, "English");
+        assert_eq!(requests[0].prompts.system_prompt, "sys");
+        assert_eq!(
+            requests[0].prompts.translation_prompt,
+            "{text} => {target_lang}"
+        );
+        assert_eq!(requests[0].prompts.chain_of_thought, "adaptive");
     }
 
     #[test]
@@ -84,6 +124,7 @@ mod tests {
         let err = build_batch_requests(
             TranslationInput::ManualText("hello".to_string()),
             "中文".to_string(),
+            "auto".to_string(),
             &[service("a", false)],
             "batch-1",
         )

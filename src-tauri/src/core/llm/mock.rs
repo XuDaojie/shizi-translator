@@ -62,6 +62,7 @@ mod tests {
             input: TranslationInput::ManualText("hello world".to_string()),
             target_lang: "中文".to_string(),
             service: fake_service(),
+            prompts: Default::default(),
         }
     }
 
@@ -114,5 +115,4 @@ mod tests {
             .any(|ev| matches!(ev, LlmStreamEvent::Delta(_))));
     }
 }
-
 

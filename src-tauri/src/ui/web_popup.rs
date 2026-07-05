@@ -83,6 +83,7 @@ pub fn start_translation_from_input(
     let requests = batch::build_batch_requests(
         input.clone(),
         config.target_lang.clone(),
+        config.default_source_lang.clone(),
         &config.services,
         &batch_id,
     )?;

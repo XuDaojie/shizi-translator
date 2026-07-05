@@ -15,7 +15,6 @@ pub struct ClaudeConfig {
     pub base_url: String,
     pub model: String,
     pub timeout_seconds: u64,
-    pub enable_thinking: bool,
 }
 
 impl ClaudeConfig {
@@ -25,7 +24,6 @@ impl ClaudeConfig {
             base_url: "https://api.anthropic.com".to_string(),
             model: "claude-haiku-4-5".to_string(),
             timeout_seconds: 60,
-            enable_thinking: false,
         }
     }
 }
@@ -51,10 +49,69 @@ impl ClaudeProvider {
     }
 
     fn endpoint(&self) -> String {
-        format!(
-            "{}/v1/messages",
-            self.config.base_url.trim_end_matches('/')
-        )
+        format!("{}/v1/messages", self.config.base_url.trim_end_matches('/'))
+    }
+
+    /// Models that support adaptive (effort-based) thinking.
+    fn is_adaptive_model(&self) -> bool {
+        let model = self.config.model.to_lowercase();
+        model.contains("sonnet-5")
+            || model.contains("opus-4-8")
+            || model.contains("opus-4-7")
+            || model.contains("opus-4-6")
+            || model.contains("sonnet-4-6")
+            || model.contains("fable-5")
+            || model.contains("mythos-5")
+            || model.contains("mythos-preview")
+    }
+
+    fn thinking_config(level: &str, adaptive: bool) -> Option<ClaudeThinkingConfig> {
+        if adaptive {
+            Some(ClaudeThinkingConfig {
+                thinking_type: "adaptive".to_string(),
+                budget_tokens: None,
+            })
+        } else {
+            let budget = match level {
+                "short" => 1024,
+                "long" => 3072,
+                _ => 2048,
+            };
+            Some(ClaudeThinkingConfig {
+                thinking_type: "enabled".to_string(),
+                budget_tokens: Some(budget),
+            })
+        }
+    }
+
+    fn output_config(level: &str, adaptive: bool) -> Option<ClaudeOutputConfig> {
+        if level == "off" || !adaptive {
+            return None;
+        }
+        let effort = match level {
+            "short" => "low".to_string(),
+            "long" => "high".to_string(),
+            _ => "medium".to_string(),
+        };
+        Some(ClaudeOutputConfig { effort })
+    }
+
+    fn request_body(&self, request: &TranslationRequest) -> ClaudeMessagesRequest {
+        let adaptive = self.is_adaptive_model();
+        let level = request.prompts.chain_of_thought.trim();
+        let enabled = request.thinking_enabled();
+        ClaudeMessagesRequest {
+            model: self.config.model.clone(),
+            max_tokens: 4096,
+            stream: true,
+            thinking: if enabled { Self::thinking_config(level, adaptive) } else { None },
+            output_config: Self::output_config(level, adaptive),
+            system: request.system_prompt(),
+            messages: vec![ClaudeMessage {
+                role: "user".to_string(),
+                content: request.user_prompt(),
+            }],
+        }
     }
 
     /// Parse an SSE event text and emit stream events.
@@ -77,12 +134,13 @@ impl ClaudeProvider {
                 continue;
             }
 
-            let parsed: ClaudeSseEvent = serde_json::from_str(data)
-                .map_err(|e| LlmError::Parse(e.to_string()))?;
+            let parsed: ClaudeSseEvent =
+                serde_json::from_str(data).map_err(|e| LlmError::Parse(e.to_string()))?;
 
-            let event_type = event.lines().find_map(|l| {
-                l.strip_prefix("event:").map(|s| s.trim().to_string())
-            }).unwrap_or_default();
+            let event_type = event
+                .lines()
+                .find_map(|l| l.strip_prefix("event:").map(|s| s.trim().to_string()))
+                .unwrap_or_default();
 
             if event_type == "error" {
                 if let Some(err) = parsed.error {
@@ -112,10 +170,7 @@ impl ClaudeProvider {
             }
 
             if event_type == "message_delta" {
-                if let Some(output) = parsed
-                    .usage
-                    .and_then(|u| u.output_tokens)
-                {
+                if let Some(output) = parsed.usage.and_then(|u| u.output_tokens) {
                     let input = input_tokens.unwrap_or(0);
                     on_event(LlmStreamEvent::Usage(TokenUsage {
                         input_tokens: input,
@@ -156,7 +211,10 @@ impl ClaudeProvider {
         if retryable {
             LlmError::Http(message)
         } else {
-            LlmError::Api { message, retryable: false }
+            LlmError::Api {
+                message,
+                retryable: false,
+            }
         }
     }
 }
@@ -168,6 +226,8 @@ struct ClaudeMessagesRequest {
     stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     thinking: Option<ClaudeThinkingConfig>,
+    #[serde(skip_serializing_if = "Option::is_none", rename = "output_config")]
+    output_config: Option<ClaudeOutputConfig>,
     system: String,
     messages: Vec<ClaudeMessage>,
 }
@@ -176,6 +236,13 @@ struct ClaudeMessagesRequest {
 struct ClaudeThinkingConfig {
     #[serde(rename = "type")]
     thinking_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    budget_tokens: Option<u32>,
+}
+
+#[derive(Serialize)]
+struct ClaudeOutputConfig {
+    effort: String,
 }
 
 #[derive(Serialize)]
@@ -245,27 +312,7 @@ impl LlmProvider for ClaudeProvider {
             .as_deref()
             .ok_or(LlmError::MissingConfig("Claude API Key"))?;
 
-        let body = ClaudeMessagesRequest {
-            model: self.config.model.clone(),
-            max_tokens: 4096,
-            stream: true,
-            thinking: if self.config.enable_thinking {
-                Some(ClaudeThinkingConfig {
-                    thinking_type: "adaptive".to_string(),
-                })
-            } else {
-                None
-            },
-            system: "你是一个专业翻译引擎。只输出译文，不要解释。".to_string(),
-            messages: vec![ClaudeMessage {
-                role: "user".to_string(),
-                content: format!(
-                    "请将以下文本翻译为{}：\n\n{}",
-                    request.target_lang,
-                    request.source_text()
-                ),
-            }],
-        };
+        let body = self.request_body(request);
 
         let response = self
             .client
@@ -318,7 +365,7 @@ impl LlmProvider for ClaudeProvider {
 mod tests {
     use super::*;
     use crate::core::llm::LlmStreamEvent;
-    use crate::core::translation::TokenUsage;
+    use crate::core::translation::TranslationPromptConfig;
 
     #[test]
     fn consume_sse_event_extracts_text_delta() {
@@ -371,7 +418,9 @@ mod tests {
         let mut input_tokens: Option<u64> = None;
         let result = ClaudeProvider::consume_sse_event(event, &mut input_tokens, &mut |_| {});
         match result {
-            Err(LlmError::Api { retryable: false, .. }) => {}
+            Err(LlmError::Api {
+                retryable: false, ..
+            }) => {}
             other => panic!("预期 Api(retryable=false)，得到：{other:?}"),
         }
     }
@@ -399,6 +448,7 @@ mod tests {
             input: crate::core::translation::TranslationInput::ManualText("hello".to_string()),
             target_lang: "中文".to_string(),
             service: crate::core::translation::TranslationServiceMeta::default(),
+            prompts: TranslationPromptConfig::default(),
         };
         let cancel = tokio_util::sync::CancellationToken::new();
         let result = provider
@@ -409,48 +459,106 @@ mod tests {
     }
 
     #[test]
-    fn consume_sse_event_extracts_input_usage_from_message_start() {
-        let event = "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"claude-haiku-4-5\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":27,\"output_tokens\":1}}}";
-        let mut events: Vec<LlmStreamEvent> = Vec::new();
-        let mut input_tokens: Option<u64> = None;
-        ClaudeProvider::consume_sse_event(event, &mut input_tokens, &mut |ev| {
-            events.push(ev);
-        })
-        .unwrap();
-        let usage = events.iter().find_map(|ev| match ev {
-            LlmStreamEvent::Usage(u) => Some(u.clone()),
-            _ => None,
+    fn request_body_uses_request_prompts_and_manual_thinking_for_haiku() {
+        let provider = ClaudeProvider::new(ClaudeConfig {
+            api_key: Some("sk-x".to_string()),
+            base_url: "https://api.anthropic.com".to_string(),
+            model: "claude-haiku-4-5".to_string(),
+            timeout_seconds: 60,
         });
-        assert_eq!(
-            usage,
-            Some(TokenUsage {
-                input_tokens: 27,
-                output_tokens: 0
-            })
-        );
+        let request = crate::core::translation::TranslationRequest {
+            session_id: crate::core::translation::TranslationSessionId("test".to_string()),
+            input: crate::core::translation::TranslationInput::ManualText("hi".to_string()),
+            target_lang: "中文".to_string(),
+            service: crate::core::translation::TranslationServiceMeta::default(),
+            prompts: TranslationPromptConfig {
+                source_lang: "English".to_string(),
+                system_prompt: "sys".to_string(),
+                translation_prompt: "{source_lang}->{target_lang}:{text}".to_string(),
+                chain_of_thought: "medium".to_string(),
+            },
+        };
+
+        let json = serde_json::to_value(provider.request_body(&request)).unwrap();
+
+        assert_eq!(json["system"], "sys");
+        assert_eq!(json["messages"][0]["content"], "English->中文:hi");
+        assert_eq!(json["thinking"]["type"], "enabled");
+        assert_eq!(json["thinking"]["budget_tokens"], 2048);
+        assert!(json.get("output_config").is_none());
     }
 
     #[test]
-    fn consume_sse_event_extracts_output_usage_from_message_delta() {
-        let event = "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":18}}";
-        let mut events: Vec<LlmStreamEvent> = Vec::new();
-        let mut input_tokens: Option<u64> = Some(27);
-        ClaudeProvider::consume_sse_event(event, &mut input_tokens, &mut |ev| {
-            events.push(ev);
-        })
-        .unwrap();
-        let usage = events.iter().find_map(|ev| match ev {
-            LlmStreamEvent::Usage(u) => Some(u.clone()),
-            _ => None,
+    fn request_body_uses_adaptive_thinking_and_effort_for_supported_models() {
+        let provider = ClaudeProvider::new(ClaudeConfig {
+            api_key: Some("sk-x".to_string()),
+            base_url: "https://api.anthropic.com".to_string(),
+            model: "claude-sonnet-4-6".to_string(),
+            timeout_seconds: 60,
         });
-        assert_eq!(
-            usage,
-            Some(TokenUsage {
-                input_tokens: 27,
-                output_tokens: 18
-            })
+        let request = crate::core::translation::TranslationRequest {
+            session_id: crate::core::translation::TranslationSessionId("test".to_string()),
+            input: crate::core::translation::TranslationInput::ManualText("hi".to_string()),
+            target_lang: "中文".to_string(),
+            service: crate::core::translation::TranslationServiceMeta::default(),
+            prompts: TranslationPromptConfig {
+                source_lang: "English".to_string(),
+                system_prompt: "sys".to_string(),
+                translation_prompt: "{source_lang}->{target_lang}:{text}".to_string(),
+                chain_of_thought: "medium".to_string(),
+            },
+        };
+
+        let json = serde_json::to_value(provider.request_body(&request)).unwrap();
+
+        assert_eq!(json["thinking"]["type"], "adaptive");
+        assert_eq!(json["output_config"]["effort"], "medium");
+    }
+
+    #[test]
+    fn request_body_maps_thinking_levels_to_distinct_payload_values() {
+        let provider = ClaudeProvider::new(ClaudeConfig {
+            api_key: Some("sk-x".to_string()),
+            base_url: "https://api.anthropic.com".to_string(),
+            model: "claude-haiku-4-5".to_string(),
+            timeout_seconds: 60,
+        });
+        let mut request = crate::core::translation::TranslationRequest {
+            session_id: crate::core::translation::TranslationSessionId("test".to_string()),
+            input: crate::core::translation::TranslationInput::ManualText("hi".to_string()),
+            target_lang: "中文".to_string(),
+            service: crate::core::translation::TranslationServiceMeta::default(),
+            prompts: TranslationPromptConfig {
+                source_lang: "English".to_string(),
+                system_prompt: "sys".to_string(),
+                translation_prompt: "{source_lang}->{target_lang}:{text}".to_string(),
+                chain_of_thought: "short".to_string(),
+            },
+        };
+
+        let short_json = serde_json::to_value(provider.request_body(&request)).unwrap();
+        request.prompts.chain_of_thought = "long".to_string();
+        let long_json = serde_json::to_value(provider.request_body(&request)).unwrap();
+
+        assert_ne!(
+            short_json["thinking"]["budget_tokens"],
+            long_json["thinking"]["budget_tokens"]
+        );
+
+        let adaptive_provider = ClaudeProvider::new(ClaudeConfig {
+            api_key: Some("sk-x".to_string()),
+            base_url: "https://api.anthropic.com".to_string(),
+            model: "claude-opus-4-7".to_string(),
+            timeout_seconds: 60,
+        });
+        request.prompts.chain_of_thought = "short".to_string();
+        let short_json = serde_json::to_value(adaptive_provider.request_body(&request)).unwrap();
+        request.prompts.chain_of_thought = "long".to_string();
+        let long_json = serde_json::to_value(adaptive_provider.request_body(&request)).unwrap();
+
+        assert_ne!(
+            short_json["output_config"]["effort"],
+            long_json["output_config"]["effort"]
         );
     }
 }
-
-

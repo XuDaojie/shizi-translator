@@ -45,7 +45,6 @@ pub fn provider_for_service(
             base_url: config.endpoint.clone(),
             model: config.model.clone(),
             timeout_seconds: config.timeout_seconds as u64,
-            enable_thinking: false, // ponytail: 默认关闭，用户可在配置扩展时打开
         }))),
         ProviderKind::OpenAiCompatible => Ok(Arc::new(OpenAiCompatibleProvider::new(
             OpenAiCompatibleConfig {
@@ -99,16 +98,16 @@ mod tests {
 
     #[test]
     fn protocol_to_kind_mock() {
-        assert!(matches!(
-            protocol_to_kind("mock"),
-            Ok(ProviderKind::Mock)
-        ));
+        assert!(matches!(protocol_to_kind("mock"), Ok(ProviderKind::Mock)));
     }
 
     #[test]
     fn protocol_to_kind_unknown_returns_err() {
         let err = protocol_to_kind("openai-compatible").unwrap_err();
-        assert!(err.contains("openai-compatible"), "错误信息应包含协议名: {err}");
+        assert!(
+            err.contains("openai-compatible"),
+            "错误信息应包含协议名: {err}"
+        );
     }
 
     #[test]

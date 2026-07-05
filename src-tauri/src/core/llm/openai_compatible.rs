@@ -104,15 +104,11 @@ impl OpenAiCompatibleProvider {
             messages: vec![
                 ChatMessage {
                     role: "system",
-                    content: "你是一个专业翻译引擎。只输出译文，不要解释。".to_string(),
+                    content: request.system_prompt(),
                 },
                 ChatMessage {
                     role: "user",
-                    content: format!(
-                        "请将以下文本翻译为{}：\n\n{}",
-                        request.target_lang,
-                        request.source_text()
-                    ),
+                    content: request.user_prompt(),
                 },
             ],
         }
@@ -252,9 +248,11 @@ impl LlmProvider for OpenAiCompatibleProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::translation::{TranslationInput, TranslationSessionId};
+    use crate::core::translation::{
+        TranslationInput, TranslationPromptConfig, TranslationSessionId,
+    };
 
-        fn fake_service() -> crate::core::translation::TranslationServiceMeta {
+    fn fake_service() -> crate::core::translation::TranslationServiceMeta {
         crate::core::translation::TranslationServiceMeta {
             service_instance_id: "test".to_string(),
             service_name: "test".to_string(),
@@ -269,12 +267,14 @@ mod tests {
             input: TranslationInput::ManualText("hi".to_string()),
             target_lang: "中文".to_string(),
             service: fake_service(),
+            prompts: TranslationPromptConfig::default(),
         }
     }
 
     #[test]
     fn consume_sse_event_extracts_usage_from_final_chunk() {
-        let event = "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":27,\"completion_tokens\":18}}";
+        let event =
+            "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":27,\"completion_tokens\":18}}";
         let mut events: Vec<LlmStreamEvent> = Vec::new();
         let done = OpenAiCompatibleProvider::consume_sse_event(event, &mut |ev| {
             events.push(ev);
@@ -307,6 +307,27 @@ mod tests {
         let json = serde_json::to_value(&body).unwrap();
         assert_eq!(json["streamOptions"]["includeUsage"], true);
     }
+
+    #[test]
+    fn request_body_uses_request_prompts() {
+        let config = OpenAiCompatibleConfig {
+            api_key: Some("sk-x".to_string()),
+            base_url: "https://api.openai.com/v1".to_string(),
+            model: "gpt-4o-mini".to_string(),
+            timeout_seconds: 60,
+        };
+        let provider = OpenAiCompatibleProvider::new(config);
+        let mut request = request();
+        request.prompts = TranslationPromptConfig {
+            source_lang: "English".to_string(),
+            system_prompt: "sys".to_string(),
+            translation_prompt: "{source_lang}->{target_lang}:{text}".to_string(),
+            chain_of_thought: "off".to_string(),
+        };
+
+        let json = serde_json::to_value(provider.request_body(&request)).unwrap();
+
+        assert_eq!(json["messages"][0]["content"], "sys");
+        assert_eq!(json["messages"][1]["content"], "English->中文:hi");
+    }
 }
-
-
