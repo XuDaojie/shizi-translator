@@ -47,6 +47,10 @@ function updateCharCount() {
 sourceText.addEventListener('input', () => {
   autoResize();
   updateCharCount();
+  if (!sourceText.value.trim()) {
+    resultCards.forEach(function (card) { card.el.classList.add('collapsed'); });
+    adjustHeight();
+  }
 });
 sourceText.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) {
@@ -130,6 +134,7 @@ function getCard(payload) {
 
   const card = document.createElement('div');
   card.className = 'result-card';
+  if (!sourceText.value.trim()) card.classList.add('collapsed');
   card.dataset.serviceInstanceId = id;
 
   const displayName = payload.serviceName ?? '翻译';
@@ -289,6 +294,7 @@ function renderTranslationEvent(payload) {
       card.text.style.color = '';
       card.actions.style.visibility = 'hidden';
       card.tokens.style.display = 'none';
+      card.el.classList.remove('collapsed');
       card.el.classList.remove('failed', 'cancelled');
       setStreamCursor(card, true);
       break;
