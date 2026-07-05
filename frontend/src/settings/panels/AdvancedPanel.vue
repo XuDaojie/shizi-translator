@@ -6,8 +6,9 @@ import { Dialog } from '@/components/ui/dialog'
 import { SettingGroup, SettingRow, SettingSelect, SettingSwitch } from '../components'
 import type { AppSettings } from '../types'
 import { useSettings } from '../stores/settings'
+import { exportSettings, importSettings, parseImportedSettings } from '../config-io'
 
-defineProps<{
+const props = defineProps<{
   state: AppSettings
 }>()
 
@@ -21,11 +22,33 @@ const logLevelOptions = [
 ]
 
 const resetOpen = ref(false)
-const exportOpen = ref(false)
-const importOpen = ref(false)
+const fileInput = ref<HTMLInputElement>()
 
 const appVersion = '0.1.0'
 const buildChannel = 'dev'
+
+function handleExport() {
+  const blob = new Blob([JSON.stringify(exportSettings(props.state), null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'settings.json'
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function handleImport() {
+  fileInput.value?.click()
+}
+
+async function onFileChange(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  const text = await file.text()
+  const incoming = parseImportedSettings(text)
+  const merged = importSettings(props.state, incoming)
+  Object.assign(props.state, merged)
+}
 </script>
 
 <template>
@@ -62,47 +85,20 @@ const buildChannel = 'dev'
       title="导出配置"
       description="将设置项(不含 API Key)导出为 JSON 文件,便于迁移。"
     >
-      <Dialog
-        v-model:open="exportOpen"
-        title="导出配置"
-        description="API Key 不会包含在导出文件中,以避免泄露。"
-        width="420px"
-      >
-        <template #trigger>
-          <Button variant="outline" size="sm">
-            <Upload class="h-3.5 w-3.5" />
-            导出
-          </Button>
-        </template>
-        <p class="text-sm text-muted-foreground">
-          导出文件名为 <code class="rounded bg-muted px-1.5 py-0.5">settings.json</code>。
-        </p>
-        <div class="flex justify-end">
-          <Button @click="exportOpen = false">知道了</Button>
-        </div>
-      </Dialog>
+      <Button variant="outline" size="sm" @click="handleExport">
+        <Upload class="h-3.5 w-3.5" />
+        导出
+      </Button>
     </SettingRow>
     <SettingRow
       title="导入配置"
       description="从 JSON 文件恢复设置项,API Key 不会被覆盖。"
     >
-      <Dialog
-        v-model:open="importOpen"
-        title="导入配置"
-        description="选择要导入的配置文件。"
-        width="420px"
-      >
-        <template #trigger>
-          <Button variant="outline" size="sm">
-            <Download class="h-3.5 w-3.5" />
-            导入
-          </Button>
-        </template>
-        <p class="text-sm text-muted-foreground">占位:实际实现会打开文件选择对话框并解析 JSON。</p>
-        <div class="flex justify-end">
-          <Button @click="importOpen = false">关闭</Button>
-        </div>
-      </Dialog>
+      <input ref="fileInput" type="file" accept=".json" hidden @change="onFileChange" />
+      <Button variant="outline" size="sm" @click="handleImport">
+        <Download class="h-3.5 w-3.5" />
+        导入
+      </Button>
     </SettingRow>
   </SettingGroup>
 
@@ -176,6 +172,3 @@ const buildChannel = 'dev'
     </SettingRow>
   </SettingGroup>
 </template>
-
-
-
