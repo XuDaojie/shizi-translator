@@ -63,6 +63,59 @@ impl ServiceInstanceConfig {
     }
 }
 
+fn default_shortcuts() -> HashMap<String, String> {
+    HashMap::from([
+        (
+            "translate-selection".to_string(),
+            env::var("SHIZI_SHORTCUT_TRANSLATE_SELECTION")
+                .unwrap_or_else(|_| "Alt+D".to_string()),
+        ),
+        (
+            "translate-screenshot".to_string(),
+            env::var("SHIZI_SHORTCUT_TRANSLATE_SCREENSHOT")
+                .unwrap_or_else(|_| "Alt+E".to_string()),
+        ),
+        (
+            "translate-clipboard".to_string(),
+            env::var("SHIZI_SHORTCUT_TRANSLATE_CLIPBOARD")
+                .unwrap_or_else(|_| "Ctrl+Shift+C".to_string()),
+        ),
+        (
+            "word-lookup".to_string(),
+            env::var("SHIZI_SHORTCUT_WORD_LOOKUP").unwrap_or_else(|_| "".to_string()),
+        ),
+        (
+            "show-window".to_string(),
+            env::var("SHIZI_SHORTCUT_SHOW_WINDOW")
+                .unwrap_or_else(|_| "Ctrl+Shift+Space".to_string()),
+        ),
+        (
+            "open-settings".to_string(),
+            env::var("SHIZI_SHORTCUT_OPEN_SETTINGS").unwrap_or_else(|_| "Ctrl+,".to_string()),
+        ),
+    ])
+}
+
+fn normalize_shortcuts(mut shortcuts: HashMap<String, String>) -> HashMap<String, String> {
+    let defaults = default_shortcuts();
+    let mut normalized = HashMap::new();
+
+    for (id, default_keys) in defaults {
+        let keys = shortcuts
+            .remove(&id)
+            .map(|value| value.trim().to_string())
+            .unwrap_or(default_keys);
+        let keys = match (id.as_str(), keys.as_str()) {
+            ("translate-selection", "Alt+T") => "Alt+D".to_string(),
+            ("translate-screenshot", "Alt+O") => "Alt+E".to_string(),
+            _ => keys,
+        };
+        normalized.insert(id, keys);
+    }
+
+    normalized
+}
+
 impl AppConfig {
     pub fn from_env() -> Self {
         let protocol = env::var("SHIZI_LLM_PROVIDER")
@@ -92,14 +145,7 @@ impl AppConfig {
         };
 
         Self {
-            shortcuts: HashMap::from([
-                ("translate-selection".to_string(), env::var("SHIZI_SHORTCUT_TRANSLATE_SELECTION").unwrap_or_else(|_| "Alt+T".to_string())),
-                ("translate-screenshot".to_string(), env::var("SHIZI_SHORTCUT_TRANSLATE_SCREENSHOT").unwrap_or_else(|_| "Alt+O".to_string())),
-                ("translate-clipboard".to_string(), env::var("SHIZI_SHORTCUT_TRANSLATE_CLIPBOARD").unwrap_or_else(|_| "".to_string())),
-                ("word-lookup".to_string(), env::var("SHIZI_SHORTCUT_WORD_LOOKUP").unwrap_or_else(|_| "".to_string())),
-                ("show-window".to_string(), env::var("SHIZI_SHORTCUT_SHOW_WINDOW").unwrap_or_else(|_| "".to_string())),
-                ("open-settings".to_string(), env::var("SHIZI_SHORTCUT_OPEN_SETTINGS").unwrap_or_else(|_| "".to_string())),
-            ]),
+            shortcuts: default_shortcuts(),
             services: vec![ServiceInstanceConfig {
                 id: "default".to_string(),
                 service_type: "openai".to_string(),
@@ -123,7 +169,7 @@ impl AppConfig {
     }
 
     pub fn normalized(mut self) -> Self {
-        self.shortcuts.retain(|_, v| !v.trim().is_empty());
+        self.shortcuts = normalize_shortcuts(self.shortcuts);
         self.services = self.services.into_iter().map(|s| s.normalized()).collect();
         self.target_lang = normalize_string(self.target_lang, DEFAULT_TARGET_LANG);
         self
@@ -352,5 +398,54 @@ mod tests {
         }
         .normalized();
         assert_eq!(svc.endpoint, DEFAULT_CLAUDE_BASE_URL);
+    }
+
+    #[test]
+    fn defaults_shortcuts_use_bob_style_keys() {
+        let config = AppConfig::from_env();
+
+        assert_eq!(config.shortcuts.get("translate-selection").map(String::as_str), Some("Alt+D"));
+        assert_eq!(config.shortcuts.get("translate-screenshot").map(String::as_str), Some("Alt+E"));
+        assert_eq!(
+            config.shortcuts.get("translate-clipboard").map(String::as_str),
+            Some("Ctrl+Shift+C")
+        );
+        assert_eq!(
+            config.shortcuts.get("word-lookup").map(String::as_str), Some("")
+        );
+        assert_eq!(
+            config.shortcuts.get("show-window").map(String::as_str),
+            Some("Ctrl+Shift+Space")
+        );
+        assert_eq!(
+            config.shortcuts.get("open-settings").map(String::as_str), Some("Ctrl+,")
+        );
+    }
+
+    #[test]
+    fn normalized_migrates_old_default_shortcuts() {
+        let mut config = AppConfig::from_env();
+        config.shortcuts.insert("translate-selection".to_string(), "Alt+T".to_string());
+        config.shortcuts.insert("translate-screenshot".to_string(), "Alt+O".to_string());
+
+        let config = config.normalized();
+
+        assert_eq!(config.shortcuts.get("translate-selection").map(String::as_str), Some("Alt+D"));
+        assert_eq!(config.shortcuts.get("translate-screenshot").map(String::as_str), Some("Alt+E"));
+    }
+
+    #[test]
+    fn normalized_keeps_custom_shortcuts_and_empty_disabled_bindings() {
+        let mut config = AppConfig::from_env();
+        config.shortcuts.insert("translate-selection".to_string(), "Ctrl+Alt+T".to_string());
+        config.shortcuts.insert("translate-screenshot".to_string(), "".to_string());
+
+        let config = config.normalized();
+
+        assert_eq!(
+            config.shortcuts.get("translate-selection").map(String::as_str),
+            Some("Ctrl+Alt+T")
+        );
+        assert_eq!(config.shortcuts.get("translate-screenshot").map(String::as_str), Some(""));
     }
 }

@@ -96,6 +96,23 @@ describe('projectToAppConfig', () => {
       timeoutSeconds: 60,
     });
   });
+
+  it('投影快捷键绑定到后端 shortcuts 并保留空字符串', () => {
+    const state = makeState([]);
+    state.shortcut.bindings = [
+      { id: 'translate-selection', label: '划词翻译', description: '', keys: ' Alt+D ' },
+      { id: 'translate-screenshot', label: '截图翻译', description: '', keys: 'Alt+E' },
+      { id: 'word-lookup', label: '取词翻译', description: '', keys: '' },
+    ];
+
+    const config = projectToAppConfig(state);
+
+    expect(config.shortcuts).toEqual({
+      'translate-selection': 'Alt+D',
+      'translate-screenshot': 'Alt+E',
+      'word-lookup': '',
+    });
+  });
 });
 
 describe('validateConfig', () => {

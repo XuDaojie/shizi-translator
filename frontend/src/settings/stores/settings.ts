@@ -182,7 +182,7 @@ const buildDefaults = (): AppSettings => {
           id: 'translate-selection',
           label: '划词翻译',
           description: '选中任意文本后按下快捷键即可翻译。',
-          keys: 'Alt+T',
+          keys: 'Alt+D',
         },
         {
           id: 'translate-clipboard',
@@ -194,7 +194,7 @@ const buildDefaults = (): AppSettings => {
           id: 'translate-screenshot',
           label: '截图翻译',
           description: '框选屏幕区域后识别并翻译其中的文字。',
-          keys: 'Alt+O',
+          keys: 'Alt+E',
         },
         {
           id: 'word-lookup',
@@ -321,6 +321,19 @@ export const mergeBackendIntoServices = (
     return backendInstanceToLocal(b)
   })
 }
+
+
+const mergeBackendIntoShortcuts = (
+  local: AppSettings['shortcut']['bindings'],
+  backend: AppConfig['shortcuts'],
+): AppSettings['shortcut']['bindings'] =>
+  local.map((binding) => ({
+    ...binding,
+    keys: Object.prototype.hasOwnProperty.call(backend, binding.id)
+      ? backend[binding.id]
+      : binding.keys,
+    error: undefined,
+  }))
 
 const loadFromStorage = (): AppSettings => {
   if (typeof window === 'undefined') return buildDefaults()
@@ -479,6 +492,7 @@ export const useSettings = () => ({
       return
     }
     state.services = mergeBackendIntoServices(state.services, backend.services)
+    state.shortcut.bindings = mergeBackendIntoShortcuts(state.shortcut.bindings, backend.shortcuts ?? {})
     Object.assign(baseline, JSON.parse(JSON.stringify(state)))
     dirty.value = false
   },

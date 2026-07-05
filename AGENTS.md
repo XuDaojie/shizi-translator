@@ -64,7 +64,7 @@ cd src-tauri && cargo clean           # 清理 Rust 编译缓存
 - **前后端配置同步**：`config.json` 的 `services[]` 是事实来源。设置页 `SettingsPage` 挂载时调 `settings.syncFromBackend()`：后端 `services` 为空（旧格式残留 / 首次启动）→ 前端 `projectToAppConfig` 推 `invokeSaveAppConfig` 覆盖后端；后端非空 → `mergeBackendIntoServices` 按 id 合并（后端 `enabled/apiKey/endpoint/model/protocol` 覆盖前端同 id 实例，前端 `prompts/keyStatus/chainOfThought/pulledModels/note` 保留；后端多出补进、前端多出删除）。协议 id 前后端统一为 `openai_chat`/`claude_messages`/`mock`，后端 `provider_for_service` 未知协议返回错误。未对接渠道（`ServiceMeta.protocols.length === 0`）在添加 Dialog / 服务列表 / 详情页三处标 amber"开发中"，启用开关 `disabled`。
 - **批次翻译**：翻译入口过滤启用服务并保持列表顺序，为每个服务创建 `{batch_id}:{service_id}` session，事件携带 `serviceInstanceId/serviceName/serviceType/protocol`。各服务并发执行，单服务失败不影响其他。
 - **翻译弹窗**：弹窗打开时通过 `initCards` 调 `get_app_config` 获取启用服务列表并预建占位卡片；输入为空或暂无翻译内容时卡片默认 `collapsed`，翻译开始后 `getCard` 按 `serviceInstanceId` 复用已有卡片并自动展开原地更新，new batch 重置而非销毁卡片。单服务失败只更新对应卡片。
-- **全局快捷键**：`Alt+T` 划词复制并自动翻译；`Alt+O` 触发截图 OCR 翻译（DXGI 抓光标所在显示器整屏帧 → 自建 overlay 区域框选 → crop → Windows.Media.Ocr → 复用翻译链路）。由 `tauri-plugin-global-shortcut` 注册，逻辑集中在 `src-tauri/src/app/shortcuts.rs`。新增快捷键时需在 `capabilities/default.json` 同步授权。
+- **全局快捷键**：`Alt+D` 划词复制并自动翻译；`Alt+E` 触发截图 OCR 翻译（DXGI 抓光标所在显示器整屏帧 → 自建 overlay 区域框选 → crop → Windows.Media.Ocr → 复用翻译链路）。由 `tauri-plugin-global-shortcut` 注册，逻辑集中在 `src-tauri/src/app/shortcuts.rs`。新增快捷键时需在 `capabilities/default.json` 同步授权。
 - **前后端通信**：当前已有 Tauri commands：`start_translation`、`take_pending_source_text`、`get_app_config`、`save_app_config`，以及截图 overlay 四命令 `get_capture_frame_meta` / `get_capture_frame_bytes` / `submit_capture_region` / `cancel_capture`。后端通过 `translation:event` 向前端推送 `Started` / `Delta` / `Finished` / `Failed`。
 - **配置存储**：当前设置面板将 provider 配置保存到 Tauri app config dir 下的 `config.json`。支持 OpenAI-compatible 和 Claude 两种 provider。API Key 在 MVP 阶段明文保存，后续产品化需迁移到系统 SecretStore。
 
@@ -177,3 +177,4 @@ Skills 位于 `.codex/skills/` 目录，每个 skill 有独立的 `SKILL.md` 文
 
 如果你认为哪怕只有 1% 的可能性某个 skill 适用于你正在做的事情，你必须调用该 skill 检查。
 <!-- superpowers-zh:end -->
+

@@ -159,12 +159,16 @@ fn classify_shortcut(shortcut: &Shortcut, config: &AppConfig) -> Option<Shortcut
         .and_then(|entry| entry.action)
 }
 
+fn should_handle_shortcut_state(state: ShortcutState) -> bool {
+    state == ShortcutState::Pressed
+}
+
 pub fn handle_global_shortcut(
     app: &tauri::AppHandle,
     shortcut: &tauri_plugin_global_shortcut::Shortcut,
     event: tauri_plugin_global_shortcut::ShortcutEvent,
 ) {
-    if event.state != ShortcutState::Released {
+    if !should_handle_shortcut_state(event.state) {
         return;
     }
 
@@ -298,14 +302,19 @@ mod tests {
     #[test]
     fn validates_duplicate_shortcuts_across_all_bindings() {
         let config = config_with(&[
-            ("translate-selection", "Alt+T"),
-            ("word-lookup", "Alt+T"),
+            ("translate-selection", "Ctrl+Alt+9"),
+            ("word-lookup", "Ctrl+Alt+9"),
         ]);
 
         let error = configured_shortcuts(&config).expect_err("重复快捷键应失败");
 
-        assert_eq!(error.id, "word-lookup");
-        assert!(error.message.contains("划词翻译"));
+        // ponytail: HashMap 迭代顺序不保证，只验证报告冲突
+        assert!(["translate-selection", "word-lookup"].contains(&error.id.as_str()));
+        assert!(
+            error.message.contains("划词翻译") || error.message.contains("取词翻译"),
+            "expected mention of conflicting binding, got: {}",
+            error.message
+        );
     }
 
     #[test]
@@ -319,5 +328,11 @@ mod tests {
             .expect("应保留取词绑定用于保存和去重");
 
         assert_eq!(word_lookup.action, None);
+    }
+
+    #[test]
+    fn handles_pressed_shortcut_events_only() {
+        assert!(should_handle_shortcut_state(ShortcutState::Pressed));
+        assert!(!should_handle_shortcut_state(ShortcutState::Released));
     }
 }

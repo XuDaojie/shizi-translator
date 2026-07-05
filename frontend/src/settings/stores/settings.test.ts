@@ -45,6 +45,15 @@ describe('settings defaults', () => {
     expect(state.services[1].model).toBe('glm-4-flash');
   });
 });
+  it('默认快捷键使用 Alt+D 和 Alt+E', () => {
+    const { state } = useSettings();
+
+    expect(Object.fromEntries(state.shortcut.bindings.map((b) => [b.id, b.keys]))).toMatchObject({
+      'translate-selection': 'Alt+D',
+      'translate-screenshot': 'Alt+E',
+    });
+  });
+
 
 
 const makeLocal = (over: Partial<ServiceInstance>): ServiceInstance => ({
@@ -237,4 +246,43 @@ describe('syncFromBackend', () => {
     expect(settings.state.services[0].enabled).toBe(true);
     expect(invokeSaveAppConfig).not.toHaveBeenCalled();
   });
+  it('后端非空时把 shortcuts 合并回本地绑定，只覆盖 keys', async () => {
+    vi.mocked(isTauriReady).mockReturnValue(true);
+    const settings = useSettings();
+    const localId = settings.state.services[0].id;
+    const before = settings.state.shortcut.bindings.find((b) => b.id === 'translate-selection')!;
+
+    vi.mocked(invokeGetAppConfig).mockResolvedValue({
+      targetLang: '中文',
+      services: [
+        {
+          id: localId,
+          serviceType: 'deepseek',
+          name: 'DeepSeek',
+          enabled: false,
+          protocol: 'openai_chat',
+          apiKey: null,
+          endpoint: 'https://api.deepseek.com',
+          model: 'deepseek-chat',
+          timeoutSeconds: 60,
+        },
+      ],
+      popupPrecreate: true,
+      overlayPrecreate: true,
+      collectUsage: true,
+      shortcuts: {
+        'translate-selection': 'Ctrl+Alt+D',
+        'translate-screenshot': '',
+      },
+    });
+
+    await settings.syncFromBackend();
+
+    const byId = Object.fromEntries(settings.state.shortcut.bindings.map((b) => [b.id, b]));
+    expect(byId['translate-selection'].keys).toBe('Ctrl+Alt+D');
+    expect(byId['translate-selection'].label).toBe(before.label);
+    expect(byId['translate-screenshot'].keys).toBe('');
+    expect(invokeSaveAppConfig).not.toHaveBeenCalled();
+  });
+
 });
