@@ -31,7 +31,7 @@ fn normalize_clipboard_text(text: Option<String>) -> Result<String, SelectionErr
     }
 }
 
-pub fn copy_selected_text() -> Result<String, SelectionError> {
+pub fn copy_selected_text(restore_clipboard: bool) -> Result<String, SelectionError> {
     let snapshot = clipboard::capture_text_snapshot();
     let sentinel = selection_sentinel();
     clipboard::write_text(&sentinel)?;
@@ -51,8 +51,14 @@ pub fn copy_selected_text() -> Result<String, SelectionError> {
         thread::sleep(Duration::from_millis(40));
     }
 
-    clipboard::restore_text_snapshot(snapshot);
+    if should_restore_clipboard(restore_clipboard, &snapshot) {
+        clipboard::restore_text_snapshot(snapshot);
+    }
     selected_text.ok_or(SelectionError::EmptySelection)
+}
+
+fn should_restore_clipboard(restore_clipboard: bool, snapshot: &Option<String>) -> bool {
+    restore_clipboard && snapshot.is_some()
 }
 
 fn selection_sentinel() -> String {
@@ -88,5 +94,12 @@ mod tests {
         let error = normalize_clipboard_text(None).expect_err("无文本应失败");
 
         assert!(matches!(error, SelectionError::EmptyClipboard));
+    }
+
+    #[test]
+    fn restore_clipboard_flag_controls_restore() {
+        assert!(should_restore_clipboard(true, &Some("old".to_string())));
+        assert!(!should_restore_clipboard(false, &Some("old".to_string())));
+        assert!(!should_restore_clipboard(true, &None));
     }
 }

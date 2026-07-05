@@ -201,7 +201,12 @@ fn handle_selection_translate(app: &tauri::AppHandle) {
     tauri::async_runtime::spawn(async move {
         thread::sleep(Duration::from_millis(40));
 
-        let selected_text = match copy_selected_text() {
+        let restore_clipboard = app_handle.state::<AppState>().config_store.get()
+            .ok()
+            .map(|config| config.restore_clipboard)
+            .unwrap_or(true);
+
+        let selected_text = match copy_selected_text(restore_clipboard) {
             Ok(text) => text,
             Err(error) => {
                 show_translation_error(&app_handle, error.to_string());

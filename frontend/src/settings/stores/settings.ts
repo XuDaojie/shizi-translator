@@ -69,84 +69,7 @@ const seedInstances = (): ServiceInstance[] =>
  * 时间戳基于当前时刻偏移,刷新后时间仍合理。
  */
 const seedOcrHistory = (): OcrHistoryEntry[] => {
-  const now = Date.now()
-  const min = 60 * 1000
-  const h = 60 * min
-  const d = 24 * h
-  return [
-    {
-      id: newHistoryId(),
-      timestamp: new Date(now - 8 * min).toISOString(),
-      sourceLang: 'en',
-      targetLang: 'zh-CN',
-      source: 'Save Changes',
-      translation: '保存更改',
-    },
-    {
-      id: newHistoryId(),
-      timestamp: new Date(now - 25 * min).toISOString(),
-      sourceLang: 'en',
-      targetLang: 'zh-CN',
-      source: 'Press any key to continue',
-      translation: '按任意键继续',
-    },
-    {
-      id: newHistoryId(),
-      timestamp: new Date(now - 1.5 * h).toISOString(),
-      sourceLang: 'ja',
-      targetLang: 'zh-CN',
-      source: '設定を保存しました',
-      translation: '设置已保存',
-    },
-    {
-      id: newHistoryId(),
-      timestamp: new Date(now - 3.2 * h).toISOString(),
-      sourceLang: 'en',
-      targetLang: 'zh-CN',
-      source: '404 - Page Not Found',
-      translation: '404 - 页面未找到',
-    },
-    {
-      id: newHistoryId(),
-      timestamp: new Date(now - 1 * d - 2 * h).toISOString(),
-      sourceLang: 'en',
-      targetLang: 'zh-CN',
-      source: 'The Federal Reserve raised interest rates by 25 basis points yesterday.',
-      translation: '美联储昨日将利率上调了 25 个基点。',
-    },
-    {
-      id: newHistoryId(),
-      timestamp: new Date(now - 1 * d - 5 * h).toISOString(),
-      sourceLang: 'ko',
-      targetLang: 'zh-CN',
-      source: '파일을 저장하시겠습니까?',
-      translation: '您要保存文件吗?',
-    },
-    {
-      id: newHistoryId(),
-      timestamp: new Date(now - 3 * d).toISOString(),
-      sourceLang: 'en',
-      targetLang: 'zh-CN',
-      source: 'TODO: refactor this function for better readability',
-      translation: '待办:重构此函数以提高可读性',
-    },
-    {
-      id: newHistoryId(),
-      timestamp: new Date(now - 5 * d).toISOString(),
-      sourceLang: 'en',
-      targetLang: 'zh-CN',
-      source: 'Push to open',
-      translation: '推门开',
-    },
-    {
-      id: newHistoryId(),
-      timestamp: new Date(now - 12 * d).toISOString(),
-      sourceLang: 'en',
-      targetLang: 'zh-CN',
-      source: 'The cake is a lie.',
-      translation: '蛋糕是个谎言。',
-    },
-  ]
+  return []
 }
 
 const buildDefaults = (): AppSettings => {
@@ -599,3 +522,5 @@ export const useSettings = () => ({
     state.ocrHistory = []
   },
 })
+
+

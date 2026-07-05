@@ -26,6 +26,9 @@ let isTranslating = false;
 let currentBatchId = null;
 let pinned = false;
 const resultCards = new Map();
+let runtimeConfig = { autoCopy: false, defaultSourceLang: 'auto', targetLang: '中文' };
+let copiedBatchId = null;
+let currentSourceType = null;
 
 /* === Toast === */
 let toastTimer = null;
@@ -247,6 +250,15 @@ function updateBatchStatus() {
   const anyTranslating = cards.some(c => c.status === 'translating');
 
   if (allFinished) {
+    if (runtimeConfig.autoCopy && copiedBatchId !== currentBatchId) {
+      for (var i = 0; i < cards.length; i++) {
+        if (cards[i].text.textContent.trim()) {
+          copiedBatchId = currentBatchId;
+          navigator.clipboard.writeText(cards[i].text.textContent).catch(function () {});
+          break;
+        }
+      }
+    }
     isTranslating = false;
     currentBatchId = null;
     setSourceBadge(null);
@@ -285,6 +297,8 @@ function renderTranslationEvent(payload) {
         autoResize();
         updateCharCount();
         setSourceBadge(payload.sourceType);
+        currentSourceType = payload.sourceType;
+        copiedBatchId = null;
         isTranslating = true;
         setStatus({ text: '翻译中…', loading: true, action: { label: '取消', onClick: cancelTranslation } });
       }
@@ -326,6 +340,28 @@ function renderTranslationEvent(payload) {
       card.status = 'finished';
       scrollToBottom(card);
       updateBatchStatus();
+      if (currentSourceType === 'ocrText') {
+        try {
+          var SETTINGS_KEY = 'app:settings:v1';
+          var raw = localStorage.getItem(SETTINGS_KEY);
+          var st = raw ? JSON.parse(raw) : {};
+          var history = Array.isArray(st.ocrHistory) ? st.ocrHistory : [];
+          history.unshift({
+            id: 'hist-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8),
+            timestamp: new Date().toISOString(),
+            sourceLang: runtimeConfig.defaultSourceLang || 'auto',
+            targetLang: runtimeConfig.targetLang || '中文',
+            source: sourceText.value || '',
+            translation: card.text.textContent || '',
+            serviceInstanceId: payload.serviceInstanceId || '',
+          });
+          var limit = Math.max(1, Number(st.translation && st.translation.historyLimit ? st.translation.historyLimit : 500));
+          st.ocrHistory = history.slice(0, limit);
+          localStorage.setItem(SETTINGS_KEY, JSON.stringify(st));
+        } catch (e) {
+          // 静默失败，不影响翻译流程
+        }
+      }
       break;
     }
     case 'failed': {
@@ -505,6 +541,9 @@ async function initCards() {
   let config;
   try { config = await invoke("get_app_config"); } catch { return; }
   if (!config.services || config.services.length === 0) return;
+  runtimeConfig.autoCopy = Boolean(config.autoCopy);
+  runtimeConfig.defaultSourceLang = config.defaultSourceLang || 'auto';
+  runtimeConfig.targetLang = config.targetLang || '中文';
   const enabled = config.services.filter(function (s) { return s.enabled; });
   if (enabled.length === 0) return;
   for (var i = 0; i < enabled.length; i++) {
