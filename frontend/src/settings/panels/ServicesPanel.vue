@@ -30,7 +30,8 @@ import {
 
 } from '../components'
 import type { AppSettings, ServiceId, ServiceInstance } from '../types'
-import { DEFAULT_PROMPTS, MOCK_PULLED_MODELS, serviceById } from '../tokens'
+import { DEFAULT_PROMPTS, serviceById } from '../tokens'
+import { invokeValidateServiceCredential, invokeListServiceModels } from '@/lib/tauri'
 import { useSettings } from '../stores/settings'
 import { validateServiceForEnable } from '@/settings/service-validation'
 
@@ -56,6 +57,12 @@ const tab = ref<'translate' | 'ocr'>('translate')
 
 // 内置 + 用户自定义渠道的合并视图
 const mergedServices = computed(() => settings.getMergedServices())
+
+const probeRequest = (inst: ServiceInstance) => ({
+  protocol: inst.protocol,
+  endpoint: inst.endpoint,
+  apiKey: inst.apiKey.trim() || null,
+})
 
 // 实例名称行内编辑
 const editingName = ref(false)
@@ -100,7 +107,7 @@ const onServiceSelect = (id: string): void => {
   editingName.value = false
 }
 
-const onKeyValidate = (key: string): void => {
+const onKeyValidate = async (key: string): Promise<void> => {
   const inst = activeInstance.value
   if (!inst) return
   if (!key.trim()) {
@@ -110,16 +117,15 @@ const onKeyValidate = (key: string): void => {
   }
   if (inst.keyStatus === 'validating') return
   inst.keyStatus = 'validating'
-  // mock:未对接真实接口;1.2s 后 50/50 展示 valid / invalid
-  window.setTimeout(() => {
+  try {
+    await invokeValidateServiceCredential(probeRequest(inst))
     if (activeInstance.value?.id !== inst.id) return
-    if (Math.random() < 0.5) {
-      inst.keyStatus = 'valid'
-    } else {
-      inst.keyStatus = 'invalid'
-      toast.error('校验失败', 'API Key 无效或已过期,请检查后重试')
-    }
-  }, 1200)
+    inst.keyStatus = 'valid'
+  } catch (err) {
+    if (activeInstance.value?.id !== inst.id) return
+    inst.keyStatus = 'invalid'
+    toast.error('校验失败', String(err))
+  }
 }
 
 const onRemove = (): void => {
@@ -144,9 +150,15 @@ const onPullModels = async (instanceId: string): Promise<void> => {
   if (inst.pulledModels.length > 0) return
   pulling.value[instanceId] = true
   try {
-    await new Promise<void>((r) => setTimeout(r, 1200))
-    const incoming = MOCK_PULLED_MODELS[inst.type] ?? []
-    inst.pulledModels = Array.from(new Set([...inst.pulledModels, ...incoming]))
+    const result = await invokeListServiceModels(probeRequest(inst))
+    if (activeInstance.value?.id !== inst.id) return
+    inst.pulledModels = result.models
+    if (result.models.length === 0) {
+      toast.info('模型列表为空', '服务商未返回可用模型，可手动输入模型名')
+    }
+  } catch (err) {
+    if (activeInstance.value?.id !== inst.id) return
+    toast.error('拉取失败', String(err))
   } finally {
     pulling.value[instanceId] = false
   }

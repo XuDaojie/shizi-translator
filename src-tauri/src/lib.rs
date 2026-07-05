@@ -15,6 +15,7 @@ use tauri::Manager;
 use ui::{
     config::{get_app_config, save_app_config, open_settings},
     ocr_popup::trigger_ocr_translation,
+    service_probe::{list_service_models, validate_service_credential},
     overlay::{
         cancel_capture, ensure_overlay, get_capture_frame_bytes, get_capture_frame_meta,
         show_overlay, submit_capture_region,
@@ -45,6 +46,8 @@ pub fn run() {
             get_app_config,
             save_app_config,
             open_settings,
+            list_service_models,
+            validate_service_credential,
             get_capture_frame_meta,
             get_capture_frame_bytes,
             submit_capture_region,

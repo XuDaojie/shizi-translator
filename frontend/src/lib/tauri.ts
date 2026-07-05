@@ -23,3 +23,17 @@ export async function invokeSaveAppConfig(config: AppConfig): Promise<AppConfig>
 export function isTauriReady(): boolean {
   return Boolean(tauriGlobal?.core?.invoke);
 }
+
+export interface ServiceProbeRequest {
+  protocol: string;
+  endpoint: string;
+  apiKey: string | null;
+}
+
+export async function invokeValidateServiceCredential(request: ServiceProbeRequest): Promise<void> {
+  return requireInvoke()<void>('validate_service_credential', { request });
+}
+
+export async function invokeListServiceModels(request: ServiceProbeRequest): Promise<{ models: string[] }> {
+  return requireInvoke()<{ models: string[] }>('list_service_models', { request });
+}
