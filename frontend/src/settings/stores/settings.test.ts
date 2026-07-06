@@ -1,3 +1,4 @@
+import { nextTick } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mergeBackendIntoServices, useSettings } from './settings';
 import { DEFAULT_PROMPTS } from '../tokens';
@@ -28,6 +29,7 @@ vi.stubGlobal('window', { localStorage: fakeLocalStorage, __TAURI__: undefined }
 vi.stubGlobal('crypto', { randomUUID: () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx' });
 
 beforeEach(() => {
+  vi.useRealTimers();
   fakeLocalStorage.clear();
   useSettings().reset();
   vi.clearAllMocks();
@@ -377,6 +379,132 @@ describe('syncFromBackend', () => {
     expect(byId['translate-selection'].label).toBe(before.label);
     expect(byId['translate-screenshot'].keys).toBe('');
     expect(invokeSaveAppConfig).not.toHaveBeenCalled();
+  });
+
+  it('设置变更后自动保存到后端', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(isTauriReady).mockReturnValue(true);
+      const settings = useSettings();
+      const localId = settings.state.services[0].id;
+
+      vi.mocked(invokeGetAppConfig).mockResolvedValue({
+        targetLang: '中文',
+        defaultSourceLang: 'auto',
+        autoCopy: true,
+        restoreClipboard: true,
+        services: [
+          makeBackend({
+            id: localId,
+            serviceType: 'deepseek',
+            name: 'DeepSeek',
+            enabled: false,
+            protocol: 'openai_chat',
+            apiKey: null,
+            endpoint: 'https://api.deepseek.com',
+            model: 'deepseek-chat',
+            timeoutSeconds: 60,
+          }),
+        ],
+        popupPrecreate: true,
+        overlayPrecreate: true,
+        collectUsage: true,
+        shortcuts: {},
+      });
+      await settings.syncFromBackend();
+      vi.mocked(invokeSaveAppConfig).mockClear();
+
+      settings.state.translation.autoCopy = false;
+      await nextTick();
+      expect(invokeSaveAppConfig).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(350);
+
+      expect(invokeSaveAppConfig).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(invokeSaveAppConfig).mock.calls[0][0].autoCopy).toBe(false);
+      expect(settings.dirty.value).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('后端同步完成后默认保存状态为本机偏好语义的 idle', async () => {
+    vi.mocked(isTauriReady).mockReturnValue(true);
+    const settings = useSettings();
+    const localId = settings.state.services[0].id;
+
+    vi.mocked(invokeGetAppConfig).mockResolvedValue({
+      targetLang: '中文',
+      defaultSourceLang: 'auto',
+      autoCopy: true,
+      restoreClipboard: true,
+      services: [
+        makeBackend({
+          id: localId,
+          serviceType: 'deepseek',
+          name: 'DeepSeek',
+          enabled: false,
+          protocol: 'openai_chat',
+          apiKey: null,
+          endpoint: 'https://api.deepseek.com',
+          model: 'deepseek-chat',
+          timeoutSeconds: 60,
+        }),
+      ],
+      popupPrecreate: true,
+      overlayPrecreate: true,
+      collectUsage: true,
+      shortcuts: {},
+    });
+
+    await settings.syncFromBackend();
+
+    expect(settings.saveStatus.value).toBe('idle');
+  });
+
+  it('校验状态变化不触发自动保存', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(isTauriReady).mockReturnValue(true);
+      const settings = useSettings();
+      const localId = settings.state.services[0].id;
+
+      vi.mocked(invokeGetAppConfig).mockResolvedValue({
+        targetLang: '中文',
+        defaultSourceLang: 'auto',
+        autoCopy: true,
+        restoreClipboard: true,
+        services: [
+          makeBackend({
+            id: localId,
+            serviceType: 'deepseek',
+            name: 'DeepSeek',
+            enabled: false,
+            protocol: 'openai_chat',
+            apiKey: null,
+            endpoint: 'https://api.deepseek.com',
+            model: 'deepseek-chat',
+            timeoutSeconds: 60,
+          }),
+        ],
+        popupPrecreate: true,
+        overlayPrecreate: true,
+        collectUsage: true,
+        shortcuts: {},
+      });
+      await settings.syncFromBackend();
+      vi.mocked(invokeSaveAppConfig).mockClear();
+
+      settings.state.services[0].keyStatus = 'validating';
+      await nextTick();
+      await vi.advanceTimersByTimeAsync(350);
+
+      expect(invokeSaveAppConfig).not.toHaveBeenCalled();
+      expect(settings.dirty.value).toBe(false);
+      expect(settings.saveStatus.value).toBe('idle');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
 });

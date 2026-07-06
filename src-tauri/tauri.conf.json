@@ -26,18 +26,6 @@
         "decorations": false,
         "transparent": true,
         "center": true
-      },
-      {
-        "label": "settings",
-        "url": "settings.html",
-        "title": "Shizi - 设置",
-        "width": 820,
-        "height": 600,
-        "resizable": false,
-        "minimizable": false,
-        "maximizable": false,
-        "center": true,
-        "visible": false
       }
     ]
   }

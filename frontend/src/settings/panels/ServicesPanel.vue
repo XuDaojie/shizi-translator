@@ -53,6 +53,7 @@ const activeInstanceId = ref<string>(props.state.services[0]?.id ?? '')
 const search = ref('')
 const pickerOpen = ref(false)
 const pulling = ref<Record<string, boolean>>({})
+const keyStatusById = ref<Record<string, ServiceInstance['keyStatus']>>({})
 const tab = ref<'translate' | 'ocr'>('translate')
 
 // 内置 + 用户自定义渠道的合并视图
@@ -79,6 +80,13 @@ const activeService = computed(() =>
 /** 渠道 protocols 为空即视为"尚未对接"，在 UI 上标记开发中并置灰启用。 */
 const isDeveloping = (type: ServiceId): boolean =>
   serviceById(type)?.protocols.length === 0
+
+const keyStatusFor = (instanceId: string): ServiceInstance['keyStatus'] =>
+  keyStatusById.value[instanceId] ?? 'idle'
+
+const setKeyStatus = (instanceId: string, status: ServiceInstance['keyStatus']): void => {
+  keyStatusById.value[instanceId] = status
+}
 
 const filteredInstances = computed(() => {
   const q = search.value.trim().toLowerCase()
@@ -111,19 +119,19 @@ const onKeyValidate = async (key: string): Promise<void> => {
   const inst = activeInstance.value
   if (!inst) return
   if (!key.trim()) {
-    inst.keyStatus = 'invalid'
+    setKeyStatus(inst.id, 'invalid')
     toast.error('校验失败', '请先输入 API Key')
     return
   }
-  if (inst.keyStatus === 'validating') return
-  inst.keyStatus = 'validating'
+  if (keyStatusFor(inst.id) === 'validating') return
+  setKeyStatus(inst.id, 'validating')
   try {
     await invokeValidateServiceCredential(probeRequest(inst))
     if (activeInstance.value?.id !== inst.id) return
-    inst.keyStatus = 'valid'
+    setKeyStatus(inst.id, 'valid')
   } catch (err) {
     if (activeInstance.value?.id !== inst.id) return
-    inst.keyStatus = 'invalid'
+    setKeyStatus(inst.id, 'invalid')
     toast.error('校验失败', String(err))
   }
 }
@@ -707,7 +715,7 @@ const onDragEnd = (): void => {
         >
           <ApiKeyInput
               v-model="activeInstance.apiKey"
-              :status="activeInstance.keyStatus"
+              :status="keyStatusFor(activeInstance.id)"
               @validate="onKeyValidate"
             />
         </SettingRow>

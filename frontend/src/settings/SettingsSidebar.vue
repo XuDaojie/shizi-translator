@@ -2,14 +2,15 @@
 import { computed } from 'vue'
 import type { Component } from 'vue'
 import {
+  AlertCircle,
   Check,
+  LoaderCircle,
   Settings2,
   Languages,
   Keyboard,
   Plug,
   RotateCcw,
   Sliders,
-  X,
   History as HistoryIcon,
 } from '@lucide/vue'
 import { Badge } from '@/components/ui/badge'
@@ -33,15 +34,27 @@ const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void
 }>()
 
-const { dirty, save, discard } = useSettings()
+const { dirty, save, saveStatus } = useSettings()
 
-const saveStatusText = computed(() => (dirty.value ? '有未保存的修改' : '所有更改已保存'))
-const saveStatusTone = computed(() =>
-  dirty.value ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400',
-)
-const saveStatusDetail = computed(() =>
-  dirty.value ? '保存后写入本机配置' : '本机配置已同步',
-)
+const saveStatusText = computed(() => {
+  if (saveStatus.value === 'idle') return '本机偏好'
+  if (saveStatus.value === 'saving') return '正在自动保存…'
+  if (saveStatus.value === 'error') return '自动保存失败'
+  if (dirty.value) return '有修改待保存'
+  return '已自动保存'
+})
+const saveStatusTone = computed(() => {
+  if (saveStatus.value === 'error') return 'text-destructive'
+  if (saveStatus.value === 'saving' || dirty.value) return 'text-amber-600 dark:text-amber-400'
+  if (saveStatus.value === 'saved') return 'text-emerald-600 dark:text-emerald-400'
+  return 'text-muted-foreground'
+})
+const saveStatusDetail = computed(() => {
+  if (saveStatus.value === 'error') return '请检查本地存储权限'
+  if (saveStatus.value === 'saving') return '正在写入本地设置'
+  if (dirty.value) return '等待写入'
+  return '修改会立即生效并自动保存'
+})
 
 const categories: SettingsCategory[] = [
   {
@@ -145,23 +158,25 @@ const badgeLabel = (kind: 'wip' | 'new' | undefined): string => {
 
     <div class="mt-2 border-t border-border px-3 pt-2.5">
       <div :class="['flex items-center gap-1.5 text-[11px] font-medium', saveStatusTone]">
-        <RotateCcw v-if="dirty.value" class="h-3 w-3" />
+        <LoaderCircle v-if="saveStatus.value === 'saving'" class="h-3 w-3 animate-spin" />
+        <AlertCircle v-else-if="saveStatus.value === 'error'" class="h-3 w-3" />
+        <RotateCcw v-else-if="dirty.value" class="h-3 w-3" />
         <Check v-else class="h-3 w-3 text-emerald-500" />
         <span>{{ saveStatusText }}</span>
       </div>
       <p class="mt-1 text-[11px] leading-snug text-muted-foreground">
         {{ saveStatusDetail }}
       </p>
-      <div v-if="dirty.value" class="mt-2 flex gap-1.5">
-        <Button variant="ghost" size="sm" class="h-7 flex-1 px-2 text-xs" @click="discard">
-          <X class="h-3.5 w-3.5" />
-          放弃
-        </Button>
-        <Button size="sm" class="h-7 flex-1 px-2 text-xs" @click="save">
-          <Check class="h-3.5 w-3.5" />
-          保存
-        </Button>
-      </div>
+      <Button
+        v-if="saveStatus.value === 'error'"
+        variant="ghost"
+        size="sm"
+        class="mt-2 h-7 w-full px-2 text-xs"
+        @click="save"
+      >
+        <RotateCcw class="h-3.5 w-3.5" />
+        重试保存
+      </Button>
     </div>
   </aside>
 </template>

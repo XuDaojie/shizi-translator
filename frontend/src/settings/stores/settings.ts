@@ -330,14 +330,22 @@ const loadFromStorage = (): AppSettings => {
 const state = reactive<AppSettings>(loadFromStorage())
 
 const dirty = reactive({ value: false })
+const saveStatus = reactive<{ value: 'idle' | 'saved' | 'saving' | 'error' }>({ value: 'idle' })
 const baseline = JSON.parse(JSON.stringify(state)) as AppSettings
+let autoSaveTimer: ReturnType<typeof setTimeout> | undefined
+let saveStatusIdleTimer: ReturnType<typeof setTimeout> | undefined
+let syncingFromBackend = false
 
 /**
  * 把状态序列化为 stable 字符串,排除 ocrHistory(它是"持久化数据"而非"待保存设置",
  * 不应触发 footer 的"放弃/保存"按钮)。
  */
 const serializeForDirty = (s: AppSettings): string =>
-  JSON.stringify({ ...s, ocrHistory: undefined })
+  JSON.stringify({
+    ...s,
+    ocrHistory: undefined,
+    services: s.services.map((service) => ({ ...service, keyStatus: 'idle' })),
+  })
 
 const markDirty = (): void => {
   dirty.value = serializeForDirty(state) !== serializeForDirty(baseline)
@@ -345,13 +353,64 @@ const markDirty = (): void => {
 
 watch(state, markDirty, { deep: true })
 
+const cloneSettings = (s: AppSettings): AppSettings => JSON.parse(JSON.stringify(s)) as AppSettings
+
+const commitBaseline = (next: AppSettings = state): void => {
+  Object.assign(baseline, cloneSettings(next))
+  dirty.value = false
+}
+
+const showSavedBriefly = (): void => {
+  saveStatus.value = 'saved'
+  if (saveStatusIdleTimer) clearTimeout(saveStatusIdleTimer)
+  saveStatusIdleTimer = setTimeout(() => {
+    if (saveStatus.value === 'saved') saveStatus.value = 'idle'
+  }, 2400)
+}
+
+const persist = async (notify = false): Promise<void> => {
+  const snapshot = cloneSettings(state)
+  const config = projectToAppConfig(snapshot)
+  const err = validateConfig(config)
+  if (err) {
+    saveStatus.value = 'error'
+    toast.error('保存失败', err)
+    return
+  }
+  try {
+    if (isTauriReady()) {
+      await invokeSaveAppConfig(config)
+      if (notify) toast.success('配置已保存')
+    } else if (notify) {
+      toast.info('Tauri 未就绪，仅本地保存')
+    }
+    if (serializeForDirty(state) === serializeForDirty(snapshot)) {
+      commitBaseline(snapshot)
+      showSavedBriefly()
+    } else {
+      markDirty()
+      saveStatus.value = 'saving'
+    }
+  } catch (e) {
+    saveStatus.value = 'error'
+    toast.error('保存失败', String(e))
+  }
+}
+
 watch(
   state,
   (next) => {
     if (typeof window === 'undefined') return
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+    if (syncingFromBackend) return
+    markDirty()
+    if (!dirty.value) return
+    saveStatus.value = 'saving'
+    if (autoSaveTimer) clearTimeout(autoSaveTimer)
+    if (saveStatusIdleTimer) clearTimeout(saveStatusIdleTimer)
+    autoSaveTimer = setTimeout(() => void persist(), 300)
   },
-  { deep: true },
+  { deep: true, flush: 'sync' },
 )
 
 const applyTheme = (): void => {
@@ -378,27 +437,11 @@ const nextDefaultName = (type: ServiceId): string => {
 export const useSettings = () => ({
   state,
   dirty,
+  saveStatus,
   async save(): Promise<void> {
-    const config = projectToAppConfig(state)
-    const err = validateConfig(config)
-    if (err) {
-      toast.error('保存失败', err)
-      return
-    }
-    if (isTauriReady()) {
-      try {
-        await invokeSaveAppConfig(config)
-        Object.assign(baseline, JSON.parse(JSON.stringify(state)))
-        dirty.value = false
-        toast.success('配置已保存')
-      } catch (e) {
-        toast.error('保存失败', String(e))
-      }
-    } else {
-      Object.assign(baseline, JSON.parse(JSON.stringify(state)))
-      dirty.value = false
-      toast.info('Tauri 未就绪，仅本地保存')
-    }
+    if (autoSaveTimer) clearTimeout(autoSaveTimer)
+    saveStatus.value = 'saving'
+    await persist(true)
   },
   /** 启动时从后端 config.json 同步：后端空则推前端覆盖，后端非空则按 id 合并。失败静默降级。 */
   async syncFromBackend(): Promise<void> {
@@ -418,6 +461,7 @@ export const useSettings = () => ({
       }
       return
     }
+    syncingFromBackend = true
     state.services = mergeBackendIntoServices(state.services, backend.services)
     state.translation.defaultSourceLang =
       backend.defaultSourceLang ?? state.translation.defaultSourceLang
@@ -425,8 +469,9 @@ export const useSettings = () => ({
     state.translation.restoreClipboard =
       backend.restoreClipboard ?? state.translation.restoreClipboard
     state.shortcut.bindings = mergeBackendIntoShortcuts(state.shortcut.bindings, backend.shortcuts ?? {})
-    Object.assign(baseline, JSON.parse(JSON.stringify(state)))
-    dirty.value = false
+    syncingFromBackend = false
+    commitBaseline()
+    saveStatus.value = 'idle'
   },
   reset(): void {
     const defaults = buildDefaults()
@@ -522,5 +567,3 @@ export const useSettings = () => ({
     state.ocrHistory = []
   },
 })
-
-
