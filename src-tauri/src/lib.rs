@@ -8,18 +8,18 @@ use app::{
     shortcuts::{handle_global_shortcut, register_global_shortcuts},
     state::AppState,
     tray::setup_tray,
-    window::setup_close_to_hide,
+    window::{ensure_settings_window, setup_close_to_hide},
 };
 use core::config::ConfigStore;
 use tauri::Manager;
 use ui::{
     config::{get_app_config, open_settings, save_app_config},
     ocr_popup::trigger_ocr_translation,
-    service_probe::{list_service_models, validate_service_credential},
     overlay::{
         cancel_capture, ensure_overlay, get_capture_frame_bytes, get_capture_frame_meta,
         show_overlay, submit_capture_region,
     },
+    service_probe::{list_service_models, validate_service_credential},
     web_popup::{
         cancel_translation, retry_translation, start_translation, take_pending_source_text,
     },
@@ -61,12 +61,17 @@ pub fn run() {
             setup_tray(app)?;
             setup_close_to_hide(app);
 
-            let config = app.state::<AppState>().config_store.get().unwrap_or_else(|_| AppConfig::from_env());
+            let config = app
+                .state::<AppState>()
+                .config_store
+                .get()
+                .unwrap_or_else(|_| AppConfig::from_env());
             register_global_shortcuts(app.handle(), &config)
                 .map_err(|error| tauri::Error::Anyhow(error.into()))?;
 
             // 按窗口策略预创建弹窗与 overlay
             let _ = ensure_popup_window(app.handle(), &config);
+            let _ = ensure_settings_window(app.handle());
             let _ = ensure_overlay(app.handle());
 
             if let Some(window) = app.get_webview_window("main") {
