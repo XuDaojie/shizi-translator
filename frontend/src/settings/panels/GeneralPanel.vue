@@ -67,8 +67,6 @@ const closeActionOptions = [
     </SettingRow>
   </SettingGroup>
 
-  <SettingGroup title="外观" description="主题与界面语言,深色模式后续将持续完善。">
-
   <SettingGroup
     title="窗口策略"
     description="翻译弹窗与截图 overlay 的预创建策略，重启应用后生效。"
@@ -86,6 +84,8 @@ const closeActionOptions = [
       <SettingSwitch v-model="state.general.overlayPrecreate" aria-label="预创建截图 Overlay" />
     </SettingRow>
   </SettingGroup>
+
+  <SettingGroup title="外观" description="主题与界面语言,深色模式后续将持续完善。">
     <SettingRow
       title="主题"
       description="决定主窗口与设置页面的色彩风格。深色模式尚在开发,当前默认浅色。"

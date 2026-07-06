@@ -36,7 +36,7 @@ const onUpdate = (props: { type?: string }, raw: string): void => {
     :placeholder="placeholder"
     :disabled="disabled"
     :invalid="invalid"
-    class="min-w-[240px]"
+    class="min-w-[190px]"
     @update:model-value="(v) => onUpdate({ type }, v)"
   />
 </template>

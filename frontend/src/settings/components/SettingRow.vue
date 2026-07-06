@@ -27,8 +27,8 @@ const statusLabel: Record<NonNullable<Props['status']>, string> = {
     :class="
       cn(
         'flex',
-        vertical ? 'flex-col gap-3' : 'min-h-[3rem] items-center justify-between gap-6',
-        'px-4 py-3',
+        vertical ? 'flex-col gap-2' : 'min-h-[2.375rem] items-center justify-between gap-3',
+        'px-2.5 py-2',
         'transition-colors duration-150',
         'hover:bg-muted/40',
         props.className,
@@ -40,7 +40,7 @@ const statusLabel: Record<NonNullable<Props['status']>, string> = {
         <label
           v-if="title"
           :for="htmlFor"
-          class="text-sm font-medium text-foreground cursor-pointer select-none"
+          class="text-[13px] font-medium text-foreground cursor-pointer select-none"
         >
           {{ title }}
         </label>
@@ -53,7 +53,7 @@ const statusLabel: Record<NonNullable<Props['status']>, string> = {
           {{ statusLabel[status] }}
         </Badge>
       </div>
-      <p v-if="description" class="mt-1 text-xs text-muted-foreground leading-relaxed">
+      <p v-if="description" class="mt-0.5 text-[11px] text-muted-foreground leading-snug">
         {{ description }}
       </p>
     </div>

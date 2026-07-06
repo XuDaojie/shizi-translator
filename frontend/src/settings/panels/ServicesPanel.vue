@@ -238,15 +238,15 @@ const onDragEnd = (): void => {
 </script>
 
 <template>
-    <div class="grid grid-cols-[300px_1fr] gap-4 items-start">
+    <div class="grid min-h-full grid-cols-[220px_minmax(0,1fr)] items-stretch gap-2.5">
     <!-- 左侧:服务实例列表(sticky,不随右侧编辑区滚动) -->
-    <aside class="sticky top-4 flex max-h-[calc(100vh-2rem)] flex-col gap-3 overflow-y-auto scrollbar-thin">
+    <aside class="sticky top-2.5 flex max-h-[calc(600px-2rem)] min-h-0 flex-col gap-2.5 overflow-hidden">
       <!-- Tab 栏:翻译服务 / 文字识别 -->
       <div class="flex items-center gap-1 border-b border-border">
         <button
           type="button"
           :class="[
-            'relative px-3 pb-2 pt-1 text-xs font-medium transition-colors',
+            'relative px-2.5 pb-1.5 pt-0.5 text-xs font-medium transition-colors',
             tab === 'translate'
               ? 'text-foreground'
               : 'text-muted-foreground hover:text-foreground',
@@ -263,7 +263,7 @@ const onDragEnd = (): void => {
         <button
           type="button"
           :class="[
-            'relative flex items-center gap-1.5 px-3 pb-2 pt-1 text-xs font-medium transition-colors',
+            'relative flex items-center gap-1.5 px-2.5 pb-1.5 pt-0.5 text-xs font-medium transition-colors',
             tab === 'ocr'
               ? 'text-foreground'
               : 'text-muted-foreground hover:text-foreground',
@@ -293,16 +293,16 @@ const onDragEnd = (): void => {
             v-model="search"
             type="text"
             placeholder="搜索服务"
-            class="h-8 border-0 bg-transparent shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 px-0"
+            class="h-7 border-0 bg-transparent shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 px-0"
           />
         </div>
 
-        <div class="rounded-lg border border-border bg-card overflow-hidden">
-          <ul class="max-h-[420px] overflow-y-auto divide-y divide-border scrollbar-thin">
+        <div class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card">
+          <ul class="min-h-0 flex-1 overflow-y-auto divide-y divide-border scrollbar-thin">
             <li v-for="inst in filteredInstances" :key="inst.id">
               <div
                 :class="[
-                  'group relative flex items-center gap-2 px-3 py-2.5 transition-all duration-150',
+                  'group relative flex items-center gap-2 px-2.5 py-2 transition-all duration-150',
                   'hover:bg-accent/40',
                   activeInstanceId === inst.id && 'bg-accent/60',
                   draggedId === inst.id && 'opacity-40',
@@ -315,24 +315,23 @@ const onDragEnd = (): void => {
               >
                 <button
                   type="button"
-                  class="flex flex-1 items-start gap-3 text-left min-w-0 self-center"
+                  class="flex flex-1 items-start gap-2.5 text-left min-w-0 self-center"
                   @click="onServiceSelect(inst.id)"
                 >
                   <span
                     :class="[
-                      'flex h-7 w-7 shrink-0 items-center justify-center rounded-md',
+                      'flex h-6 w-6 shrink-0 items-center justify-center rounded-md',
                       inst.enabled ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground',
                     ]"
                   >
                     <ServiceIcon :service-id="inst.type" class-name="h-3.5 w-3.5" />
                   </span>
                   <span class="flex-1 min-w-0">
-                    <span class="block text-sm font-medium text-foreground truncate">
+                    <span class="block truncate text-[13px] font-medium text-foreground">
                       {{ inst.name }}
                     </span>
-                    <span class="mt-0.5 block text-[11px] leading-snug text-muted-foreground line-clamp-2">
-                      {{ serviceById(inst.type)?.name ?? inst.type }} ·
-                      {{ inst.apiKey ? '•••• 已配置' : '未配置' }}
+                    <span class="mt-0.5 block truncate text-[11px] leading-snug text-muted-foreground">
+                      {{ inst.model || '—' }}
                     </span>
                   </span>
                 </button>
@@ -438,8 +437,8 @@ const onDragEnd = (): void => {
 
       <!-- 文字识别 (OCR) Tab -->
       <template v-else>
-        <div class="rounded-lg border border-border bg-card overflow-hidden">
-          <ul class="divide-y divide-border">
+        <div class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card">
+          <ul class="min-h-0 flex-1 divide-y divide-border">
             <li>
               <div class="flex items-center gap-3 px-3 py-2.5">
                 <span
@@ -450,7 +449,7 @@ const onDragEnd = (): void => {
                 </span>
                 <span class="flex-1 min-w-0">
                   <span class="flex items-center gap-1.5">
-                    <span class="text-sm font-medium text-foreground truncate">
+                    <span class="truncate text-[13px] font-medium text-foreground">
                       Windows 媒体 OCR
                     </span>
                     <span
@@ -484,7 +483,7 @@ const onDragEnd = (): void => {
     </aside>
 
     <!-- 右侧:实例详情(翻译服务) / OCR 信息面板(文字识别) -->
-    <div v-if="tab === 'ocr'" class="flex flex-col gap-4 min-w-0 pt-14">
+    <div v-if="tab === 'ocr'" class="flex min-w-0 flex-col gap-2.5 pt-1">
       <header class="flex items-start gap-3">
         <span
           class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary"
@@ -596,12 +595,12 @@ const onDragEnd = (): void => {
       </div>
     </div>
 
-    <div v-else-if="activeInstance && activeService" class="flex flex-col gap-4 min-w-0 pt-14">
-      <header class="flex items-start justify-between gap-4">
+    <div v-else-if="activeInstance && activeService" class="flex min-w-0 flex-col gap-2.5 pt-1">
+      <header class="flex items-start justify-between gap-3">
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2">
             <template v-if="!editingName">
-              <h2 class="text-base font-semibold text-foreground truncate">
+              <h2 class="truncate text-sm font-semibold text-foreground">
                 {{ activeInstance.name }}
               </h2>
               <Button
@@ -653,7 +652,7 @@ const onDragEnd = (): void => {
               </Button>
             </template>
           </div>
-          <p class="mt-1 text-xs text-muted-foreground leading-snug">
+          <p class="mt-0.5 text-[11px] leading-snug text-muted-foreground">
             {{ activeService.description }}
           </p>
         </div>

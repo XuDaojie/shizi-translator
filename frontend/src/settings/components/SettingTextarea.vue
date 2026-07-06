@@ -18,8 +18,8 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  minRows: 3,
-  maxRows: 8,
+  minRows: 2,
+  maxRows: 5,
   disabled: false,
   showReset: true,
 })
@@ -38,9 +38,9 @@ const isDirty = computed(
     props.modelValue !== props.defaultValue,
 )
 
-const lineHeightRem = 1.5
-const minHeight = computed(() => `${props.minRows * lineHeightRem + 1.25}rem`)
-const maxHeight = computed(() => `${props.maxRows * lineHeightRem + 1.25}rem`)
+const lineHeightRem = 1.35
+const minHeight = computed(() => `${props.minRows * lineHeightRem + 1.1}rem`)
+const maxHeight = computed(() => `${props.maxRows * lineHeightRem + 1.1}rem`)
 
 const onInput = (e: Event): void => {
   const target = e.target as HTMLTextAreaElement
@@ -64,8 +64,8 @@ const onReset = (): void => {
         :rows="minRows"
         :class="
           cn(
-            'w-full min-w-0 resize-y rounded-md border border-input bg-background px-3 py-2',
-            'text-sm leading-relaxed text-foreground placeholder:text-muted-foreground/70',
+            'w-full min-w-0 resize-y rounded-md border border-input bg-background px-2.5 py-1.5',
+            'text-xs leading-snug text-foreground placeholder:text-muted-foreground/70',
             'transition-colors duration-150',
             'hover:border-muted-foreground/40',
             'focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary',

@@ -13,9 +13,10 @@ pub fn show_settings_window(app: &tauri::AppHandle) -> Result<(), String> {
         Some(window) => window,
         None => WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("settings.html".into()))
             .title("Shizi - 设置")
-            .inner_size(560.0, 640.0)
-            .min_inner_size(480.0, 480.0)
-            .resizable(true)
+            .inner_size(820.0, 600.0)
+            .resizable(false)
+            .minimizable(false)
+            .maximizable(false)
             .center()
             .build()
             .map_err(|error| format!("创建设置窗口失败: {error}"))?,

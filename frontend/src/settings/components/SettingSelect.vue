@@ -24,7 +24,7 @@ const emit = defineEmits<{
     :options="options"
     :placeholder="placeholder"
     :disabled="disabled"
-    class="min-w-[200px]"
+    class="min-w-[168px]"
     @update:model-value="(v) => emit('update:modelValue', v)"
   />
 </template>

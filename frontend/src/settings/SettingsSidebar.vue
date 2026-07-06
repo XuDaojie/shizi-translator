@@ -1,14 +1,20 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { Component } from 'vue'
 import {
+  Check,
   Settings2,
   Languages,
   Keyboard,
   Plug,
+  RotateCcw,
   Sliders,
+  X,
   History as HistoryIcon,
 } from '@lucide/vue'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { useSettings } from './stores/settings'
 
 export interface SettingsCategory {
   id: string
@@ -26,6 +32,16 @@ defineProps<{
 const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void
 }>()
+
+const { dirty, save, discard } = useSettings()
+
+const saveStatusText = computed(() => (dirty.value ? '有未保存的修改' : '所有更改已保存'))
+const saveStatusTone = computed(() =>
+  dirty.value ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400',
+)
+const saveStatusDetail = computed(() =>
+  dirty.value ? '保存后写入本机配置' : '本机配置已同步',
+)
 
 const categories: SettingsCategory[] = [
   {
@@ -78,9 +94,9 @@ const badgeLabel = (kind: 'wip' | 'new' | undefined): string => {
 
 <template>
   <aside
-    class="flex h-full w-[var(--sidebar-width)] shrink-0 flex-col border-r border-border bg-card/40 py-4"
+    class="flex h-full w-[var(--sidebar-width)] shrink-0 flex-col border-r border-border bg-card/40 py-3"
   >
-    <div class="px-4 pb-4">
+    <div class="px-3 pb-3">
       <h2 class="text-sm font-semibold text-foreground">设置</h2>
       <p class="mt-1 text-xs text-muted-foreground">个性化本应用的使用方式</p>
     </div>
@@ -91,7 +107,7 @@ const badgeLabel = (kind: 'wip' | 'new' | undefined): string => {
           <button
             type="button"
             :class="[
-              'group flex w-full items-start gap-3 rounded-md px-3 py-2 text-left transition-colors duration-150',
+              'group flex w-full items-start gap-2.5 rounded-md px-2.5 py-1.5 text-left transition-colors duration-150',
               'hover:bg-accent/60',
               modelValue === cat.id && 'bg-accent text-accent-foreground',
             ]"
@@ -100,7 +116,7 @@ const badgeLabel = (kind: 'wip' | 'new' | undefined): string => {
             <component
               :is="cat.icon"
               :class="[
-                'mt-0.5 h-4 w-4 shrink-0',
+                'mt-0.5 h-3.5 w-3.5 shrink-0',
                 modelValue === cat.id ? 'text-primary' : 'text-muted-foreground',
               ]"
             />
@@ -127,10 +143,25 @@ const badgeLabel = (kind: 'wip' | 'new' | undefined): string => {
       </ul>
     </nav>
 
-    <div class="mt-2 px-4 pt-3 border-t border-border">
-      <p class="text-[11px] text-muted-foreground leading-relaxed">
-        修改会立即生效,关闭主窗口前请确认保存。
+    <div class="mt-2 border-t border-border px-3 pt-2.5">
+      <div :class="['flex items-center gap-1.5 text-[11px] font-medium', saveStatusTone]">
+        <RotateCcw v-if="dirty.value" class="h-3 w-3" />
+        <Check v-else class="h-3 w-3 text-emerald-500" />
+        <span>{{ saveStatusText }}</span>
+      </div>
+      <p class="mt-1 text-[11px] leading-snug text-muted-foreground">
+        {{ saveStatusDetail }}
       </p>
+      <div v-if="dirty.value" class="mt-2 flex gap-1.5">
+        <Button variant="ghost" size="sm" class="h-7 flex-1 px-2 text-xs" @click="discard">
+          <X class="h-3.5 w-3.5" />
+          放弃
+        </Button>
+        <Button size="sm" class="h-7 flex-1 px-2 text-xs" @click="save">
+          <Check class="h-3.5 w-3.5" />
+          保存
+        </Button>
+      </div>
     </div>
   </aside>
 </template>

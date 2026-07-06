@@ -167,7 +167,7 @@ onUnmounted(() => document.removeEventListener('mousedown', onDocumentMouseDown)
 
 <template>
   <div
-    :class="cn('relative w-full min-w-[240px]', className)"
+    :class="cn('relative w-full min-w-[190px]', className)"
     ref="containerRef"
   >
     <div class="relative">
@@ -179,7 +179,7 @@ onUnmounted(() => document.removeEventListener('mousedown', onDocumentMouseDown)
         :disabled="disabled"
         :class="
           cn(
-            'flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 pr-9 text-sm shadow-sm transition-colors duration-150',
+            'flex h-8 w-full rounded-md border border-input bg-background px-2.5 py-1 pr-8 text-[13px] shadow-sm transition-colors duration-150',
             'placeholder:text-muted-foreground',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1',
             'disabled:cursor-not-allowed disabled:opacity-50',

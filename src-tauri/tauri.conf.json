@@ -31,11 +31,11 @@
         "label": "settings",
         "url": "settings.html",
         "title": "Shizi - 设置",
-        "width": 560,
-        "height": 640,
-        "minWidth": 480,
-        "minHeight": 480,
-        "resizable": true,
+        "width": 820,
+        "height": 600,
+        "resizable": false,
+        "minimizable": false,
+        "maximizable": false,
         "center": true,
         "visible": false
       }
