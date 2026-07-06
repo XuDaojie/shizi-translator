@@ -90,7 +90,7 @@ body {
   width: 22px; height: 22px;
   border: none; background: transparent;
   border-radius: 4px;
-  cursor: pointer;
+  cursor: default;
   display: flex; align-items: center; justify-content: center;
   color: var(--fg-2);
   transition: background .15s, color .15s;
@@ -154,7 +154,7 @@ body {
   width: 24px; height: 24px;
   border: none; background: transparent;
   border-radius: 5px;
-  cursor: pointer;
+  cursor: default;
   display: flex; align-items: center; justify-content: center;
   color: var(--fg-2);
   transition: background .15s, color .15s;
@@ -261,7 +261,7 @@ body {
   align-items: center;
   padding: 6px 12px;
   gap: 6px;
-  cursor: pointer;
+  cursor: default;
   user-select: none;
   background: var(--bg-soft);
 }
@@ -283,7 +283,7 @@ body {
   width: 20px; height: 20px;
   border: none; background: transparent;
   border-radius: 4px;
-  cursor: pointer;
+  cursor: default;
   display: flex; align-items: center; justify-content: center;
   color: var(--fg-2);
   transition: background .15s;
@@ -325,7 +325,7 @@ body {
   width: 22px; height: 22px;
   border: none; background: transparent;
   border-radius: 4px;
-  cursor: pointer;
+  cursor: default;
   display: flex; align-items: center; justify-content: center;
   color: var(--fg-2);
   transition: background .15s, color .15s;
@@ -393,7 +393,7 @@ body {
   color: var(--fg-2);
   font-family: var(--font-family);
   font-size: 0.6875rem;
-  cursor: pointer;
+  cursor: default;
   padding: 0;
   transition: color .15s;
 }
