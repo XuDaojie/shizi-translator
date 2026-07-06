@@ -6,6 +6,7 @@ use crate::{
     },
     core::config::AppConfig,
 };
+use tauri::Emitter;
 
 #[tauri::command]
 pub fn open_settings(app: tauri::AppHandle) -> Result<(), String> {
@@ -32,8 +33,13 @@ pub async fn save_app_config(
 
     replace_global_shortcuts(&app, &old_config, &config)?;
 
-    state
+    let saved_config = state
         .config_store
         .save(config)
-        .map_err(|error| ShortcutBindingError::global(format!("无法保存配置: {error}")))
+        .map_err(|error| ShortcutBindingError::global(format!("无法保存配置: {error}")))?;
+
+    app.emit("app-config:changed", &saved_config)
+        .map_err(|error| ShortcutBindingError::global(format!("无法广播配置变更: {error}")))?;
+
+    Ok(saved_config)
 }
