@@ -1,3 +1,5 @@
+import { syncServiceCards } from './translate-card-sync.js';
+
 const invoke = window.__TAURI__?.core?.invoke;
 const listen = window.__TAURI__?.event?.listen;
 const getCurrentWindow = window.__TAURI__?.window?.getCurrentWindow;
@@ -101,6 +103,15 @@ function engineIcon(serviceType, serviceName) {
     '<text x="10" y="14.5" text-anchor="middle" font-size="12" font-weight="700" fill="#fff" ' +
     'font-family="Segoe UI, system-ui, sans-serif">' + letter + '</text>'
   );
+}
+
+function updateCardMeta(card, payload) {
+  const name = card.el.querySelector('.result-engine-name');
+  if (name) name.textContent = payload.serviceName ?? '翻译';
+  const icon = card.el.querySelector('.result-engine-icon');
+  if (icon) {
+    icon.innerHTML = engineIcon(payload.serviceType, payload.serviceName);
+  }
 }
 
 /* === 来源徽章 === */
@@ -361,6 +372,9 @@ if (listen) {
   listen('translation:event', (event) => {
     renderTranslationEvent(event.payload);
   });
+  listen('app-config:changed', (event) => {
+    refreshCardsFromConfig(event.payload);
+  });
 }
 
 /* === 翻译触发 === */
@@ -487,26 +501,26 @@ function initMaxHeight() {
 }
 
 /* === 弹窗打开时预建所有启用服务的占位卡片 === */
+function refreshCardsFromConfig(config) {
+  syncServiceCards(config, {
+    resultCards,
+    getCard,
+    updateCardMeta,
+    resultsList,
+    langSource,
+    langTarget,
+    allowCreate: !isTranslating,
+  });
+  adjustHeight();
+}
+
 async function initCards() {
   if (!invoke) return;
-  let config;
-  try { config = await invoke("get_app_config"); } catch { return; }
-  if (!config.services || config.services.length === 0) return;
-  const enabled = config.services.filter(function (s) { return s.enabled; });
-  if (enabled.length === 0) return;
-  for (var i = 0; i < enabled.length; i++) {
-    var svc = enabled[i];
-    var payload = {
-      serviceInstanceId: svc.id,
-      serviceType: svc.serviceType,
-      serviceName: svc.name,
-    };
-    getCard(payload);
+  try {
+    refreshCardsFromConfig(await invoke('get_app_config'));
+  } catch {
+    return;
   }
-
-  /* 更新语言显示 */
-  if (langSource) langSource.querySelector('.lang-label').textContent = config.defaultSourceLang === 'auto' ? '自动检测' : config.defaultSourceLang;
-  if (langTarget) langTarget.querySelector('.lang-label').textContent = config.targetLang || '中文';
 }
 
 const resizeObserver = new ResizeObserver(adjustHeight);
