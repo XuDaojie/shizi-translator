@@ -106,23 +106,29 @@ describe('syncServiceCards', () => {
     expect(translating.text.textContent).toBe('已有输出');
   });
 
-  it('allowCreate 为 false 时不创建缺失服务但更新已有卡片', () => {
+  it('allowCreate 为 false 且 allowRemove 为 false 时只同步已有卡片', () => {
     const deps = makeDeps(['existing']);
+    const disabledFinished = deps.makeCard('disabled', { status: 'finished', text: { textContent: '完成结果' } });
     deps.created.length = 0;
 
     syncServiceCards({
       services: [
         { id: 'missing', serviceType: 'claude', name: 'Claude', enabled: true },
         { id: 'existing', serviceType: 'openai', name: '已有服务新名', enabled: true },
+        { id: 'disabled', serviceType: 'mock', name: '已禁用', enabled: false },
       ],
     }, {
       ...deps,
       allowCreate: false,
+      allowRemove: false,
     });
 
     expect(deps.created).toEqual([]);
     expect(deps.resultCards.has('missing')).toBe(false);
+    expect(deps.resultCards.get('disabled')).toBe(disabledFinished);
+    expect(disabledFinished.el.removed).toBe(false);
+    expect(disabledFinished.text.textContent).toBe('完成结果');
     expect(deps.updates).toEqual([['existing', '已有服务新名', 'openai']]);
-    expect(deps.children.map((el) => el.id)).toEqual(['existing']);
+    expect(deps.children.map((el) => el.id)).toEqual(['existing', 'disabled']);
   });
 });

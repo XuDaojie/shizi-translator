@@ -17,7 +17,7 @@ export function syncServiceCards(config, deps) {
   const enabledIds = new Set(payloads.map((payload) => payload.serviceInstanceId));
 
   deps.resultCards?.forEach((card, id) => {
-    if (!enabledIds.has(id) && card.status !== 'translating') {
+    if (deps.allowRemove !== false && !enabledIds.has(id) && card.status !== 'translating') {
       card.el.remove();
       deps.resultCards.delete(id);
     }
@@ -27,7 +27,9 @@ export function syncServiceCards(config, deps) {
     if (deps.allowCreate === false && !deps.resultCards?.has(payload.serviceInstanceId)) return;
     const card = deps.getCard(payload);
     deps.updateCardMeta(card, payload);
-    deps.resultsList.appendChild(card.el);
+    if (!(deps.allowCreate === false && deps.allowRemove === false)) {
+      deps.resultsList.appendChild(card.el);
+    }
   });
 
   const sourceLabel = deps.langSource?.querySelector('.lang-label');

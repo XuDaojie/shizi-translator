@@ -24,6 +24,7 @@ const toastEl = document.getElementById('toast');
 
 let isTranslating = false;
 let currentBatchId = null;
+let pendingConfigRefresh = null;
 let pinned = false;
 const resultCards = new Map();
 
@@ -259,10 +260,12 @@ function updateBatchStatus() {
     currentBatchId = null;
     setSourceBadge(null);
     setStatus({ text: '翻译完成', loading: false, action: { label: '重试', onClick: retryTranslation } });
+    applyPendingConfigRefresh();
   } else if (allFailed) {
     isTranslating = false;
     currentBatchId = null;
     setStatus({ text: '翻译失败', loading: false, action: { label: '重试', onClick: retryTranslation } });
+    applyPendingConfigRefresh();
   } else if (anyTranslating) {
     setStatus({ text: '翻译中…', loading: true, action: { label: '取消', onClick: cancelTranslation } });
   } else {
@@ -270,6 +273,7 @@ function updateBatchStatus() {
     currentBatchId = null;
     setSourceBadge(null);
     setStatus({ text: '部分完成', loading: false, action: { label: '重试', onClick: retryTranslation } });
+    applyPendingConfigRefresh();
   }
 }
 
@@ -502,6 +506,22 @@ function initMaxHeight() {
 
 /* === 弹窗打开时预建所有启用服务的占位卡片 === */
 function refreshCardsFromConfig(config) {
+  if (isTranslating) {
+    pendingConfigRefresh = config;
+    syncServiceCards(config, {
+      resultCards,
+      getCard,
+      updateCardMeta,
+      resultsList,
+      langSource,
+      langTarget,
+      allowCreate: false,
+      allowRemove: false,
+    });
+    adjustHeight();
+    return;
+  }
+  pendingConfigRefresh = null;
   syncServiceCards(config, {
     resultCards,
     getCard,
@@ -509,9 +529,15 @@ function refreshCardsFromConfig(config) {
     resultsList,
     langSource,
     langTarget,
-    allowCreate: !isTranslating,
   });
   adjustHeight();
+}
+
+function applyPendingConfigRefresh() {
+  if (!pendingConfigRefresh) return;
+  const config = pendingConfigRefresh;
+  pendingConfigRefresh = null;
+  refreshCardsFromConfig(config);
 }
 
 async function initCards() {
