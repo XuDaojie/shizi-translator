@@ -212,6 +212,7 @@ impl AppConfig {
         self
     }
 
+    #[cfg(test)]
     pub fn is_configured(&self) -> bool {
         self.services.iter().any(|s| {
             if !s.enabled {

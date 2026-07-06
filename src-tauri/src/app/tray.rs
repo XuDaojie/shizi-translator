@@ -5,7 +5,7 @@ use tauri::{
 };
 
 use crate::app::state::AppState;
-use crate::app::window::show_window;
+use crate::app::window::{show_settings_window, show_window};
 use crate::ui::web_popup::{show_translation_popup, show_translation_error};
 
 pub fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
@@ -30,7 +30,9 @@ pub fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
                     Err(e) => show_translation_error(app, e.to_string()),
                 }
             }
-            "settings" => show_window(app),
+            "settings" => {
+                let _ = show_settings_window(app);
+            }
             "quit" => app.exit(0),
             _ => {}
         })

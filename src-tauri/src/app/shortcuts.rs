@@ -5,7 +5,10 @@ use tauri::{Manager, State};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 use crate::{
-    app::{state::AppState, window::show_window},
+    app::{
+        state::AppState,
+        window::{show_settings_window, show_window},
+    },
     core::{
         config::AppConfig,
         selection::{copy_selected_text, read_clipboard_text},
@@ -191,7 +194,10 @@ pub fn handle_global_shortcut(
                 start_translation_from_ocr(app_handle, state).await;
             });
         }
-        Some(ShortcutAction::ShowWindow | ShortcutAction::OpenSettings) => show_window(app),
+        Some(ShortcutAction::ShowWindow) => show_window(app),
+        Some(ShortcutAction::OpenSettings) => {
+            let _ = show_settings_window(app);
+        }
         None => {}
     }
 }

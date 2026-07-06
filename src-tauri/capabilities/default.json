@@ -1,7 +1,7 @@
 {
   "identifier": "default",
   "description": "Default capabilities",
-  "windows": ["main", "screenshot-overlay", "translation-popup"],
+  "windows": ["main", "settings", "screenshot-overlay"],
   "permissions": [
     "core:default",
     "core:window:allow-set-always-on-top",

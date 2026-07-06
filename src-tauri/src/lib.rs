@@ -4,16 +4,16 @@ mod platform;
 mod ui;
 
 use app::{
+    popup_window::ensure_popup_window,
     shortcuts::{handle_global_shortcut, register_global_shortcuts},
     state::AppState,
     tray::setup_tray,
     window::setup_close_to_hide,
-    popup_window::ensure_popup_window,
 };
 use core::config::ConfigStore;
 use tauri::Manager;
 use ui::{
-    config::{get_app_config, save_app_config, open_settings},
+    config::{get_app_config, open_settings, save_app_config},
     ocr_popup::trigger_ocr_translation,
     service_probe::{list_service_models, validate_service_credential},
     overlay::{
@@ -69,17 +69,9 @@ pub fn run() {
             let _ = ensure_popup_window(app.handle(), &config);
             let _ = ensure_overlay(app.handle());
 
-            // 按 is_configured 决定主窗口显隐
-            if config.is_configured() {
-                // 已配置：隐藏主窗口（驻留托盘）
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.hide();
-                }
-            } else {
-                // 未配置：显示主窗口（设置页引导）
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                }
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
             }
 
             Ok(())

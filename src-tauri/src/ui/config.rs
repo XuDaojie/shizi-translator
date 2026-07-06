@@ -2,7 +2,7 @@ use crate::{
     app::{
         shortcuts::{replace_global_shortcuts, ShortcutBindingError},
         state::AppState,
-        window::show_window,
+        window::show_settings_window,
     },
     core::config::AppConfig,
 };
@@ -10,8 +10,7 @@ use tauri::Emitter;
 
 #[tauri::command]
 pub fn open_settings(app: tauri::AppHandle) -> Result<(), String> {
-    show_window(&app);
-    Ok(())
+    show_settings_window(&app)
 }
 
 #[tauri::command]
