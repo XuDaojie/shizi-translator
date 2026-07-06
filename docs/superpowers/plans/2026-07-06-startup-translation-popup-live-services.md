@@ -52,12 +52,12 @@
 
 **文件：**
 - 创建：`frontend/public/translate-card-sync.js`
-- 创建：`frontend/public/translate-card-sync.test.js`
+- 创建：`frontend/src/translate-card-sync.test.js`
 - 修改：`frontend/public/translate.html`
 - 修改：`frontend/public/translate.js`
 - 修改：`frontend/vite.config.ts`
 
-- [ ] **步骤 1：编写失败的测试**
+- [x] **步骤 1：编写失败的测试**
 
 创建 `frontend/src/translate-card-sync.test.js`：
 
@@ -163,13 +163,13 @@ describe('syncServiceCards', () => {
   },
 ```
 
-- [ ] **步骤 2：运行测试验证失败**
+- [x] **步骤 2：运行测试验证失败**
 
 运行：`npm run test -- src/translate-card-sync.test.js`
 
 预期：FAIL，报 `Cannot find module './translate-card-sync.js'`。
 
-- [ ] **步骤 3：实现最少 helper**
+- [x] **步骤 3：实现最少 helper**
 
 创建 `frontend/public/translate-card-sync.js`：
 
@@ -215,7 +215,7 @@ export function syncServiceCards(config, deps) {
 }
 ```
 
-- [ ] **步骤 4：接入翻译弹窗**
+- [x] **步骤 4：接入翻译弹窗**
 
 修改 `frontend/public/translate.js` 顶部 import：
 
@@ -272,7 +272,7 @@ if (listen) {
 }
 ```
 
-- [ ] **步骤 5：运行前端测试和语法检查**
+- [x] **步骤 5：运行前端测试和语法检查**
 
 运行：
 
@@ -284,7 +284,7 @@ node --check frontend/public/translate-card-sync.js
 
 预期：Vitest PASS；两个 `node --check` 均无输出。
 
-- [ ] **步骤 6：Commit**
+- [x] **步骤 6：Commit**
 
 ```bash
 git add frontend/public/translate-card-sync.js frontend/src/translate-card-sync.test.js frontend/public/translate.js frontend/vite.config.ts
@@ -298,7 +298,7 @@ git commit -m "feat(popup): 同步启用服务卡片"
 **文件：**
 - 修改：`src-tauri/src/ui/config.rs`
 
-- [ ] **步骤 1：编写最小后端改动**
+- [x] **步骤 1：编写最小后端改动**
 
 修改 import，加入 `tauri::Emitter`：
 
@@ -322,13 +322,13 @@ use tauri::Emitter;
 
 保持现有顺序不变：读取旧配置 → `normalized()` → `replace_global_shortcuts` → 保存 → 广播。
 
-- [ ] **步骤 2：运行后端构建验证**
+- [x] **步骤 2：运行后端构建验证**
 
 运行：`cd src-tauri && cargo build`
 
 预期：编译通过。若 `ShortcutBindingError` 类型不接受该错误构造，复用当前文件第 30/38 行已有的 `ShortcutBindingError::global(format!(...))` 写法修正。
 
-- [ ] **步骤 3：Commit**
+- [x] **步骤 3：Commit**
 
 ```bash
 git add src-tauri/src/ui/config.rs
@@ -348,7 +348,7 @@ git commit -m "feat(config): 保存配置后广播变更事件"
 - 修改：`src-tauri/src/app/tray.rs`
 - 修改：`src-tauri/src/lib.rs`
 
-- [ ] **步骤 1：修改 Tauri 窗口配置**
+- [x] **步骤 1：修改 Tauri 窗口配置**
 
 把 `src-tauri/tauri.conf.json` 的 `app.windows` 改为两个窗口：
 
@@ -386,7 +386,7 @@ git commit -m "feat(config): 保存配置后广播变更事件"
   "windows": ["main", "settings", "screenshot-overlay"],
 ```
 
-- [ ] **步骤 2：实现独立设置窗口 helper**
+- [x] **步骤 2：实现独立设置窗口 helper**
 
 修改 `src-tauri/src/app/window.rs`：
 
@@ -422,7 +422,7 @@ pub fn show_settings_window(app: &tauri::AppHandle) -> Result<(), String> {
 
 保留 `setup_close_to_hide` 现有逻辑，继续只处理 `main` 翻译窗口。
 
-- [ ] **步骤 3：open_settings 改为打开 settings 窗口**
+- [x] **步骤 3：open_settings 改为打开 settings 窗口**
 
 修改 `src-tauri/src/ui/config.rs` import：
 
@@ -439,7 +439,7 @@ pub fn open_settings(app: tauri::AppHandle) -> Result<(), String> {
 }
 ```
 
-- [ ] **步骤 4：翻译弹窗统一复用 main 窗口**
+- [x] **步骤 4：翻译弹窗统一复用 main 窗口**
 
 修改 `src-tauri/src/app/popup_window.rs`：
 
@@ -466,7 +466,7 @@ pub fn show_popup(app: &tauri::AppHandle, _config: &AppConfig) -> Result<(), Str
 
 删除 `show_popup` 中 `config.popup_precreate` 分支和 `build_popup(app)?` 分支，保留后续光标定位、`show()`、`set_focus()` 逻辑。删除不再使用的 `build_popup` 函数和 `WebviewUrl` / `WebviewWindowBuilder` / `webview::Color` import。
 
-- [ ] **步骤 5：托盘设置入口改为 settings 窗口**
+- [x] **步骤 5：托盘设置入口改为 settings 窗口**
 
 修改 `src-tauri/src/app/tray.rs` import：
 
@@ -484,7 +484,7 @@ use crate::app::window::{show_settings_window, show_window};
 
 双击托盘保留 `show_window(tray.app_handle())`，现在它显示 `main` 翻译窗口。
 
-- [ ] **步骤 6：启动阶段显示翻译弹窗**
+- [x] **步骤 6：启动阶段显示翻译弹窗**
 
 修改 `src-tauri/src/lib.rs` setup 中第 68-83 行附近逻辑，删除 `is_configured()` 决定隐藏/显示 `main` 的分支，改为：
 
@@ -498,7 +498,7 @@ use crate::app::window::{show_settings_window, show_window};
             }
 ```
 
-- [ ] **步骤 7：运行构建验证**
+- [x] **步骤 7：运行构建验证**
 
 运行：
 
@@ -509,7 +509,7 @@ npm run build
 
 预期：Rust 编译通过；前端构建通过且 `frontend/dist/translate.html` 来自 `frontend/public/translate.html`。
 
-- [ ] **步骤 8：Commit**
+- [x] **步骤 8：Commit**
 
 ```bash
 git add src-tauri/tauri.conf.json src-tauri/capabilities/default.json src-tauri/src/app/window.rs src-tauri/src/app/popup_window.rs src-tauri/src/ui/config.rs src-tauri/src/app/tray.rs src-tauri/src/lib.rs
@@ -527,7 +527,7 @@ git commit -m "feat(window): 启动显示翻译弹窗并独立设置窗口"
 - 修改：`docs/roadmap/progressive-development-plan.md`
 - 修改：`docs/superpowers/plans/2026-07-06-startup-translation-popup-live-services.md`
 
-- [ ] **步骤 1：同步 README**
+- [x] **步骤 1：同步 README**
 
 更新 `README.md` 中当前能力与使用方式，至少包含以下事实：
 
@@ -542,27 +542,27 @@ git commit -m "feat(window): 启动显示翻译弹窗并独立设置窗口"
 1. 启动应用，默认显示翻译弹窗。
 ```
 
-- [ ] **步骤 2：同步 AGENTS.md 与 CLAUDE.md**
+- [x] **步骤 2：同步 AGENTS.md 与 CLAUDE.md**
 
 两个文件必须保持一致。更新架构关键点中的相关描述：
 
 ```markdown
 - **启动窗口与设置窗口**：`main` 窗口加载 `translate.html`，应用启动后默认显示翻译弹窗；设置页由独立 `settings` 窗口加载 `settings.html`，通过弹窗设置按钮、托盘「设置」或 `open_settings` command 打开。
-- **配置变更事件**：`save_app_config` 保存成功后广播 `app-config:changed`，翻译弹窗监听该事件并按启用服务列表新增、删除、排序和更新卡片，无需重启。
+- **配置变更事件**：`save_app_config` 保存成功后广播 `app-config:changed`，翻译弹窗监听该事件并同步启用服务卡片；非翻译中即时新增、删除、排序和更新卡片，翻译进行中保留正在输出的卡片，不新增未参与当前批次的服务卡片。
 ```
 
 删除或改写仍声称“主窗口设置页”的旧描述。
 
-- [ ] **步骤 3：同步 roadmap**
+- [x] **步骤 3：同步 roadmap**
 
 在 `docs/roadmap/progressive-development-plan.md` 中把翻译弹窗 UI 能力更新为：
 
 ```markdown
 - 启动后默认显示翻译弹窗；设置页独立窗口打开。
-- 服务启用状态保存后，翻译弹窗结果卡片实时同步。
+- 服务启用状态保存后，非翻译中翻译弹窗结果卡片即时同步；翻译进行中保留正在输出的卡片，不新增未参与当前批次的服务卡片。
 ```
 
-- [ ] **步骤 4：回填计划复选框**
+- [x] **步骤 4：回填计划复选框**
 
 在本计划中把已完成任务的复选框从 `- [ ]` 改为 `- [x]`。只勾选已经实际执行并验证通过的步骤。
 
@@ -580,6 +580,8 @@ cd src-tauri && cargo build
 
 预期：全部通过。
 
+自动化验证已完成：`npm run test`、`npm run typecheck`、`npm run build`、`cd src-tauri && cargo test`、`cd src-tauri && cargo build` 均通过。手动 `npm run tauri dev` 验证未执行，本步骤保持未勾选。
+
 手动验证：
 
 ```bash
@@ -595,7 +597,7 @@ npm run tauri dev
 5. 设置页启用/关闭服务并保存后，翻译弹窗卡片立即新增、删除并按服务顺序重排。
 6. 翻译流式输出过程中保存配置，不清空正在输出的卡片文本。
 
-- [ ] **步骤 6：Commit**
+- [x] **步骤 6：Commit**
 
 ```bash
 git add README.md AGENTS.md CLAUDE.md docs/roadmap/progressive-development-plan.md docs/superpowers/plans/2026-07-06-startup-translation-popup-live-services.md
@@ -609,9 +611,9 @@ git commit -m "docs: 同步启动翻译弹窗与配置实时刷新"
 **1. 规格覆盖度：**
 - 启动后默认展示翻译弹窗：任务 3 修改 `tauri.conf.json` 与 `lib.rs`。
 - 设置按钮打开设置页：任务 3 修改 `open_settings`、`show_settings_window`、托盘设置入口。
-- 保存服务启用/关闭后实时同步卡片：任务 1 前端监听和同步 helper，任务 2 后端广播事件。
+- 保存服务启用/关闭后同步卡片：任务 1 前端监听和同步 helper，任务 2 后端广播事件；非翻译中即时同步，翻译进行中保留正在输出的卡片且不新增未参与当前批次的服务卡片。
 - 不迁移翻译页到 Vue、不重做样式、不改翻译链路：计划只新增静态 JS helper，保留 `translation:event` 渲染和现有 CSS。
-- 测试：任务 1 覆盖卡片新增、删除、排序和元信息更新；任务 3/4 覆盖构建和手动验证。
+- 测试：任务 1 覆盖卡片新增、删除、排序和元信息更新；任务 3/4 覆盖构建验证；手动验证项已列出但未执行。
 - 文档同步：任务 4 覆盖 README、AGENTS、CLAUDE、roadmap、计划复选框。
 
 **2. 占位符扫描：**
