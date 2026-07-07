@@ -11,6 +11,9 @@
   "bundle": {
     "icon": [
       "icons/icon.ico"
+    ],
+    "targets": [
+      "nsis"
     ]
   },
   "app": {
