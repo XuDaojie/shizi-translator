@@ -442,6 +442,7 @@ translation_total_ms
 
 - **设置页 Vue 3 重构**（骨架可交付，2026-07）：Vite 7 + Vue 3.5 + Tailwind CSS v4 + shadcn-vue（new-york）+ Iconify 替换原纯静态 HTML/JS/CSS。translate / overlay 平铺进 `frontend/public/` 保持纯静态（overlay 永久不迁）。构建产物 `frontend/dist/`。UI 视觉细节待 open design 原型图定稿后打磨。
 - **翻译弹窗 UI 打磨**（已完成，2026-07）：按 OpenDesign 原型整套重写 `frontend/public/translate.html` / `translate.js` / `translate.css`——去 Windows 原生标题栏改自绘工具栏（`data-tauri-drag-region` 拖拽）、`decorations:false`+`transparent:true`+`resizable:false`、宽 452/.popup 420 固定 + 高自适应（ResizeObserver → `setSize`）、单卡片 + 预留多卡数据结构、图钉/截图翻译/设置/朗读/复制接真实后端、收藏/书签/语言栏 toast 占位、取消/重试挂状态栏文字按钮；后端仅新增 `trigger_ocr_translation` 薄封装 + 两个窗口权限。
+- **翻译弹窗 UI 细节打磨**（已完成，2026-07-07）：结果卡片长内容截断（约 4-5 行）+ 渐隐遮罩 + 「展开全文」按钮（展开/收起，transitionend 修正窗口高度时序）；输入原文限高（约 7 行）内部滚动，不再撑高弹窗；focus 态上边框改 outline 修复被 `.content` overflow 裁剪导致的描边粗细不一致。
 - **服务协议与批量翻译**（已完成，2026-07）：配置从单 provider 改为 `services[]` 数组驱动；服务实例按启用状态和列表顺序驱动翻译批次；翻译弹窗支持多服务结果卡；启动后默认显示翻译弹窗，设置页独立窗口打开；服务启用状态保存后，非翻译中翻译弹窗结果卡片即时同步，翻译进行中保留正在输出的卡片且不新增未参与当前批次的服务卡片；服务协议抽象接入 OpenAI Chat 与 Claude Messages。
 - [x] 服务实例按启用状态和列表顺序驱动翻译批次
 - [x] 翻译弹窗支持多服务结果卡

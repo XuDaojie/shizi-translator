@@ -1,6 +1,6 @@
 # 翻译弹窗 UI 打磨：卡片截断 / 输入框限高 / 上边框 实现计划
 
-> **面向 AI 代理的工作者：** 必需子技能：使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans 逐任务实现此计划。步骤使用复选框（`- [ ]`）语法来跟踪进度。
+> **面向 AI 代理的工作者：** 必需子技能：使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans 逐任务实现此计划。步骤使用复选框（`- [x]`）语法来跟踪进度。
 
 **目标：** 对齐 OpenDesign 原型（commit `2e9355e` / `d5d6335`），打磨翻译弹窗三处 UI 不一致——结果卡片长内容截断 + 展开全文、输入原文最大高度限高、focus 态上边框描边粗细一致。
 
@@ -42,7 +42,7 @@
 - 修改：`frontend/public/translate.css`（末尾 L448 后追加）
 - 修改：`frontend/public/translate.js`（`getCard` L151-183、新增函数 L220 后、`getCard` 绑定 L210 后、`finished` L337 后、`started` L294 后）
 
-- [ ] **步骤 1：在 translate.css 末尾追加截断 / 展开样式**
+- [x] **步骤 1：在 translate.css 末尾追加截断 / 展开样式**
 
 在 `frontend/public/translate.css` 文件末尾（当前最后一行是 L448 的空行）追加以下完整块：
 
@@ -102,7 +102,7 @@
 }
 ```
 
-- [ ] **步骤 2：在 translate.js 新增三个截断/展开函数**
+- [x] **步骤 2：在 translate.js 新增三个截断/展开函数**
 
 在 `frontend/public/translate.js` 的 `getCard` 函数结束后（当前 L220 `}` 之后，L222 `/* === 流式光标 === */` 之前）插入以下完整块。函数接收 DOM 元素（`cardEl`），不依赖 ref 对象结构，便于在 `getCard` 内部 `ref` 创建之前绑定事件：
 
@@ -133,7 +133,7 @@ function toggleExpand(cardEl) {
 }
 ```
 
-- [ ] **步骤 3：改 getCard innerHTML，包 .result-text-clip 容器 + 插入展开按钮**
+- [x] **步骤 3：改 getCard innerHTML，包 .result-text-clip 容器 + 插入展开按钮**
 
 在 `frontend/public/translate.js` 的 `getCard` 函数内，把当前 L151-183 的 `card.innerHTML = [...]` 数组**整体替换**为下面这段。变更点：`<div class="result-text"></div>` 外包一层 `.result-text-clip`，并在 `.result-text` 之后、`.result-actions` 之前插入 `.result-expand-btn` 按钮（`tabindex="-1"` 不参与 Tab 焦点）：
 
@@ -179,7 +179,7 @@ function toggleExpand(cardEl) {
   ].join('\n');
 ```
 
-- [ ] **步骤 4：在 getCard 内绑定展开按钮点击事件**
+- [x] **步骤 4：在 getCard 内绑定展开按钮点击事件**
 
 在 `frontend/public/translate.js` 的 `getCard` 函数内，找到 `speakBtn` 绑定（当前 L212-213）：
 
@@ -198,7 +198,7 @@ function toggleExpand(cardEl) {
   });
 ```
 
-- [ ] **步骤 5：finished 事件后探测溢出**
+- [x] **步骤 5：finished 事件后探测溢出**
 
 在 `frontend/public/translate.js` 的 `renderTranslationEvent` 的 `finished` 分支（L323-342），找到 `card.actions.style.visibility = 'visible';`（当前 L337），在其**之后**、`card.status = 'finished';`（L338）之前插入一行。`card` 此处是 ref 对象（L325 `resultCards.get`），传 `card.el`（DOM 元素）给 `updateExpandButton`：
 
@@ -216,7 +216,7 @@ function toggleExpand(cardEl) {
       updateBatchStatus();
 ```
 
-- [ ] **步骤 6：started 新 batch 重置展开状态**
+- [x] **步骤 6：started 新 batch 重置展开状态**
 
 在 `frontend/public/translate.js` 的 `renderTranslationEvent` 的 `started` 分支新 batch 重置块（L286-302），找到 `c.el.classList.remove('failed', 'cancelled');`（当前 L294），在其**之后**插入两行，清除截断/展开态并把按钮 label 回「展开全文」：
 
@@ -242,7 +242,7 @@ function toggleExpand(cardEl) {
         });
 ```
 
-- [ ] **步骤 7：手动验证（清单 1-4）**
+- [x] **步骤 7：手动验证（清单 1-4）**
 
 运行：`npm run tauri dev`
 
@@ -255,7 +255,7 @@ function toggleExpand(cardEl) {
 
 预期：以上 4 项全部符合。流式 delta 期间长内容被硬截断、**无**渐隐遮罩、**无**展开按钮（finished 后才出现）——这是对齐原型的正确行为。
 
-- [ ] **步骤 8：Commit**
+- [x] **步骤 8：Commit**
 
 ```bash
 git add frontend/public/translate.css frontend/public/translate.js
@@ -270,7 +270,7 @@ git commit -m "feat(translation): 结果卡片长内容截断与展开全文"
 - 修改：`frontend/public/translate.css`（`.source-input` L129-142）
 - 修改：`frontend/public/translate.js`（`autoResize` L41-44、初始化 L558）
 
-- [ ] **步骤 1：改 .source-input CSS，加 max-height + 滚动条**
+- [x] **步骤 1：改 .source-input CSS，加 max-height + 滚动条**
 
 在 `frontend/public/translate.css` 中，把当前 L129-142 的 `.source-input { ... }` 规则**整体替换**为下面这段。变更点：`overflow: hidden` → `overflow-y: auto`；新增 `max-height: 10.85em`（em 相对自身 13px = 141px，约 7 行）；新增 Firefox `scrollbar-width` / `scrollbar-color`；新增 webkit 4px 细滚动条伪元素：
 
@@ -300,7 +300,7 @@ git commit -m "feat(translation): 结果卡片长内容截断与展开全文"
 .source-input::-webkit-scrollbar-track { background: transparent; }
 ```
 
-- [ ] **步骤 2：改造 autoResize，限高 + 动态 overflow-y**
+- [x] **步骤 2：改造 autoResize，限高 + 动态 overflow-y**
 
 在 `frontend/public/translate.js` 中，把当前 L41-44 的 `autoResize` 函数**整体替换**为下面这段。变更点：读取 `getComputedStyle` 的 `maxHeight`；`Math.min(scrollHeight, maxHeight)` 限高；超限时 `overflow-y: auto`，否则 `hidden`（短文本不显示滚动条）：
 
@@ -314,7 +314,7 @@ function autoResize() {
 }
 ```
 
-- [ ] **步骤 3：初始化补 requestAnimationFrame + fonts.ready 触发**
+- [x] **步骤 3：初始化补 requestAnimationFrame + fonts.ready 触发**
 
 在 `frontend/public/translate.js` 末尾的初始化区（当前 L555-560），把：
 
@@ -337,7 +337,7 @@ updateCharCount();
 applyPendingSourceText();
 ```
 
-- [ ] **步骤 4：手动验证（清单 5-6）**
+- [x] **步骤 4：手动验证（清单 5-6）**
 
 运行：`npm run tauri dev`（若已在运行，直接在弹窗中验证）
 
@@ -347,7 +347,7 @@ applyPendingSourceText();
 
 预期：以上 3 项全部符合。
 
-- [ ] **步骤 5：Commit**
+- [x] **步骤 5：Commit**
 
 ```bash
 git add frontend/public/translate.css frontend/public/translate.js
@@ -363,7 +363,7 @@ git commit -m "feat(translation): 输入原文限高内部滚动"
 
 **根因回顾：** `.content`（L106-114）的 `overflow-y: auto` + `padding: 0 10px 10px`（上 padding 0）裁剪了 `.source-card` 上边的 `box-shadow 0 0 0 1px` 描边，只剩 0.5px border；左右下有 10px padding 衬托保留 1px。`overflow-y: auto` 不能去掉（窗口 max-height 80% 屏幕高，内容超长要滚），故改用不被祖先 overflow 裁剪的 `outline`。
 
-- [ ] **步骤 1：改 .source-card:focus-within，box-shadow 描边改 outline**
+- [x] **步骤 1：改 .source-card:focus-within，box-shadow 描边改 outline**
 
 在 `frontend/public/translate.css` 中，把当前 L125-128 的 `.source-card:focus-within { ... }` 规则**整体替换**为下面这段。变更点：`box-shadow` 去掉 `0 0 0 1px var(--accent)` 描边部分，只保留 `var(--shadow-card-h)` 阴影；新增 `outline: 1px solid var(--accent)` + `outline-offset: 0`。WebView2（Chromium 94+）的 `outline` 跟随 `border-radius`，圆角处不会变直角：
 
@@ -376,7 +376,7 @@ git commit -m "feat(translation): 输入原文限高内部滚动"
 }
 ```
 
-- [ ] **步骤 2：手动验证（清单 7-8）**
+- [x] **步骤 2：手动验证（清单 7-8）**
 
 运行：`npm run tauri dev`（若已在运行，直接在弹窗中验证）
 
@@ -386,7 +386,7 @@ git commit -m "feat(translation): 输入原文限高内部滚动"
 
 预期：以上 3 项全部符合。
 
-- [ ] **步骤 3：Commit**
+- [x] **步骤 3：Commit**
 
 ```bash
 git add frontend/public/translate.css
@@ -402,7 +402,7 @@ git commit -m "fix(translation): focus 态上边框描边粗细一致"
 
 > 协作规范第 2 条：文档同步是收尾硬门禁。spec 第 8 节明确 README 需更新翻译弹窗能力，CLAUDE.md / AGENTS.md 无需改（窗口配置不变）。
 
-- [ ] **步骤 1：在 README 核心能力列表补充截断与限高两条**
+- [x] **步骤 1：在 README 核心能力列表补充截断与限高两条**
 
 在 `README.md` 中，找到 L17（「流式结果展示：...」一行），在其**之后**插入两条新能力。该处当前上下文为：
 
@@ -420,7 +420,7 @@ git commit -m "fix(translation): focus 态上边框描边粗细一致"
 - 翻译取消与重试：流式翻译过程中可取消，失败或取消后可一键重试。
 ```
 
-- [ ] **步骤 2：Commit**
+- [x] **步骤 2：Commit**
 
 ```bash
 git add README.md
