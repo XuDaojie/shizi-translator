@@ -95,23 +95,17 @@ pub fn start_translation_from_input(
         .cloned()
         .collect();
 
-    state.try_begin_translation()?;
-
     let cancel_token = CancellationToken::new();
-    if let Err(error) = state.set_current_cancel_token(cancel_token.clone()) {
-        let _ = state.finish_translation();
-        return Err(error);
-    }
+    let generation = state.begin_translation_overriding(cancel_token.clone())?;
+
     if let Err(error) = state.set_last_translation_input(input.clone()) {
-        let _ = state.clear_current_cancel_token();
-        let _ = state.finish_translation();
+        let _ = state.finish_translation_if_current(generation);
         return Err(error);
     }
     if let Err(error) =
         cache_automatic_source_text_for_popup(&input, input.text(), state)
     {
-        let _ = state.clear_current_cancel_token();
-        let _ = state.finish_translation();
+        let _ = state.finish_translation_if_current(generation);
         return Err(error);
     }
 
@@ -130,8 +124,7 @@ pub fn start_translation_from_input(
             },
         )
         .map_err(|error| {
-            let _ = state.clear_current_cancel_token();
-            let _ = state.finish_translation();
+            let _ = state.finish_translation_if_current(generation);
             error.to_string()
         })?;
     }
@@ -185,8 +178,7 @@ pub fn start_translation_from_input(
         });
 
         join_all(jobs).await;
-        let _ = state_for_task.clear_current_cancel_token();
-        let _ = state_for_task.finish_translation();
+        let _ = state_for_task.finish_translation_if_current(generation);
     });
 
     Ok(batch_id)

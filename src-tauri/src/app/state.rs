@@ -11,6 +11,10 @@ pub struct AppState {
     pub config_store: ConfigStore,
     pending_source_text: Arc<Mutex<Option<String>>>,
     translation_busy: Arc<Mutex<bool>>,
+    // 翻译代次：每次 begin_translation_overriding 递增，用于区分"当前翻译"与"已被
+    // 接管的旧翻译"。spawn 收尾凭 generation 判断是否仍为当前翻译，避免旧翻译收尾
+    // 清掉新翻译的 cancel token / 释放 busy。
+    translation_generation: Arc<Mutex<u64>>,
     // capture 流程独立锁：从 start_translation_from_ocr 抓帧到 submit/cancel 释放，
     // 期间挡住二次 Alt+O 覆盖 pending_capture。与 translation_busy 解耦——
     // translation_busy 在 start_translation_from_input 末尾才置位，无法保护 OCR/recognize 窗口。
@@ -33,6 +37,7 @@ impl AppState {
             config_store,
             pending_source_text: Arc::new(Mutex::new(None)),
             translation_busy: Arc::new(Mutex::new(false)),
+            translation_generation: Arc::new(Mutex::new(0)),
             capture_in_progress: Arc::new(Mutex::new(false)),
             pending_capture: Arc::new(Mutex::new(None)),
             current_cancel_token: Arc::new(Mutex::new(None)),
@@ -58,24 +63,61 @@ impl AppState {
         Ok(pending.take())
     }
 
-    pub fn try_begin_translation(&self) -> Result<(), String> {
+    /// 强制开始一次翻译并登记取消信号。若有翻译进行中，原子地触发其取消信号，
+    /// 使旧 spawn 收尾（`finish_translation_if_current`）因 generation 不匹配而不再
+    /// 触碰共享状态。返回本次翻译的 generation 号，spawn 任务收尾凭此判断是否仍为当前翻译。
+    ///
+    /// 与旧 `try_begin_translation` 的区别：不再因 busy 拒绝新翻译，而是让新翻译
+    /// 接管——最新输入优先级最高，旧翻译被中断。
+    pub fn begin_translation_overriding(
+        &self,
+        cancel_token: CancellationToken,
+    ) -> Result<u64, String> {
         let mut busy = self
             .translation_busy
             .lock()
             .map_err(|_| "翻译状态锁已损坏".to_string())?;
-        if *busy {
-            return Err("正在翻译中，请稍后再试".to_string());
+        let mut generation = self
+            .translation_generation
+            .lock()
+            .map_err(|_| "翻译代次状态锁已损坏".to_string())?;
+        {
+            let mut token_slot = self
+                .current_cancel_token
+                .lock()
+                .map_err(|_| "取消信号状态锁已损坏".to_string())?;
+            if *busy {
+                // 有翻译进行中：取出并触发其取消信号，让旧 spawn 尽快收尾。
+                // 收尾时 generation 已递增，finish_translation_if_current 判定非当前而不释放 busy。
+                if let Some(token) = token_slot.take() {
+                    token.cancel();
+                }
+            }
+            *token_slot = Some(cancel_token);
         }
+        *generation += 1;
         *busy = true;
-        Ok(())
+        Ok(*generation)
     }
 
-    pub fn finish_translation(&self) -> Result<(), String> {
-        let mut busy = self
-            .translation_busy
-            .lock()
-            .map_err(|_| "翻译状态锁已损坏".to_string())?;
-        *busy = false;
+    /// spawn 收尾：仅当 generation 仍为当前翻译时才释放 busy 与 cancel token。
+    /// 已被新翻译接管（generation 不匹配）时直接返回，避免清掉新翻译的状态。
+    pub fn finish_translation_if_current(&self, generation: u64) -> Result<(), String> {
+        {
+            let mut busy = self
+                .translation_busy
+                .lock()
+                .map_err(|_| "翻译状态锁已损坏".to_string())?;
+            let current_generation = self
+                .translation_generation
+                .lock()
+                .map_err(|_| "翻译代次状态锁已损坏".to_string())?;
+            if *current_generation != generation {
+                return Ok(());
+            }
+            *busy = false;
+        }
+        self.clear_current_cancel_token()?;
         Ok(())
     }
 
@@ -141,15 +183,6 @@ impl AppState {
             .lock()
             .map_err(|_| "截图帧状态锁已损坏".to_string())?;
         Ok(slot.take())
-    }
-
-    pub fn set_current_cancel_token(&self, token: CancellationToken) -> Result<(), String> {
-        let mut slot = self
-            .current_cancel_token
-            .lock()
-            .map_err(|_| "取消信号状态锁已损坏".to_string())?;
-        *slot = Some(token);
-        Ok(())
     }
 
     pub fn cancel_current_translation(&self) -> Result<(), String> {
@@ -250,14 +283,67 @@ mod tests {
     }
 
     #[test]
-    fn translation_busy_rejects_second_begin_until_finished() {
+    fn begin_translation_overriding_takes_over_in_progress_translation() {
         let state = app_state();
+        let old_token = CancellationToken::new();
+        state
+            .begin_translation_overriding(old_token.clone())
+            .expect("旧翻译开始");
+        assert!(!old_token.is_cancelled(), "接管前旧 token 不应触发");
 
-        state.try_begin_translation().expect("开始第一次翻译");
-        assert!(state.try_begin_translation().is_err());
+        let new_gen = state
+            .begin_translation_overriding(CancellationToken::new())
+            .expect("新翻译接管");
+        assert!(old_token.is_cancelled(), "接管应触发旧 token 取消");
+        assert!(state.is_translation_busy(), "接管后仍处于 busy");
+        assert!(new_gen >= 2, "generation 应递增");
+    }
 
-        state.finish_translation().expect("结束翻译");
-        state.try_begin_translation().expect("结束后可再次开始");
+    #[test]
+    fn finish_if_current_ignored_when_generation_stale() {
+        let state = app_state();
+        let old_gen = state
+            .begin_translation_overriding(CancellationToken::new())
+            .expect("旧翻译开始");
+        let new_gen = state
+            .begin_translation_overriding(CancellationToken::new())
+            .expect("新翻译接管");
+
+        state
+            .finish_translation_if_current(old_gen)
+            .expect("旧翻译收尾");
+        assert!(
+            state.is_translation_busy(),
+            "旧翻译收尾不应释放 busy"
+        );
+
+        state
+            .finish_translation_if_current(new_gen)
+            .expect("新翻译收尾");
+        assert!(!state.is_translation_busy(), "新翻译收尾应释放 busy");
+    }
+
+    #[test]
+    fn stale_finish_does_not_clear_new_cancel_token() {
+        let state = app_state();
+        let old_gen = state
+            .begin_translation_overriding(CancellationToken::new())
+            .expect("旧翻译");
+        let new_token = CancellationToken::new();
+        let _new_gen = state
+            .begin_translation_overriding(new_token.clone())
+            .expect("新翻译接管");
+
+        // 旧翻译 spawn 收尾：generation 不匹配，不应触碰新 token
+        state
+            .finish_translation_if_current(old_gen)
+            .expect("旧收尾");
+
+        state.cancel_current_translation().expect("取消");
+        assert!(
+            new_token.is_cancelled(),
+            "新 token 不应被旧收尾清除"
+        );
     }
 
     #[test]
@@ -316,10 +402,14 @@ mod tests {
 
         assert!(!state.is_translation_busy(), "初始不应处于 busy");
 
-        state.try_begin_translation().expect("开始翻译");
+        let gen = state
+            .begin_translation_overriding(CancellationToken::new())
+            .expect("开始翻译");
         assert!(state.is_translation_busy(), "begin 后应处于 busy");
 
-        state.finish_translation().expect("结束翻译");
+        state
+            .finish_translation_if_current(gen)
+            .expect("结束翻译");
         assert!(!state.is_translation_busy(), "finish 后应退出 busy");
     }
 
@@ -352,7 +442,9 @@ mod tests {
     fn cancel_token_triggers_on_cancel_current_translation() {
         let state = app_state();
         let token = tokio_util::sync::CancellationToken::new();
-        state.set_current_cancel_token(token.clone()).expect("写入 cancel token");
+        state
+            .begin_translation_overriding(token.clone())
+            .expect("开始翻译并登记 token");
 
         state.cancel_current_translation().expect("触发取消");
 
@@ -369,7 +461,9 @@ mod tests {
     fn cancel_current_translation_is_idempotent_after_take() {
         let state = app_state();
         let token = tokio_util::sync::CancellationToken::new();
-        state.set_current_cancel_token(token.clone()).expect("写入 cancel token");
+        state
+            .begin_translation_overriding(token.clone())
+            .expect("开始翻译并登记 token");
 
         state.cancel_current_translation().expect("第一次取消触发");
         state.cancel_current_translation().expect("重复取消应幂等");
@@ -410,7 +504,9 @@ mod tests {
     fn clear_current_cancel_token_is_idempotent() {
         let state = app_state();
         let token = tokio_util::sync::CancellationToken::new();
-        state.set_current_cancel_token(token).expect("写入 cancel token");
+        state
+            .begin_translation_overriding(token)
+            .expect("开始翻译并登记 token");
 
         state.clear_current_cancel_token().expect("第一次清空");
         state.clear_current_cancel_token().expect("幂等清空");
