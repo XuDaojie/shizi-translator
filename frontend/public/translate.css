@@ -124,7 +124,9 @@ body {
 }
 .source-card:focus-within {
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent), var(--shadow-card-h);
+  outline: 1px solid var(--accent);
+  outline-offset: 0;
+  box-shadow: var(--shadow-card-h);
 }
 .source-input {
   display: block;
