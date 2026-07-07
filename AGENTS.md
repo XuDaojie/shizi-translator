@@ -47,11 +47,11 @@ npm install                 # 首次需装前端依赖
 npm run tauri dev           # 开发模式（拉起 Vite dev server + 后端）
 npm run tauri build         # 生成 release 安装包（MSI/NSIS）
 cd src-tauri && cargo build           # 仅构建后端 debug
-cd src-tauri && cargo build --release # 仅构建后端 release（产物：src-tauri/target/release/shizi.exe）
+cd src-tauri && cargo build --release # 构建后端（dev 模式 exe，加载 localhost:5173，需先 npm run dev 启动 Vite）
 cd src-tauri && cargo clean           # 清理 Rust 编译缓存
 ```
 
-调试运行可直接执行 `./src-tauri/target/release/shizi.exe`，或用 [.vscode/launch.json](.vscode/launch.json) 中的 F5 启动 `npm run tauri dev`。
+调试运行需先 `npm run dev` 启动 Vite dev server，再执行 `./src-tauri/target/release/shizi.exe`（`cargo build --release` 生成的是 dev 模式 exe，加载 localhost:5173；不依赖 Vite 的真正 release 包用 `npm run tauri build`）；或用 [.vscode/launch.json](.vscode/launch.json) 的 F5 启动 `npm run tauri dev`。
 
 ## 架构关键点
 

@@ -204,8 +204,15 @@ fn classify_shortcut(shortcut: &Shortcut, config: &AppConfig) -> Option<Shortcut
         .and_then(|entry| entry.action)
 }
 
+/// 划词翻译等快捷键在**松开时**触发，而非按下时。
+///
+/// 曾误改为 Pressed 触发（5f83c56），导致浏览器页面内容划词复制大面积失效：
+/// Pressed 时物理 Alt 仍按着，物理 Alt keydown 激活了 Chrome 菜单栏，而 enigo
+/// 合成的 Alt keyup 无法取消菜单栏，Ctrl+C 落在菜单栏上不复制页面 selection
+/// （系统 Edit 控件不受影响，故输入框划词仍正常）。Released 触发时物理 Alt 已
+/// 松开，菜单栏已被物理 keyup 取消，问题消失。不要为追求「按下即响应」改回 Pressed。
 fn should_handle_shortcut_state(state: ShortcutState) -> bool {
-    state == ShortcutState::Pressed
+    state == ShortcutState::Released
 }
 
 pub fn handle_global_shortcut(
@@ -384,9 +391,9 @@ mod tests {
     }
 
     #[test]
-    fn handles_pressed_shortcut_events_only() {
-        assert!(should_handle_shortcut_state(ShortcutState::Pressed));
-        assert!(!should_handle_shortcut_state(ShortcutState::Released));
+    fn handles_released_shortcut_events_only() {
+        assert!(should_handle_shortcut_state(ShortcutState::Released));
+        assert!(!should_handle_shortcut_state(ShortcutState::Pressed));
     }
 
     #[test]
