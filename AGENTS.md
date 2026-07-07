@@ -66,8 +66,8 @@ cd src-tauri && cargo clean           # 清理 Rust 编译缓存
 - **配置变更事件**：`save_app_config` 保存成功后广播 `app-config:changed`，翻译弹窗监听该事件并同步启用服务卡片；非翻译中即时新增、删除、排序和更新卡片，翻译进行中保留正在输出的卡片，不新增未参与当前批次的服务卡片。
 - **批次翻译**：翻译入口过滤启用服务并保持列表顺序，为每个服务创建 `{batch_id}:{service_id}` session，事件携带 `serviceInstanceId/serviceName/serviceType/protocol`。各服务并发执行，单服务失败不影响其他。
 - **翻译弹窗**：弹窗打开时通过 `initCards` 调 `get_app_config` 获取启用服务列表并预建占位卡片；输入为空或暂无翻译内容时卡片默认 `collapsed`，翻译开始后 `getCard` 按 `serviceInstanceId` 复用已有卡片并自动展开原地更新，new batch 重置而非销毁卡片。单服务失败只更新对应卡片。
-- **全局快捷键**：`Alt+D` 划词复制并自动翻译；`Alt+E` 触发截图 OCR 翻译（DXGI 抓光标所在显示器整屏帧 → 自建 overlay 区域框选 → crop → Windows.Media.Ocr → 复用翻译链路）。由 `tauri-plugin-global-shortcut` 注册，逻辑集中在 `src-tauri/src/app/shortcuts.rs`。新增快捷键时需在 `capabilities/default.json` 同步授权。
-- **前后端通信**：当前已有 Tauri commands：`start_translation`、`take_pending_source_text`、`get_app_config`、`save_app_config`，以及截图 overlay 四命令 `get_capture_frame_meta` / `get_capture_frame_bytes` / `submit_capture_region` / `cancel_capture`。后端通过 `translation:event` 向前端推送 `Started` / `Delta` / `Finished` / `Failed`。
+- **全局快捷键**：`Alt+D` 划词复制并自动翻译；`Alt+E` 触发截图 OCR 翻译（DXGI 抓光标所在显示器整屏帧 → 自建 overlay 区域框选 → crop → Windows.Media.Ocr → 复用翻译链路）。由 `tauri-plugin-global-shortcut` 注册，逻辑集中在 `src-tauri/src/app/shortcuts.rs`。启动注册为 best-effort：单条快捷键被其他应用占用只记录到 `AppState.shortcut_conflicts`，不阻止启动；冲突列表经 `get_shortcut_conflicts` command 供设置页快捷键模块展示（保存路径仍为 all-or-nothing，失败回滚旧配置）。新增快捷键时需在 `capabilities/default.json` 同步授权。
+- **前后端通信**：当前已有 Tauri commands：`start_translation`、`take_pending_source_text`、`get_app_config`、`save_app_config`、`get_shortcut_conflicts`，以及截图 overlay 四命令 `get_capture_frame_meta` / `get_capture_frame_bytes` / `submit_capture_region` / `cancel_capture`。后端通过 `translation:event` 向前端推送 `Started` / `Delta` / `Finished` / `Failed`。
 - **配置存储**：当前设置面板将 provider 配置保存到 Tauri app config dir 下的 `config.json`。支持 OpenAI-compatible 和 Claude 两种 provider。API Key 在 MVP 阶段明文保存，后续产品化需迁移到系统 SecretStore。
 
 ## 开发说明

@@ -19,6 +19,16 @@ export async function invokeSaveAppConfig(config: AppConfig): Promise<AppConfig>
   return requireInvoke()<AppConfig>('save_app_config', { config });
 }
 
+/** 启动时快捷键注册失败的冲突项（id 对应 ShortcutBinding.id）。 */
+export interface ShortcutConflict {
+  id: string
+  message: string
+}
+
+export async function invokeGetShortcutConflicts(): Promise<ShortcutConflict[]> {
+  return requireInvoke()<ShortcutConflict[]>('get_shortcut_conflicts')
+}
+
 /** 供组件层判断是否就绪（用于挂载时给出"Tauri API 未就绪"提示）。 */
 export function isTauriReady(): boolean {
   return Boolean(tauriGlobal?.core?.invoke);

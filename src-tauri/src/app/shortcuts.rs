@@ -33,15 +33,46 @@ pub fn register_global_shortcuts(
     for entry in entries.into_iter().filter(|entry| entry.action.is_some()) {
         app.global_shortcut()
             .register(entry.keys.as_str())
-            .map_err(|error| {
-                ShortcutBindingError::new(
-                    entry.id,
-                    format!("注册快捷键「{}」失败: {error}", entry.keys),
-                )
-            })?;
+            .map_err(|error| ShortcutBindingError::new(entry.id, friendly_register_error(error)))?;
     }
 
     Ok(())
+}
+
+/// 启动时尽力注册全局快捷键：逐条注册，单条失败（如被其他应用占用）
+/// 只记录到返回的冲突列表，不阻止应用启动。`register_global_shortcuts`
+/// 仍是 all-or-nothing，用于保存路径以便回滚。
+pub fn register_global_shortcuts_at_startup(
+    app: &tauri::AppHandle,
+    config: &AppConfig,
+) -> Vec<ShortcutBindingError> {
+    let mut conflicts = Vec::new();
+
+    let entries = match configured_shortcuts(config) {
+        Ok(entries) => entries,
+        Err(error) => {
+            conflicts.push(error);
+            return conflicts;
+        }
+    };
+
+    if let Err(error) = app.global_shortcut().unregister_all() {
+        conflicts.push(ShortcutBindingError::global(format!(
+            "无法清理旧快捷键: {error}"
+        )));
+        return conflicts;
+    }
+
+    for entry in entries.into_iter().filter(|entry| entry.action.is_some()) {
+        if let Err(error) = app.global_shortcut().register(entry.keys.as_str()) {
+            conflicts.push(ShortcutBindingError::new(
+                entry.id,
+                friendly_register_error(error),
+            ));
+        }
+    }
+
+    conflicts
 }
 
 pub fn replace_global_shortcuts(
@@ -152,6 +183,17 @@ fn configured_shortcuts(
     }
 
     Ok(entries)
+}
+
+/// 把全局快捷键注册错误转成简洁可读的冲突原因。
+/// `tauri-plugin-global-shortcut` 的原始错误含 `HotKey { ... }` 结构体调试输出，
+/// 直接展示会撑爆设置页布局，这里只保留人类可读的结论。
+fn friendly_register_error(error: impl std::fmt::Display) -> String {
+    if error.to_string().contains("already registered") {
+        "快捷键已被占用".to_string()
+    } else {
+        "快捷键注册失败".to_string()
+    }
 }
 
 fn classify_shortcut(shortcut: &Shortcut, config: &AppConfig) -> Option<ShortcutAction> {
@@ -345,5 +387,21 @@ mod tests {
     fn handles_pressed_shortcut_events_only() {
         assert!(should_handle_shortcut_state(ShortcutState::Pressed));
         assert!(!should_handle_shortcut_state(ShortcutState::Released));
+    }
+
+    #[test]
+    fn friendly_register_error_classifies_already_registered() {
+        assert_eq!(
+            friendly_register_error("HotKey already registered: HotKey { ... }"),
+            "快捷键已被占用"
+        );
+    }
+
+    #[test]
+    fn friendly_register_error_falls_back_for_unknown_errors() {
+        assert_eq!(
+            friendly_register_error("其他注册错误"),
+            "快捷键注册失败"
+        );
     }
 }

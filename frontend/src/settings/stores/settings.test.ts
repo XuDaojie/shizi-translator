@@ -1,15 +1,16 @@
 import { nextTick } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { mergeBackendIntoServices, useSettings } from './settings';
+import { applyShortcutConflicts, mergeBackendIntoServices, useSettings } from './settings';
 import { DEFAULT_PROMPTS } from '../tokens';
 import type { ServiceInstanceConfig } from '@/types/config';
-import { invokeGetAppConfig, invokeSaveAppConfig, isTauriReady } from '@/lib/tauri';
-import type { ServiceInstance } from '../types';
+import { invokeGetAppConfig, invokeGetShortcutConflicts, invokeSaveAppConfig, isTauriReady } from '@/lib/tauri';
+import type { AppSettings, ServiceInstance } from '../types';
 
 // Mock tauri module so tests don't need window.__TAURI__
 vi.mock('@/lib/tauri', () => ({
   invokeGetAppConfig: vi.fn(),
   invokeSaveAppConfig: vi.fn(),
+  invokeGetShortcutConflicts: vi.fn().mockResolvedValue([]),
   isTauriReady: vi.fn(() => false),
 }));
 
@@ -381,6 +382,46 @@ describe('syncFromBackend', () => {
     expect(invokeSaveAppConfig).not.toHaveBeenCalled();
   });
 
+  it('同步后把后端快捷键冲突写入对应 binding.error', async () => {
+    vi.mocked(isTauriReady).mockReturnValue(true);
+    const settings = useSettings();
+    const localId = settings.state.services[0].id;
+
+    vi.mocked(invokeGetAppConfig).mockResolvedValue({
+      targetLang: '中文',
+      defaultSourceLang: 'auto',
+      autoCopy: true,
+      restoreClipboard: true,
+      services: [
+        makeBackend({
+          id: localId,
+          serviceType: 'deepseek',
+          name: 'DeepSeek',
+          enabled: false,
+          protocol: 'openai_chat',
+          apiKey: null,
+          endpoint: 'https://api.deepseek.com',
+          model: 'deepseek-chat',
+          timeoutSeconds: 60,
+        }),
+      ],
+      popupPrecreate: true,
+      overlayPrecreate: true,
+      collectUsage: true,
+      shortcuts: { 'translate-selection': 'Alt+D' },
+    });
+    vi.mocked(invokeGetShortcutConflicts).mockResolvedValue([
+      { id: 'translate-selection', message: '已被其他应用占用' },
+    ]);
+
+    await settings.syncFromBackend();
+
+    const sel = settings.state.shortcut.bindings.find((b) => b.id === 'translate-selection')!;
+    expect(sel.error).toBe('已被其他应用占用');
+    const ocr = settings.state.shortcut.bindings.find((b) => b.id === 'translate-screenshot')!;
+    expect(ocr.error).toBeUndefined();
+  });
+
   it('设置变更后自动保存到后端', async () => {
     vi.useFakeTimers();
     try {
@@ -507,4 +548,30 @@ describe('syncFromBackend', () => {
     }
   });
 
+});
+
+describe('applyShortcutConflicts', () => {
+  it('按 id 写入冲突 message，未列出的清空 error', () => {
+    const bindings = [
+      { id: 'translate-selection', label: '划词翻译', description: '', keys: 'Alt+D', error: undefined },
+      { id: 'translate-clipboard', label: '剪贴板翻译', description: '', keys: 'Ctrl+Shift+C', error: '旧错误' },
+    ] as AppSettings['shortcut']['bindings'];
+
+    const result = applyShortcutConflicts(bindings, [
+      { id: 'translate-clipboard', message: '已被其他应用占用' },
+    ]);
+
+    expect(result[0].error).toBeUndefined();
+    expect(result[1].error).toBe('已被其他应用占用');
+  });
+
+  it('空冲突列表清空所有 error', () => {
+    const bindings = [
+      { id: 'translate-selection', label: '划词翻译', description: '', keys: 'Alt+D', error: '旧错误' },
+    ] as AppSettings['shortcut']['bindings'];
+
+    const result = applyShortcutConflicts(bindings, []);
+
+    expect(result[0].error).toBeUndefined();
+  });
 });

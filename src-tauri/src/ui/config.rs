@@ -37,8 +37,16 @@ pub async fn save_app_config(
         .save(config)
         .map_err(|error| ShortcutBindingError::global(format!("无法保存配置: {error}")))?;
 
+    // 新配置已全部注册成功并持久化，清空启动时记录的快捷键冲突。
+    let _ = state.set_shortcut_conflicts(Vec::new());
+
     app.emit("app-config:changed", &saved_config)
         .map_err(|error| ShortcutBindingError::global(format!("无法广播配置变更: {error}")))?;
 
     Ok(saved_config)
+}
+
+#[tauri::command]
+pub fn get_shortcut_conflicts(state: tauri::State<'_, AppState>) -> Vec<ShortcutBindingError> {
+    state.shortcut_conflicts().unwrap_or_default()
 }

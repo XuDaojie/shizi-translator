@@ -1,10 +1,15 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { SettingGroup, SettingRow, ShortcutRecorder } from '../components'
 import type { AppSettings } from '../types'
 
-defineProps<{
+const props = defineProps<{
   state: AppSettings
 }>()
+
+const conflictedBindings = computed(() =>
+  props.state.shortcut.bindings.filter((b) => b.error),
+)
 </script>
 
 <template>
@@ -29,14 +34,17 @@ defineProps<{
   </SettingGroup>
 
   <SettingGroup
+    v-if="conflictedBindings.length"
     title="冲突提示"
-    description="若快捷键已被系统或其他应用占用,设置面板会给出提示。"
+    description="以下快捷键已被系统或其他应用占用，请在对应行修改或清空。"
   >
     <SettingRow
-      title="检测系统快捷键占用"
-      description="注册前先扫描常见系统快捷键,避免与系统手势冲突。"
+      v-for="binding in conflictedBindings"
+      :key="binding.id"
+      :title="binding.label"
+      :description="binding.error ?? ''"
     >
-      <span class="text-xs text-muted-foreground">始终启用</span>
+      <span class="text-xs text-destructive">占用</span>
     </SettingRow>
   </SettingGroup>
 </template>

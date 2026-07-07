@@ -5,7 +5,7 @@ mod ui;
 
 use app::{
     popup_window::ensure_popup_window,
-    shortcuts::{handle_global_shortcut, register_global_shortcuts},
+    shortcuts::{handle_global_shortcut, register_global_shortcuts_at_startup},
     state::AppState,
     tray::setup_tray,
     window::{ensure_settings_window, setup_close_to_hide},
@@ -13,7 +13,7 @@ use app::{
 use core::config::ConfigStore;
 use tauri::Manager;
 use ui::{
-    config::{get_app_config, open_settings, save_app_config},
+    config::{get_app_config, get_shortcut_conflicts, open_settings, save_app_config},
     ocr_popup::trigger_ocr_translation,
     overlay::{
         cancel_capture, ensure_overlay, get_capture_frame_bytes, get_capture_frame_meta,
@@ -45,6 +45,7 @@ pub fn run() {
             take_pending_source_text,
             get_app_config,
             save_app_config,
+            get_shortcut_conflicts,
             open_settings,
             list_service_models,
             validate_service_credential,
@@ -66,8 +67,10 @@ pub fn run() {
                 .config_store
                 .get()
                 .unwrap_or_else(|_| AppConfig::from_env());
-            register_global_shortcuts(app.handle(), &config)
-                .map_err(|error| tauri::Error::Anyhow(error.into()))?;
+            let shortcut_conflicts = register_global_shortcuts_at_startup(app.handle(), &config);
+            let _ = app
+                .state::<AppState>()
+                .set_shortcut_conflicts(shortcut_conflicts);
 
             // 按窗口策略预创建弹窗与 overlay
             let _ = ensure_popup_window(app.handle(), &config);

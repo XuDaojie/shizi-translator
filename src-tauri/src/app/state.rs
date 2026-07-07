@@ -1,5 +1,6 @@
 use std::sync::{Arc, Mutex};
 
+use crate::app::shortcuts::ShortcutBindingError;
 use crate::core::capture::CapturedImage;
 use crate::core::config::ConfigStore;
 use crate::core::translation::TranslationInput;
@@ -21,6 +22,9 @@ pub struct AppState {
     current_cancel_token: Arc<Mutex<Option<CancellationToken>>>,
     // 最近一次成功开始的翻译输入，供重试复用。begin 成功后存入，retry 时 take。
     last_translation_input: Arc<Mutex<Option<TranslationInput>>>,
+    // 启动时快捷键注册失败的冲突列表。best-effort 注册后，被其他应用占用的
+    // 快捷键记录于此，供设置页拉取展示；保存配置全量成功后清空。
+    shortcut_conflicts: Arc<Mutex<Vec<ShortcutBindingError>>>,
 }
 
 impl AppState {
@@ -33,6 +37,7 @@ impl AppState {
             pending_capture: Arc::new(Mutex::new(None)),
             current_cancel_token: Arc::new(Mutex::new(None)),
             last_translation_input: Arc::new(Mutex::new(None)),
+            shortcut_conflicts: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -185,6 +190,26 @@ impl AppState {
             .map_err(|_| "取消信号状态锁已损坏".to_string())?;
         *slot = None;
         Ok(())
+    }
+
+    pub fn set_shortcut_conflicts(
+        &self,
+        conflicts: Vec<ShortcutBindingError>,
+    ) -> Result<(), String> {
+        let mut slot = self
+            .shortcut_conflicts
+            .lock()
+            .map_err(|_| "快捷键冲突状态锁已损坏".to_string())?;
+        *slot = conflicts;
+        Ok(())
+    }
+
+    pub fn shortcut_conflicts(&self) -> Result<Vec<ShortcutBindingError>, String> {
+        let slot = self
+            .shortcut_conflicts
+            .lock()
+            .map_err(|_| "快捷键冲突状态锁已损坏".to_string())?;
+        Ok(slot.clone())
     }
 }
 

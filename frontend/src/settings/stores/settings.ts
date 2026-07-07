@@ -10,7 +10,7 @@ import type {
 import type { AppConfig, ServiceInstanceConfig } from '@/types/config'
 import { BUILTIN_SERVICES, buildServices, DEFAULT_PROMPTS } from '../tokens'
 import { projectToAppConfig, validateConfig } from '@/lib/config'
-import { invokeGetAppConfig, invokeSaveAppConfig, isTauriReady } from '@/lib/tauri'
+import { invokeGetAppConfig, invokeGetShortcutConflicts, invokeSaveAppConfig, isTauriReady, type ShortcutConflict } from '@/lib/tauri'
 import { toast } from '@/lib/toast'
 
 const STORAGE_KEY = 'app:settings:v1'
@@ -262,6 +262,18 @@ const mergeBackendIntoShortcuts = (
     error: undefined,
   }))
 
+/** 把后端快捷键冲突按 id 写入对应 binding.error；未列出的清空。 */
+export const applyShortcutConflicts = (
+  bindings: AppSettings['shortcut']['bindings'],
+  conflicts: ShortcutConflict[],
+): AppSettings['shortcut']['bindings'] => {
+  const byId = new Map(conflicts.map((c) => [c.id, c.message]))
+  return bindings.map((binding) => ({
+    ...binding,
+    error: byId.has(binding.id) ? byId.get(binding.id) : undefined,
+  }))
+}
+
 const loadFromStorage = (): AppSettings => {
   if (typeof window === 'undefined') return buildDefaults()
   try {
@@ -337,6 +349,19 @@ let saveStatusIdleTimer: ReturnType<typeof setTimeout> | undefined
 let syncingFromBackend = false
 
 /**
+ * 从后端拉取快捷键冲突并写入对应 binding.error。失败静默——冲突信息非关键。
+ * 调用方需自行用 syncingFromBackend 包裹，避免冲突展示触发自动保存。
+ */
+const refreshShortcutConflicts = async (): Promise<void> => {
+  try {
+    const conflicts = await invokeGetShortcutConflicts()
+    state.shortcut.bindings = applyShortcutConflicts(state.shortcut.bindings, conflicts ?? [])
+  } catch {
+    // 忽略：冲突信息非关键
+  }
+}
+
+/**
  * 把状态序列化为 stable 字符串,排除 ocrHistory(它是"持久化数据"而非"待保存设置",
  * 不应触发 footer 的"放弃/保存"按钮)。
  */
@@ -345,6 +370,10 @@ const serializeForDirty = (s: AppSettings): string =>
     ...s,
     ocrHistory: undefined,
     services: s.services.map((service) => ({ ...service, keyStatus: 'idle' })),
+    // error 是运行时冲突展示状态，不应触发"未保存"标记
+    shortcut: {
+      bindings: s.shortcut.bindings.map((b) => ({ ...b, error: undefined })),
+    },
   })
 
 const markDirty = (): void => {
@@ -459,6 +488,9 @@ export const useSettings = () => ({
       } catch {
         // 忽略：下次启动再试
       }
+      syncingFromBackend = true
+      await refreshShortcutConflicts()
+      syncingFromBackend = false
       return
     }
     syncingFromBackend = true
@@ -469,6 +501,7 @@ export const useSettings = () => ({
     state.translation.restoreClipboard =
       backend.restoreClipboard ?? state.translation.restoreClipboard
     state.shortcut.bindings = mergeBackendIntoShortcuts(state.shortcut.bindings, backend.shortcuts ?? {})
+    await refreshShortcutConflicts()
     syncingFromBackend = false
     commitBaseline()
     saveStatus.value = 'idle'
