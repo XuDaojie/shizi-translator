@@ -137,9 +137,18 @@ body {
   resize: none; outline: none;
   padding: 0;
   min-height: 2.75rem;
-  overflow: hidden;
+  max-height: 10.85em;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-2) transparent;
   user-select: text;
 }
+.source-input::-webkit-scrollbar { width: 4px; }
+.source-input::-webkit-scrollbar-thumb {
+  background: var(--border-2);
+  border-radius: 999px;
+}
+.source-input::-webkit-scrollbar-track { background: transparent; }
 .source-input::placeholder { color: var(--fg-3); }
 
 .source-meta {

@@ -40,7 +40,10 @@ function showToast(msg) {
 /* === 原文区 === */
 function autoResize() {
   sourceText.style.height = 'auto';
-  sourceText.style.height = sourceText.scrollHeight + 'px';
+  const maxHeight = parseFloat(getComputedStyle(sourceText).maxHeight);
+  const nextHeight = Math.min(sourceText.scrollHeight, maxHeight || sourceText.scrollHeight);
+  sourceText.style.height = nextHeight + 'px';
+  sourceText.style.overflowY = sourceText.scrollHeight > nextHeight ? 'auto' : 'hidden';
 }
 function updateCharCount() {
   charCount.textContent = `${sourceText.value.length} 字`;
@@ -605,6 +608,7 @@ resizeObserver.observe(popupEl);
 /* === 初始化 === */
 initMaxHeight();
 initCards();
-autoResize();
+requestAnimationFrame(autoResize);
+if (document.fonts) document.fonts.ready.then(autoResize);
 updateCharCount();
 applyPendingSourceText();
