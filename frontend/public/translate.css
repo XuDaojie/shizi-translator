@@ -104,7 +104,7 @@ body {
 
 /* === 内容区（超出时滚动） === */
 .content {
-  padding: 0 10px 10px;
+  padding: 2px 10px 10px;
   display: flex;
   flex-direction: column;
   gap: 6px;
