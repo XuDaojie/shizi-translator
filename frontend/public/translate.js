@@ -254,6 +254,15 @@ function toggleExpand(cardEl) {
   const expanded = cardEl.classList.toggle('expanded');
   if (label) label.textContent = expanded ? '收起' : '展开全文';
   adjustHeight();
+  const clip = cardEl.querySelector('.result-text-clip');
+  if (clip) {
+    clip.addEventListener('transitionend', function handler(e) {
+      if (e.propertyName === 'max-height') {
+        clip.removeEventListener('transitionend', handler);
+        adjustHeight();
+      }
+    });
+  }
 }
 
 /* === 流式光标 === */
