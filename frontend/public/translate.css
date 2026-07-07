@@ -444,4 +444,58 @@ body {
   transform: translateX(-50%) translateY(0);
 }
 
+/* === 结果卡片长内容截断 + 展开全文 === */
+.result-text-clip {
+  position: relative;
+  max-height: 6.4em;             /* 原型值；继承 :root 16px，约 4.9 行 */
+  overflow: hidden;
+  transition: max-height .3s ease;
+}
+.result-card.expanded .result-text-clip {
+  max-height: 80em;
+}
+.result-card.has-overflow:not(.expanded) .result-text-clip::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 28px;
+  background: linear-gradient(to bottom, rgba(255,255,255,0), var(--bg-card));
+  pointer-events: none;
+}
+.result-expand-btn {
+  display: none;
+  align-items: center;
+  gap: 3px;
+  margin-top: 4px;
+  margin-left: -2px;
+  padding: 2px 4px;
+  border: none;
+  background: transparent;
+  font-family: var(--font-family);
+  font-size: 0.6875rem;          /* 11px */
+  color: var(--fg-2);
+  cursor: default;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color .15s, background .15s;
+  user-select: none;
+}
+.result-card.has-overflow .result-expand-btn { display: inline-flex; }
+.result-expand-btn:hover {
+  color: var(--accent);
+  background: rgba(28,25,23,0.04);
+}
+.result-expand-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.result-expand-chevron {
+  width: 10px;
+  height: 10px;
+  transition: transform .25s ease;
+}
+.result-card.expanded .result-expand-chevron {
+  transform: rotate(180deg);
+}
+
 

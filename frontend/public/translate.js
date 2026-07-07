@@ -158,7 +158,13 @@ function getCard(payload) {
     '</div>',
     '<div class="result-card-body">',
     '  <div class="result-card-body-inner">',
-    '    <div class="result-text"></div>',
+    '    <div class="result-text-clip">',
+    '      <div class="result-text"></div>',
+    '    </div>',
+    '    <button class="result-expand-btn" type="button" tabindex="-1">',
+    '      <span class="result-expand-label">展开全文</span>',
+    '      <svg class="result-expand-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>',
+    '    </button>',
     '    <div class="result-actions" style="visibility:hidden">',
     '      <button class="result-action-btn speak-btn" title="朗读翻译">',
     '        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07"/></svg>',
@@ -212,11 +218,42 @@ function getCard(payload) {
   const speakBtn = card.querySelector('.speak-btn');
   speakBtn.addEventListener('click', () => speakText(text.textContent, 'zh-CN'));
 
+  const expandBtn = card.querySelector('.result-expand-btn');
+  expandBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleExpand(card);
+  });
+
   resultsList.appendChild(card);
 
   const ref = { el: card, text, actions, tokens, inputTokens, outputTokens, status: 'pending' };
   resultCards.set(id, ref);
   return ref;
+}
+
+/* === 结果卡片截断 / 展开 === */
+function detectOverflow(cardEl) {
+  const clip = cardEl.querySelector('.result-text-clip');
+  const text = cardEl.querySelector('.result-text');
+  if (!clip || !text) return false;
+  return text.scrollHeight > clip.clientHeight + 1;
+}
+
+function updateExpandButton(cardEl) {
+  const label = cardEl.querySelector('.result-expand-label');
+  if (detectOverflow(cardEl)) {
+    cardEl.classList.add('has-overflow');
+  } else {
+    cardEl.classList.remove('has-overflow', 'expanded');
+    if (label) label.textContent = '展开全文';
+  }
+}
+
+function toggleExpand(cardEl) {
+  const label = cardEl.querySelector('.result-expand-label');
+  const expanded = cardEl.classList.toggle('expanded');
+  if (label) label.textContent = expanded ? '收起' : '展开全文';
+  adjustHeight();
 }
 
 /* === 流式光标 === */
@@ -292,6 +329,9 @@ function renderTranslationEvent(payload) {
           c.actions.style.visibility = 'hidden';
           c.tokens.style.display = 'none';
           c.el.classList.remove('failed', 'cancelled');
+          c.el.classList.remove('has-overflow', 'expanded');
+          const expandLabel = c.el.querySelector('.result-expand-label');
+          if (expandLabel) expandLabel.textContent = '展开全文';
         });
         sourceText.value = payload.sourceText ?? sourceText.value;
         autoResize();
@@ -335,6 +375,7 @@ function renderTranslationEvent(payload) {
         card.tokens.style.display = 'none';
       }
       card.actions.style.visibility = 'visible';
+      updateExpandButton(card.el);
       card.status = 'finished';
       scrollToBottom(card);
       updateBatchStatus();
