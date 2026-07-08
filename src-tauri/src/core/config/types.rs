@@ -23,6 +23,10 @@ fn default_chain_of_thought() -> String {
     "off".to_string()
 }
 
+fn default_log_level() -> String {
+    "info".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ServiceInstanceConfig {
@@ -68,6 +72,8 @@ pub struct AppConfig {
     pub overlay_precreate: bool,
     #[serde(default = "default_true")]
     pub collect_usage: bool,
+    #[serde(default = "default_log_level")]
+    pub log_level: String,
 }
 
 impl ServiceInstanceConfig {
@@ -200,6 +206,7 @@ impl AppConfig {
             collect_usage: env::var("SHIZI_COLLECT_USAGE")
                 .map(|v| v.eq_ignore_ascii_case("true"))
                 .unwrap_or(true),
+            log_level: default_log_level(),
         }
         .normalized()
     }
@@ -209,6 +216,7 @@ impl AppConfig {
         self.services = self.services.into_iter().map(|s| s.normalized()).collect();
         self.target_lang = normalize_string(self.target_lang, DEFAULT_TARGET_LANG);
         self.default_source_lang = normalize_string(self.default_source_lang, "auto");
+        self.log_level = normalize_log_level(self.log_level);
         self
     }
 
@@ -243,6 +251,13 @@ fn normalize_chain_of_thought(value: String) -> String {
     match value.trim() {
         "short" | "medium" | "long" => value.trim().to_string(),
         _ => "off".to_string(),
+    }
+}
+
+fn normalize_log_level(value: String) -> String {
+    match value.trim() {
+        "error" | "warn" | "info" | "debug" => value.trim().to_string(),
+        _ => "info".to_string(),
     }
 }
 
@@ -537,5 +552,44 @@ mod tests {
             Some("Ctrl+Alt+T")
         );
         assert_eq!(config.shortcuts.get("translate-screenshot").map(String::as_str), Some(""));
+    }
+
+    #[test]
+    fn normalized_log_level_falls_back_to_info_for_invalid() {
+        let mut config = AppConfig::from_env();
+        config.log_level = "trace".to_string();
+        let normalized = config.normalized();
+        assert_eq!(normalized.log_level, "info");
+    }
+
+    #[test]
+    fn normalized_log_level_keeps_valid_values() {
+        for level in ["error", "warn", "info", "debug"] {
+            let mut config = AppConfig::from_env();
+            config.log_level = level.to_string();
+            assert_eq!(config.normalized().log_level, level);
+        }
+    }
+
+    #[test]
+    fn from_env_default_log_level_is_info() {
+        let config = AppConfig::from_env();
+        assert_eq!(config.log_level, "info");
+    }
+
+    #[test]
+    fn serializes_log_level_camel_case() {
+        let config = AppConfig::from_env();
+        let json = serde_json::to_string(&config).expect("序列化");
+        assert!(json.contains("\"logLevel\""), "应输出 logLevel: {json}");
+    }
+
+    #[test]
+    fn deserializes_log_level_with_default() {
+        let json = r#"{ "targetLang": "中文" }"#;
+        let config: AppConfig = serde_json::from_str::<AppConfig>(json)
+            .expect("缺少字段应可反序列化")
+            .normalized();
+        assert_eq!(config.log_level, "info");
     }
 }
