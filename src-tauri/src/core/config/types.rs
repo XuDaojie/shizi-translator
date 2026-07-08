@@ -3,7 +3,15 @@ use std::env;
 
 use serde::{Deserialize, Serialize};
 
-const DEFAULT_TARGET_LANG: &str = "zh-CN";
+/// normalize 兜底用：target_lang 为空时回退英语（不读 OS，避免每次 save 查系统 locale）。
+const FALLBACK_TARGET_LANG: &str = "en-US";
+
+/// 首次安装默认目标语言：读 OS locale 并映射到语言列表 code，不在列表回退 en-US。
+fn default_target_lang_from_os() -> String {
+    let os = sys_locale::get_locale().unwrap_or_else(|| "en-US".to_string());
+    map_os_lang_to_list(&os)
+}
+
 const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 const DEFAULT_MODEL: &str = "gpt-4o-mini";
 const DEFAULT_TIMEOUT_SECONDS: u32 = 60;
@@ -228,7 +236,9 @@ impl AppConfig {
                 chain_of_thought: default_chain_of_thought(),
             }],
             target_lang: env::var("SHIZI_TARGET_LANG")
-                .unwrap_or_else(|_| DEFAULT_TARGET_LANG.to_string()),
+                .ok()
+                .filter(|s| !s.trim().is_empty())
+                .unwrap_or_else(default_target_lang_from_os),
             default_source_lang: default_source_lang(),
             auto_copy: true,
             restore_clipboard: true,
@@ -245,7 +255,7 @@ impl AppConfig {
     pub fn normalized(mut self) -> Self {
         self.shortcuts = normalize_shortcuts(self.shortcuts);
         self.services = self.services.into_iter().map(|s| s.normalized()).collect();
-        self.target_lang = normalize_string(self.target_lang, DEFAULT_TARGET_LANG);
+        self.target_lang = normalize_string(self.target_lang, FALLBACK_TARGET_LANG);
         self.default_source_lang = normalize_string(self.default_source_lang, "auto");
         self.log_level = normalize_log_level(self.log_level);
         self
@@ -416,9 +426,16 @@ mod tests {
     }
 
     #[test]
-    fn from_env_default_target_lang_is_zh_cn() {
+    fn from_env_target_lang_uses_os_or_fallback() {
         let config = AppConfig::from_env();
-        assert_eq!(config.target_lang, "zh-CN");
+        let valid = [
+            "zh-CN", "zh-TW", "en-US", "ja-JP", "ko-KR", "fr-FR", "de-DE", "es-ES", "ru-RU",
+        ];
+        assert!(
+            valid.contains(&config.target_lang.as_str()),
+            "from_env target_lang 应是 OS 映射结果（列表 code 之一），实际: {}",
+            config.target_lang
+        );
     }
 
     #[test]
