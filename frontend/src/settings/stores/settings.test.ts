@@ -598,3 +598,30 @@ describe('applyBackendLogLevel', () => {
     expect(applyBackendLogLevel('warn', '')).toBe('warn')
   })
 })
+
+describe('defaultTargetLang', () => {
+  it('defaultTargetLang 默认为 zh-CN', () => {
+    vi.mocked(isTauriReady).mockReturnValue(false);
+    const settings = useSettings();
+    expect(settings.state.translation.defaultTargetLang).toBe('zh-CN');
+  });
+
+  it('syncFromBackend 回读 targetLang 到 defaultTargetLang', async () => {
+    vi.mocked(isTauriReady).mockReturnValue(true);
+    vi.mocked(invokeGetAppConfig).mockResolvedValue({
+      targetLang: 'en-US',
+      defaultSourceLang: 'auto',
+      autoCopy: true,
+      restoreClipboard: true,
+      services: [{ id: 'svc-1', serviceType: 'llm', name: 'A', enabled: true, protocol: 'openai_chat', apiKey: 'k', endpoint: 'e', model: 'm', timeoutSeconds: 60, systemPrompt: '', translationPrompt: '', reflectionPrompt: '', reflectionEnabled: false, chainOfThought: 'off' }],
+      popupPrecreate: true,
+      overlayPrecreate: true,
+      collectUsage: true,
+      logLevel: 'info',
+      shortcuts: {},
+    });
+    const settings = useSettings();
+    await settings.syncFromBackend();
+    expect(settings.state.translation.defaultTargetLang).toBe('en-US');
+  });
+});

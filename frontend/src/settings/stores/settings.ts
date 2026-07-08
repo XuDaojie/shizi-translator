@@ -92,7 +92,7 @@ const buildDefaults = (): AppSettings => {
     },
     translation: {
       defaultSourceLang: 'auto',
-      defaultTargetLang: '中文',
+      defaultTargetLang: 'zh-CN',
       autoCopy: true,
       restoreClipboard: true,
       autoPaste: false,
@@ -516,6 +516,8 @@ export const useSettings = () => ({
     state.services = mergeBackendIntoServices(state.services, backend.services)
     state.translation.defaultSourceLang =
       backend.defaultSourceLang ?? state.translation.defaultSourceLang
+    state.translation.defaultTargetLang =
+      backend.targetLang ?? state.translation.defaultTargetLang
     state.translation.autoCopy = backend.autoCopy ?? state.translation.autoCopy
     state.translation.restoreClipboard =
       backend.restoreClipboard ?? state.translation.restoreClipboard
