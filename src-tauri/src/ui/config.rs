@@ -37,6 +37,10 @@ pub async fn save_app_config(
         .save(config)
         .map_err(|error| ShortcutBindingError::global(format!("无法保存配置: {error}")))?;
 
+    // 运行时即时切换日志等级（tauri-plugin-log 注册时内部 level 为 Debug 不挡，
+    // 全局 set_max_level 独占控制权，无需重启插件）。
+    log::set_max_level(crate::app::logging::parse_level_filter(&saved_config.log_level));
+
     // 新配置已全部注册成功并持久化，清空启动时记录的快捷键冲突。
     let _ = state.set_shortcut_conflicts(Vec::new());
 
