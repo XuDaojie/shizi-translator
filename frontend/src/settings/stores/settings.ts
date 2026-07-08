@@ -470,6 +470,7 @@ const applyTheme = (): void => {
 }
 
 watch(() => state.general.theme, applyTheme, { immediate: true })
+watch(() => state.advanced.logLevel, (v) => logger.setLevel(v))
 
 /** 在指定 type 下生成下一个默认 name:`OpenAI`、`OpenAI 2`、`OpenAI 3` ... */
 const nextDefaultName = (type: ServiceId): string => {
@@ -523,6 +524,7 @@ export const useSettings = () => ({
       state.advanced.logLevel,
       backend.logLevel,
     )
+    logger.setLevel(state.advanced.logLevel)
     await refreshShortcutConflicts()
     syncingFromBackend = false
     commitBaseline()
