@@ -7,6 +7,8 @@ import { SettingGroup, SettingRow, SettingSelect, SettingSwitch } from '../compo
 import type { AppSettings } from '../types'
 import { useSettings } from '../stores/settings'
 import { exportSettings, importSettings, parseImportedSettings } from '../config-io'
+import { invokeExportLogs } from '@/lib/tauri'
+import { toast } from '@/lib/toast'
 
 const props = defineProps<{
   state: AppSettings
@@ -26,6 +28,26 @@ const fileInput = ref<HTMLInputElement>()
 
 const appVersion = '0.1.0'
 const buildChannel = 'dev'
+
+const exporting = ref(false)
+
+async function handleExportLogs() {
+  if (exporting.value) return
+  exporting.value = true
+  try {
+    const path = await invokeExportLogs()
+    toast.success('日志已导出', path)
+  } catch (e) {
+    const msg = String(e)
+    if (msg.includes('取消')) {
+      // 用户取消，不提示错误
+    } else {
+      toast.error('导出失败', msg)
+    }
+  } finally {
+    exporting.value = false
+  }
+}
 
 function handleExport() {
   const blob = new Blob([JSON.stringify(exportSettings(props.state), null, 2)], { type: 'application/json' })
@@ -63,7 +85,7 @@ async function onFileChange(e: Event) {
       title="导出日志"
       description="将最近 7 天的日志打包到一个 zip 文件,便于提交反馈。"
     >
-      <Button variant="outline" size="sm">
+      <Button variant="outline" size="sm" :disabled="exporting" @click="handleExportLogs">
         <Download class="h-3.5 w-3.5" />
         导出
       </Button>
