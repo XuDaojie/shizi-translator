@@ -24,11 +24,11 @@ const languageOptions = LANGUAGES.map((l) => ({ label: l.label, value: l.value }
     <SettingRow title="默认源语言" description="设置后,翻译时不再进行自动检测。">
       <SettingSelect
         v-model="state.translation.defaultSourceLang"
-        :options="languageOptions.filter((l) => l.value !== 'auto')"
+        :options="languageOptions"
       />
     </SettingRow>
     <SettingRow title="默认目标语言" description="最常用的目标语种,可在翻译时临时切换。">
-      <SettingSelect v-model="state.translation.defaultTargetLang" :options="languageOptions" />
+      <SettingSelect v-model="state.translation.defaultTargetLang" :options="languageOptions.filter((l) => l.value !== 'auto')" />
     </SettingRow>
     <SettingRow
       title="自动检测语种"
