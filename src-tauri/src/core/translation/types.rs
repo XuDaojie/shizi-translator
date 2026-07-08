@@ -66,22 +66,30 @@ impl TranslationRequest {
 
     pub fn user_prompt(&self) -> String {
         let template = self.prompts.translation_prompt.trim();
-        if template.is_empty() {
-            return format!(
+        let base = if template.is_empty() {
+            format!(
                 "请将以下文本翻译为{}：\n\n{}",
                 self.target_lang,
                 self.source_text()
-            );
-        }
-
-        let rendered = template
-            .replace("{source_lang}", &self.prompts.source_lang)
-            .replace("{target_lang}", &self.target_lang)
-            .replace("{text}", self.source_text());
-        if template.contains("{text}") {
-            rendered
+            )
         } else {
-            format!("{rendered}\n\n{}", self.source_text())
+            let rendered = template
+                .replace("{source_lang}", &self.prompts.source_lang)
+                .replace("{target_lang}", &self.target_lang)
+                .replace("{text}", self.source_text());
+            if template.contains("{text}") {
+                rendered
+            } else {
+                format!("{rendered}\n\n{}", self.source_text())
+            }
+        };
+
+        if self.prompts.source_lang == "auto" {
+            format!(
+                "{base}\n\n请先在第一行用【源语言：语言名称】输出你检测到的原文语言（如：英语、日语、中文），换行后再输出译文。"
+            )
+        } else {
+            base
         }
     }
 
@@ -306,6 +314,42 @@ mod tests {
         assert!(request.system_prompt().contains("专业翻译"));
         assert!(request.user_prompt().contains("中文"));
         assert!(request.user_prompt().contains("hello"));
+    }
+
+    fn request_with_source_lang(source_lang: &str) -> TranslationRequest {
+        TranslationRequest {
+            session_id: TranslationSessionId("test".to_string()),
+            input: TranslationInput::ManualText("hello".to_string()),
+            target_lang: "中文".to_string(),
+            service: fake_service(),
+            prompts: TranslationPromptConfig {
+                source_lang: source_lang.to_string(),
+                ..Default::default()
+            },
+        }
+    }
+
+    #[test]
+    fn user_prompt_appends_detection_instruction_when_auto() {
+        let request = request_with_source_lang("auto");
+        let prompt = request.user_prompt();
+        assert!(
+            prompt.contains("【源语言：语言名称】"),
+            "auto 时 user_prompt 应含检测指令: {}",
+            prompt
+        );
+        assert!(prompt.contains("hello"), "应含原文");
+    }
+
+    #[test]
+    fn user_prompt_no_append_when_specific_source() {
+        let request = request_with_source_lang("en-US");
+        let prompt = request.user_prompt();
+        assert!(
+            !prompt.contains("【源语言："),
+            "具体源语言时不应追加检测指令: {}",
+            prompt
+        );
     }
 
     #[test]
