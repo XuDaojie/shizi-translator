@@ -29,10 +29,23 @@ pub struct AppState {
     // 启动时快捷键注册失败的冲突列表。best-effort 注册后，被其他应用占用的
     // 快捷键记录于此，供设置页拉取展示；保存配置全量成功后清空。
     shortcut_conflicts: Arc<Mutex<Vec<ShortcutBindingError>>>,
+    // 会话语言（运行时内存态）：启动从 config 初始化，前端 set_session_languages
+    // 写入，所有翻译入口经 start_translation_from_input 读取。不持久化，重启重置。
+    // 存语言代码（如 "auto"/"zh-CN"），非显示名。
+    session_source_lang: Arc<Mutex<String>>,
+    session_target_lang: Arc<Mutex<String>>,
 }
 
 impl AppState {
     pub fn new(config_store: ConfigStore) -> Self {
+        let default_source_lang = config_store
+            .get()
+            .map(|c| c.default_source_lang)
+            .unwrap_or_else(|_| "auto".to_string());
+        let default_target_lang = config_store
+            .get()
+            .map(|c| c.target_lang)
+            .unwrap_or_else(|_| "zh-CN".to_string());
         Self {
             config_store,
             pending_source_text: Arc::new(Mutex::new(None)),
@@ -43,6 +56,8 @@ impl AppState {
             current_cancel_token: Arc::new(Mutex::new(None)),
             last_translation_input: Arc::new(Mutex::new(None)),
             shortcut_conflicts: Arc::new(Mutex::new(Vec::new())),
+            session_source_lang: Arc::new(Mutex::new(default_source_lang)),
+            session_target_lang: Arc::new(Mutex::new(default_target_lang)),
         }
     }
 
@@ -243,6 +258,40 @@ impl AppState {
             .lock()
             .map_err(|_| "快捷键冲突状态锁已损坏".to_string())?;
         Ok(slot.clone())
+    }
+
+    /// 读会话源/目标语言。锁毒化回退 ("auto", "zh-CN")，不返回 Err
+    pub fn session_languages(&self) -> (String, String) {
+        let source = self
+            .session_source_lang
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or_else(|_| "auto".to_string());
+        let target = self
+            .session_target_lang
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or_else(|_| "zh-CN".to_string());
+        (source, target)
+    }
+
+    /// 写会话源/目标语言。锁毒化返回 Err。不持久化。
+    pub fn set_session_languages(
+        &self,
+        source: String,
+        target: String,
+    ) -> Result<(), String> {
+        let mut s = self
+            .session_source_lang
+            .lock()
+            .map_err(|_| "会话源语言锁已损坏".to_string())?;
+        let mut t = self
+            .session_target_lang
+            .lock()
+            .map_err(|_| "会话目标语言锁已损坏".to_string())?;
+        *s = source;
+        *t = target;
+        Ok(())
     }
 }
 
@@ -511,5 +560,50 @@ mod tests {
         state.clear_current_cancel_token().expect("第一次清空");
         state.clear_current_cancel_token().expect("幂等清空");
         state.cancel_current_translation().expect("清空后取消应幂等");
+    }
+
+    #[test]
+    fn session_languages_init_from_config() {
+        let mut config = AppConfig::from_env();
+        config.default_source_lang = "en-US".to_string();
+        config.target_lang = "ja-JP".to_string();
+        let state = AppState::new(ConfigStore::from_parts_for_test(
+            PathBuf::from("unused-config.json"),
+            Arc::new(RwLock::new(config)),
+        ));
+        let (source, target) = state.session_languages();
+        assert_eq!(source, "en-US");
+        assert_eq!(target, "ja-JP");
+    }
+
+    #[test]
+    fn set_session_languages_updates_state() {
+        let state = app_state();
+        state
+            .set_session_languages("en-US".to_string(), "zh-CN".to_string())
+            .expect("set 应成功");
+        let (source, target) = state.session_languages();
+        assert_eq!(source, "en-US");
+        assert_eq!(target, "zh-CN");
+    }
+
+    #[test]
+    fn set_session_languages_persists_until_reset() {
+        let mut config = AppConfig::from_env();
+        config.target_lang = "zh-CN".to_string();
+        let store = Arc::new(RwLock::new(config));
+        let state = AppState::new(ConfigStore::from_parts_for_test(
+            PathBuf::from("unused-config.json"),
+            store.clone(),
+        ));
+        state
+            .set_session_languages("auto".to_string(), "en-US".to_string())
+            .expect("set 应成功");
+        // 改 config 的 target_lang
+        store.write().unwrap().target_lang = "ja-JP".to_string();
+        // 会话语言仍是 set 的值
+        let (source, target) = state.session_languages();
+        assert_eq!(source, "auto");
+        assert_eq!(target, "en-US");
     }
 }
