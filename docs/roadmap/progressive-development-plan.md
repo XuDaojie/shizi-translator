@@ -86,6 +86,7 @@ src-tauri/src/ui/settings_commands.rs
 - 提示词与思维链：系统提示词、用户提示词模板、chainOfThought 已接入 LLM 请求；Claude 支持 manual/adaptive thinking。
 - 未接通入口已从 UI 隐藏或降级为只读展示。
 - 高级页配置导出/导入已接通（导出剔除 API Key，导入保留本地 Key）。
+- 高级日志系统已落地：前后端独立日志（Shizi.log / frontend.log）、运行时等级切换、API Key 与翻译正文脱敏、5MB 轮转 + 7 天清理、导出 zip。
 
 - ~~Anthropic / Claude 专用 provider~~ ✅。
 - `TranslationInput` / `TranslationMode` 的完整输入模型。

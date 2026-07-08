@@ -21,6 +21,7 @@
 - OCR 错误指引：截图 OCR 失败（缺语言包 / 识别为空 / 区域过大等）时给出带阶段前缀与可操作指引的错误文案，并隐藏无意义的重试按钮。
 - Token 用量展示：流式翻译结束时在译文下方显示 input → output token 数；可在设置页关闭采集。
 - 翻译来源徽章：划词翻译显示「来自划词」、OCR 翻译显示「来自 OCR」，手动输入不显示；翻译结束/取消/失败/清空时徽章自动隐藏。
+- 高级日志系统：前后端独立日志文件（后端 `Shizi.log` / 前端 `frontend.log`），运行时等级切换（error/warn/info/debug），API Key 与翻译正文脱敏，5MB 轮转 + 启动清理 7 天，一键导出 zip（含日志/配置快照/系统信息）。
 
 ## 使用方式
 
@@ -104,6 +105,7 @@ SHIZI_LLM_PROVIDER=mock npm run tauri dev
 - Slint 原生高性能翻译弹窗。
 - 取词翻译、快捷键分组 / profile、导入导出仍未实现；word-lookup 绑定当前只保存不触发。 系统安全存储。
 - 快捷键自定义、深色模式、部分面板操作（历史/语音输入等）——已在设置页 UI 中以「实现中」标签预留。
+- 后端日志文件名为 `Shizi.log`（tauri-plugin-log 按 `productName` 默认，不支持自定义）；API Key 明文保存到 config.json（MVP，后续迁移系统安全存储）。
 
 截图 OCR 已落地，但存在以下 MVP 已知限制：
 

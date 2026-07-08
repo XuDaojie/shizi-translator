@@ -10,13 +10,13 @@
 
 ### 必须实现
 
-- 后端日志：core 层用 `log` 标准门面打日志，装配层注册 `tauri-plugin-log` 作为 backend，写入 `logs/backend.log`。
+- 后端日志：core 层用 `log` 标准门面打日志，装配层注册 `tauri-plugin-log` 作为 backend，写入 `logs/Shizi.log`（tauri-plugin-log 按 productName 默认文件名，不支持自定义）。
 - 前端日志：`frontend/public/logger.js`（纯 ES module）内存环形缓冲 + 批量 invoke `write_frontend_log` command，写入 `logs/frontend.log`。
-- 分开保存：`backend.log` 与 `frontend.log` 物理隔离，互不混入。
+- 分开保存：`Shizi.log` 与 `frontend.log` 物理隔离，互不混入。
 - 日志等级（error/warn/info/debug）运行时切换即时生效，无需重启。
 - API Key 永远脱敏（前 4 + 后 4）；翻译正文 info 级别记摘要（长度 + 前 20 字）、debug 级别记全文。
 - 按大小 5MB 轮转（`KeepAll`）+ 启动时清理 >7 天文件。
-- 导出 zip：`backend.log*` + `frontend.log*` + `config-snapshot.json`（apiKey 脱敏）+ `system-info.txt`。
+- 导出 zip：`Shizi.log*` + `frontend.log*` + `config-snapshot.json`（apiKey 脱敏）+ `system-info.txt`。
 
 ### 明确不做
 
@@ -57,7 +57,7 @@
 
 - 算日志目录 = `app_config_dir()/logs/`。
 - `tauri-plugin-log` 配置：`Target::Folder(logs)` + `max_file_size(5MB)` + `RotationStrategy::KeepAll` + `level(log_level)`。
-- 文件名 `backend.log`，轮转产生 `backend.log.1`、`backend.log.2`…。
+- 文件名 `Shizi.log`（tauri-plugin-log 按 productName 固定，不支持自定义），轮转产生 `Shizi_<timestamp>.log`（日期格式，KeepAll）。
 - best-effort：失败 `eprintln!` 兜底，不阻止启动。
 
 ### 运行时切换等级
@@ -67,7 +67,7 @@
 ### `write_frontend_log(entries: Vec<FrontendLogEntry>, state)`
 
 - `FrontendLogEntry { level, message, timestamp, source, meta? }`，`source` 标记 `translate`/`settings`/`overlay`。
-- 直接 `std::fs::OpenOptions::append` 写 `frontend.log`，**不走 `log` facade**，确保与 `backend.log` 物理隔离。
+- 直接 `std::fs::OpenOptions::append` 写 `frontend.log`，**不走 `log` facade**，确保与 `Shizi.log` 物理隔离。
 - 超 5MB 轮转（重命名 `.1`/`.2`…，策略与后端一致）。
 - 按当前 `log_level` 过滤（低于等级的丢弃，双保险，前端已过滤但后端再校验一次）。
 
@@ -78,7 +78,7 @@
 
 ### `export_logs(app, state)`
 
-- 打包 zip：`backend.log*` + `frontend.log*` + `config-snapshot.json`（`apiKey` 脱敏）+ `system-info.txt`（app 版本、OS 版本、导出时间、当前 `logLevel`）。
+- 打包 zip：`Shizi.log*` + `frontend.log*` + `config-snapshot.json`（`apiKey` 脱敏）+ `system-info.txt`（app 版本、OS 版本、导出时间、当前 `logLevel`）。
 - `tauri-plugin-dialog` save 对话框选保存位置。
 - 返回保存路径；失败返回错误供前端 toast。
 
@@ -126,13 +126,13 @@
 
 ## 验收标准
 
-- 翻译流程产生 `backend.log` 与 `frontend.log` 两个独立文件，内容不互相混入。
+- 翻译流程产生 `Shizi.log` 与 `frontend.log` 两个独立文件，内容不互相混入。
 - 修改日志等级并保存后即时生效（后端 `set_max_level` + 前端 `logger.level` 更新），无需重启。
 - API Key 在两份日志中始终脱敏（前 4 + 后 4）。
 - `info` 级别翻译正文只记摘要；`debug` 级别记全文。
 - 单文件超 5MB 自动轮转，产生 `.1`/`.2`… 备份。
 - 启动时清理 `mtime > 7 天` 的日志文件。
-- 导出 zip 包含 `backend.log*` + `frontend.log*` + `config-snapshot.json`（apiKey 脱敏）+ `system-info.txt`。
+- 导出 zip 包含 `Shizi.log*` + `frontend.log*` + `config-snapshot.json`（apiKey 脱敏）+ `system-info.txt`。
 - 日志系统任何环节失败不影响翻译、截图、快捷键等主流程。
 
 ## 测试与验证
@@ -167,6 +167,7 @@
 - `Cargo.toml`：加 `tauri-plugin-log = "2"`、`tauri-plugin-dialog = "2"`、`zip`。
 - `capabilities/default.json`：加 `dialog:allow-save`（导出保存框）。
 - `AppConfig` 加 `log_level` 字段；前端 `types/config.ts` 同步 `logLevel`。
+- 新增 `chrono` 依赖（system-info.txt 导出时间）；`export_logs` 用 `tauri-plugin-dialog` 的 `blocking_save_file()`（async command 推荐用法）。
 
 ## 文档同步
 
