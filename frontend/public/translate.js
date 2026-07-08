@@ -5,16 +5,16 @@ const logger = createLogger('translate');
 // 语言代码↔名称映射。与 frontend/src/settings/tokens.ts LANGUAGES 同源，
 // 新增语言两处同步。translate.js 为纯静态不能 import Vue src，故复制。
 const LANGUAGES = [
-  { value: 'auto', label: '自动检测' },
-  { value: 'zh-CN', label: '简体中文' },
-  { value: 'zh-TW', label: '繁體中文' },
-  { value: 'en-US', label: 'English' },
-  { value: 'ja-JP', label: '日本語' },
-  { value: 'ko-KR', label: '한국어' },
-  { value: 'fr-FR', label: 'Français' },
-  { value: 'de-DE', label: 'Deutsch' },
-  { value: 'es-ES', label: 'Español' },
-  { value: 'ru-RU', label: 'Русский' },
+  { value: 'auto',  label: '自动检测', english: 'Auto Detect' },
+  { value: 'zh-CN', label: '简体中文', english: 'Chinese (Simplified)' },
+  { value: 'zh-TW', label: '繁體中文', english: 'Chinese (Traditional)' },
+  { value: 'en-US', label: 'English', english: 'English' },
+  { value: 'ja-JP', label: '日本語',   english: 'Japanese' },
+  { value: 'ko-KR', label: '한국어',   english: 'Korean' },
+  { value: 'fr-FR', label: 'Français', english: 'French' },
+  { value: 'de-DE', label: 'Deutsch',  english: 'German' },
+  { value: 'es-ES', label: 'Español',  english: 'Spanish' },
+  { value: 'ru-RU', label: 'Русский',  english: 'Russian' },
 ];
 const LANG_LABEL = (code) => LANGUAGES.find((l) => l.value === code)?.label ?? code;
 
@@ -34,6 +34,9 @@ const settingsBtn = document.getElementById('settingsBtn');
 const langSource = document.getElementById('langSource');
 const langSwap = document.getElementById('langSwap');
 const langTarget = document.getElementById('langTarget');
+const langPicker = document.getElementById('langPicker');
+const langPickerInput = document.getElementById('langPickerInput');
+const langPickerList = document.getElementById('langPickerList');
 const resultsList = document.getElementById('resultsList');
 const statusDot = document.getElementById('statusDot');
 const statusText = document.getElementById('statusText');
@@ -331,63 +334,61 @@ function scrollToBottom(card) {
   card.text.scrollTop = card.text.scrollHeight;
 }
 
-/* === 语言下拉 === */
-let activeDropdown = null;
+/* === 语言选择器（inline 搜索式 combobox） === */
+let activeLangType = null; // null | 'source' | 'target'
 
-function closeDropdown() {
-  if (activeDropdown) {
-    activeDropdown.remove();
-    activeDropdown = null;
-    document.removeEventListener('mousedown', onDropdownOutsideClick, true);
-    document.removeEventListener('keydown', onDropdownEsc, true);
+function openLangPicker(side) {
+  if (activeLangType === side) {
+    closeLangPicker();
+    return;
   }
+  activeLangType = side;
+  langPickerInput.placeholder = side === 'source' ? '搜索源语言…' : '搜索目标语言…';
+  langPickerInput.value = '';
+  renderLangList('');
+  langPicker.hidden = false;
+  adjustHeight();
+  requestAnimationFrame(() => langPickerInput.focus());
 }
 
-function onDropdownOutsideClick(e) {
-  if (activeDropdown && !activeDropdown.contains(e.target) && !e.target.closest('.lang-side')) {
-    closeDropdown();
-  }
+function closeLangPicker() {
+  langPicker.hidden = true;
+  activeLangType = null;
+  adjustHeight();
 }
 
-function onDropdownEsc(e) {
-  if (e.key === 'Escape') closeDropdown();
-}
-
-function openDropdown(side) {
-  closeDropdown();
-  const options = side === 'source'
+function renderLangList(query) {
+  const q = (query || '').trim().toLowerCase();
+  const list = activeLangType === 'source'
     ? LANGUAGES
     : LANGUAGES.filter((l) => l.value !== 'auto');
-  const current = side === 'source' ? sessionSourceLang : sessionTargetLang;
-  const dd = document.createElement('div');
-  dd.className = 'lang-dropdown';
-  options.forEach((opt) => {
-    const item = document.createElement('button');
-    item.type = 'button';
-    item.className = 'lang-dropdown-item' + (opt.value === current ? ' selected' : '');
-    item.textContent = opt.label;
-    item.addEventListener('click', () => {
-      selectLang(side, opt.value);
-      closeDropdown();
-    });
-    dd.appendChild(item);
+  const filtered = q
+    ? list.filter((l) => l.label.toLowerCase().includes(q) || l.english.toLowerCase().includes(q))
+    : list;
+  const current = activeLangType === 'source' ? sessionSourceLang : sessionTargetLang;
+  langPickerList.innerHTML = '';
+  filtered.forEach((opt) => {
+    const li = document.createElement('li');
+    li.className = 'lang-option' + (opt.value === current ? ' is-selected' : '');
+    li.dataset.value = opt.value;
+    li.innerHTML =
+      '<span class="lang-option-native">' + opt.label + '</span>' +
+      '<span class="lang-option-english">' + opt.english + '</span>';
+    li.addEventListener('click', () => selectLang(activeLangType, opt.value));
+    langPickerList.appendChild(li);
   });
-  const anchor = side === 'source' ? langSource : langTarget;
-  anchor.parentElement.appendChild(dd);
-  const rect = anchor.getBoundingClientRect();
-  const parentRect = anchor.parentElement.getBoundingClientRect();
-  dd.style.left = (rect.left - parentRect.left) + 'px';
-  dd.style.top = (rect.bottom - parentRect.top) + 'px';
-  dd.style.minWidth = rect.width + 'px';
-  activeDropdown = dd;
-  document.addEventListener('mousedown', onDropdownOutsideClick, true);
-  document.addEventListener('keydown', onDropdownEsc, true);
+  const active = langPickerList.querySelector('.is-selected') || langPickerList.firstElementChild;
+  if (active) {
+    active.classList.add('is-active');
+    active.scrollIntoView({ block: 'nearest' });
+  }
 }
 
 async function selectLang(side, code) {
   if (side === 'source') sessionSourceLang = code;
   else sessionTargetLang = code;
   renderLangLabels();
+  closeLangPicker();
   try {
     await invoke('set_session_languages', { sourceLang: sessionSourceLang, targetLang: sessionTargetLang });
   } catch (e) {
@@ -396,6 +397,7 @@ async function selectLang(side, code) {
 }
 
 async function swapLangs() {
+  if (activeLangType) closeLangPicker();
   if (sessionSourceLang === 'auto' || sessionTargetLang === 'auto') {
     showToast('自动检测不支持交换');
     return;
@@ -667,9 +669,40 @@ ocrBtn.addEventListener('click', triggerOcr);
 settingsBtn.addEventListener('click', openSettings);
 speakSourceBtn.addEventListener('click', () => speakText(sourceText.value, 'en-US'));
 copySourceBtn.addEventListener('click', () => copyText(sourceText.value, copySourceBtn));
-langSource.addEventListener('click', () => openDropdown('source'));
-langTarget.addEventListener('click', () => openDropdown('target'));
+langSource.addEventListener('click', () => openLangPicker('source'));
+langTarget.addEventListener('click', () => openLangPicker('target'));
 langSwap.addEventListener('click', swapLangs);
+
+langPickerInput.addEventListener('input', () => renderLangList(langPickerInput.value));
+langPickerInput.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    const items = Array.from(langPickerList.querySelectorAll('.lang-option'));
+    if (items.length === 0) return;
+    let idx = items.findIndex((el) => el.classList.contains('is-active'));
+    if (idx === -1) idx = 0;
+    idx = e.key === 'ArrowDown' ? (idx + 1) % items.length : (idx - 1 + items.length) % items.length;
+    items.forEach((el) => el.classList.remove('is-active'));
+    items[idx].classList.add('is-active');
+    items[idx].scrollIntoView({ block: 'nearest' });
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    const active = langPickerList.querySelector('.is-active');
+    if (active && active.dataset.value) {
+      selectLang(activeLangType, active.dataset.value);
+    }
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
+    closeLangPicker();
+  }
+});
+
+document.addEventListener('mousedown', (e) => {
+  if (!activeLangType) return;
+  if (langPicker.contains(e.target)) return;
+  if (e.target.closest('.lang-side')) return;
+  closeLangPicker();
+});
 
 /* === 待回填原文 === */
 async function applyPendingSourceText() {

@@ -44,17 +44,25 @@
       </div>
 
       <div class="lang-toolbar">
-        <div class="lang-side" id="langSource">
+        <button type="button" class="lang-side" id="langSource">
           <span class="lang-label">自动检测</span>
           <svg class="lang-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-        </div>
+        </button>
         <div class="lang-swap" id="langSwap" title="交换语言">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16l-4-4 4-4"/><path d="M17 8l4 4-4 4"/><line x1="3" y1="12" x2="21" y2="12"/></svg>
         </div>
-        <div class="lang-side" id="langTarget">
+        <button type="button" class="lang-side" id="langTarget">
           <span class="lang-label">简体中文</span>
           <svg class="lang-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+      </div>
+
+      <div class="lang-picker" id="langPicker" hidden>
+        <div class="lang-picker-search">
+          <svg class="lang-picker-search-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.65" y2="16.65"/></svg>
+          <input type="text" class="lang-picker-input" id="langPickerInput" placeholder="搜索语言…" autocomplete="off" spellcheck="false" />
         </div>
+        <ul class="lang-picker-list" id="langPickerList"></ul>
       </div>
 
       <div class="results" id="resultsList"></div>

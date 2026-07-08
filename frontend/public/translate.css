@@ -516,37 +516,68 @@ body {
   transform: rotate(180deg);
 }
 
-/* === 语言下拉 === */
-.lang-dropdown {
-  position: absolute;
-  z-index: 50;
+/* === 语言选择器（inline 搜索式 combobox，不依赖浮层，避免被弹窗 overflow 截断） === */
+.lang-picker {
   background: var(--bg-card);
-  border: 0.5px solid var(--border);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-popup);
-  padding: 4px;
-  max-height: 240px;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border-2) transparent;
+  border: 0.5px solid var(--border);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+  animation: langPickerIn .15s ease;
 }
-.lang-dropdown-item {
-  display: block;
-  width: 100%;
-  text-align: left;
+.lang-picker[hidden] { display: none; }
+.lang-picker-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-bottom: 0.5px solid var(--border);
+  background: var(--bg-soft);
+}
+.lang-picker-search-icon { width: 13px; height: 13px; color: var(--fg-3); flex-shrink: 0; }
+.lang-picker-input {
+  flex: 1;
+  min-width: 0;
   border: none;
   background: transparent;
   font-family: var(--font-family);
   font-size: 0.75rem;
   color: var(--fg);
-  padding: 6px 10px;
-  border-radius: 5px;
-  cursor: pointer;
-  transition: background .12s, color .12s;
+  outline: none;
 }
-.lang-dropdown-item:hover { background: var(--bg-soft); color: var(--accent); }
-.lang-dropdown-item.selected { color: var(--accent); font-weight: 600; }
-.lang-dropdown-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.lang-picker-input::placeholder { color: var(--fg-3); }
+.lang-picker-list {
+  list-style: none;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 4px 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-2) transparent;
+}
+.lang-picker-list::-webkit-scrollbar { width: 4px; }
+.lang-picker-list::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 999px; }
+.lang-picker-list::-webkit-scrollbar-track { background: transparent; }
+.lang-option {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  color: var(--fg);
+  cursor: pointer;
+  transition: background .08s;
+}
+.lang-option:hover,
+.lang-option.is-active { background: var(--bg-soft); }
+.lang-option.is-selected { color: var(--accent); font-weight: 600; }
+.lang-option.is-selected .lang-option-english { color: var(--accent); opacity: .7; }
+.lang-option-native { flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lang-option-english { color: var(--fg-3); font-size: 0.6875rem; flex-shrink: 0; }
+@keyframes langPickerIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 
 /* === 卡片头部翻译中蓝点 === */
 .result-header-status {
