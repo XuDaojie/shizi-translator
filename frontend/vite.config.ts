@@ -12,6 +12,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': resolve(frontendDir, 'src'),
+      '@public': resolve(frontendDir, 'public'),
     },
   },
   build: {

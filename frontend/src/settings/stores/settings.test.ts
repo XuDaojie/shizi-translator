@@ -255,6 +255,7 @@ describe('syncFromBackend', () => {
       popupPrecreate: true,
       overlayPrecreate: true,
       collectUsage: true,
+      logLevel: 'info',
       shortcuts: {},
     });
 
@@ -322,6 +323,7 @@ describe('syncFromBackend', () => {
       popupPrecreate: true,
       overlayPrecreate: true,
       collectUsage: true,
+      logLevel: 'info',
       shortcuts: {},
     });
 
@@ -367,6 +369,7 @@ describe('syncFromBackend', () => {
       popupPrecreate: true,
       overlayPrecreate: true,
       collectUsage: true,
+      logLevel: 'info',
       shortcuts: {
         'translate-selection': 'Ctrl+Alt+D',
         'translate-screenshot': '',
@@ -408,6 +411,7 @@ describe('syncFromBackend', () => {
       popupPrecreate: true,
       overlayPrecreate: true,
       collectUsage: true,
+      logLevel: 'info',
       shortcuts: { 'translate-selection': 'Alt+D' },
     });
     vi.mocked(invokeGetShortcutConflicts).mockResolvedValue([
@@ -450,6 +454,7 @@ describe('syncFromBackend', () => {
         popupPrecreate: true,
         overlayPrecreate: true,
         collectUsage: true,
+        logLevel: 'info',
         shortcuts: {},
       });
       await settings.syncFromBackend();
@@ -495,6 +500,7 @@ describe('syncFromBackend', () => {
       popupPrecreate: true,
       overlayPrecreate: true,
       collectUsage: true,
+      logLevel: 'info',
       shortcuts: {},
     });
 
@@ -531,6 +537,7 @@ describe('syncFromBackend', () => {
         popupPrecreate: true,
         overlayPrecreate: true,
         collectUsage: true,
+        logLevel: 'info',
         shortcuts: {},
       });
       await settings.syncFromBackend();

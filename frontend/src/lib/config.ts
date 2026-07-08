@@ -58,6 +58,7 @@ export function projectToAppConfig(state: AppSettings): AppConfig {
     popupPrecreate: state.general.popupPrecreate,
     overlayPrecreate: state.general.overlayPrecreate,
     collectUsage: state.advanced.collectUsage,
+    logLevel: state.advanced.logLevel,
     shortcuts: Object.fromEntries(
       state.shortcut.bindings.map((binding) => [binding.id, binding.keys.trim()]),
     ),

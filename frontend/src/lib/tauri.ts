@@ -47,3 +47,19 @@ export async function invokeValidateServiceCredential(request: ServiceProbeReque
 export async function invokeListServiceModels(request: ServiceProbeRequest): Promise<{ models: string[] }> {
   return requireInvoke()<{ models: string[] }>('list_service_models', { request });
 }
+
+export interface FrontendLogEntry {
+  level: 'error' | 'warn' | 'info' | 'debug';
+  message: string;
+  timestamp: string;
+  source: string;
+  meta?: unknown;
+}
+
+export async function invokeWriteFrontendLog(entries: FrontendLogEntry[]): Promise<void> {
+  return requireInvoke()<void>('write_frontend_log', { entries });
+}
+
+export async function invokeExportLogs(): Promise<string> {
+  return requireInvoke()<string>('export_logs');
+}

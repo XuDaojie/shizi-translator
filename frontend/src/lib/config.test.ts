@@ -84,6 +84,7 @@ describe('projectToAppConfig', () => {
     expect(config.popupPrecreate).toBe(true);
     expect(config.overlayPrecreate).toBe(false);
     expect(config.collectUsage).toBe(true);
+    expect(config.logLevel).toBe('info');
     expect(config.services.map((s) => s.id)).toEqual(['deepseek-1', 'zhipu-1']);
     expect(config.services[0]).toMatchObject({
       serviceType: 'deepseek',
@@ -156,6 +157,7 @@ describe('validateConfig', () => {
     popupPrecreate: true,
     overlayPrecreate: true,
     collectUsage: true,
+    logLevel: 'info',
     shortcuts: {},
   };
 
