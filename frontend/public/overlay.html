@@ -14,13 +14,21 @@
   <canvas id="frame"></canvas>
   <div id="mask"></div>
   <div id="sel"></div>
-  <script>
+  <script type="module">
+    import { createLogger } from './logger.js';
+    const logger = createLogger('overlay');
     const invoke = window.__TAURI__.core.invoke;
     const canvas = document.getElementById('frame');
     const sel = document.getElementById('sel');
     let downX = 0, downY = 0, moving = false, down = false;
 
     async function init() {
+      try {
+        const config = await invoke('get_app_config');
+        if (config?.logLevel) logger.setLevel(config.logLevel);
+      } catch (e) {
+        logger.warn('读取配置失败', String(e));
+      }
       const meta = await invoke('get_capture_frame_meta');
       if (!meta) { await invoke('cancel_capture'); return; }
       const [w, h, scale] = meta;
@@ -54,6 +62,7 @@
     window.addEventListener('mousedown', (e) => {
       if (e.button !== 0) {
         // 右键/中键取消：重置拖拽状态，避免后续 mouseup 误提交。
+        logger.info('框选取消：非左键');
         down = false; moving = false;
         invoke('cancel_capture');
         return;
@@ -72,14 +81,15 @@
       down = false;
       const x = Math.min(downX, e.clientX), y = Math.min(downY, e.clientY);
       const w = Math.abs(e.clientX - downX), h = Math.abs(e.clientY - downY);
-      if (!moving || w < 3 || h < 3) { invoke('cancel_capture'); return; }
+      if (!moving || w < 3 || h < 3) { logger.info('框选取消：区域过小'); invoke('cancel_capture'); return; }
+      logger.info('框选提交', { x, y, w, h });
       invoke('submit_capture_region', { x, y, w, h });
     });
     window.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') invoke('cancel_capture');
+      if (e.key === 'Escape') { logger.info('框选取消：Escape'); invoke('cancel_capture'); }
     });
 
-    init().catch(() => invoke('cancel_capture'));
+    init().catch((e) => { logger.error('overlay 初始化失败', String(e)); invoke('cancel_capture'); });
   </script>
 </body>
 </html>

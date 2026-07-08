@@ -1,4 +1,6 @@
 import { syncServiceCards } from './translate-card-sync.js';
+import { createLogger } from './logger.js';
+const logger = createLogger('translate');
 
 const invoke = window.__TAURI__?.core?.invoke;
 const listen = window.__TAURI__?.event?.listen;
@@ -333,6 +335,7 @@ function renderTranslationEvent(payload) {
       const batchId = batchIdFromSession(payload.sessionId);
       const isNewBatch = batchId !== currentBatchId;
       if (isNewBatch) {
+        logger.info('翻译开始', { batch: batchId });
         currentBatchId = batchId;
         resultCards.forEach(function (c) {
           c.status = 'pending';
@@ -395,6 +398,7 @@ function renderTranslationEvent(payload) {
     }
     case 'failed': {
       if (batchIdFromSession(payload.sessionId) !== currentBatchId) return;
+      logger.warn('翻译失败', { session: payload.sessionId, message: payload.message });
       const card = resultCards.get(payload.serviceInstanceId ?? 'default');
       if (!card) return;
       card.text.textContent = payload.message ?? '翻译失败';
@@ -430,6 +434,7 @@ if (listen) {
     renderTranslationEvent(event.payload);
   });
   listen('app-config:changed', (event) => {
+    if (event.payload?.logLevel) logger.setLevel(event.payload.logLevel);
     refreshCardsFromConfig(event.payload);
   });
 }
@@ -450,6 +455,7 @@ async function startManualTranslation() {
     await invoke('start_translation', { text });
   } catch (error) {
     showToast(String(error));
+    logger.error('手动翻译失败', String(error));
   }
 }
 
@@ -459,6 +465,7 @@ async function cancelTranslation() {
     await invoke('cancel_translation');
   } catch (error) {
     showToast(String(error));
+    logger.warn('取消翻译失败', String(error));
   }
 }
 
@@ -472,6 +479,7 @@ async function retryTranslation() {
     await invoke('retry_translation');
   } catch (error) {
     showToast(String(error));
+    logger.error('重试失败', String(error));
   }
 }
 
@@ -596,7 +604,9 @@ function applyPendingConfigRefresh() {
 async function initCards() {
   if (!invoke) return;
   try {
-    refreshCardsFromConfig(await invoke('get_app_config'));
+    const config = await invoke('get_app_config');
+    if (config?.logLevel) logger.setLevel(config.logLevel);
+    refreshCardsFromConfig(config);
   } catch {
     return;
   }
