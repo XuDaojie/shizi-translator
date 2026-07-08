@@ -6,9 +6,13 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
+use zip::write::SimpleFileOptions;
+use zip::ZipWriter;
 
 use crate::app::logging::logs_dir;
 use crate::app::state::AppState;
+use crate::core::config::AppConfig;
+use crate::core::logging::redact_api_key;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -104,6 +108,95 @@ pub async fn write_frontend_log(
     Ok(())
 }
 
+/// 把 AppConfig 序列化为 JSON，每个 service 的 apiKey 用 redact_api_key 脱敏。
+pub fn config_snapshot_json(config: &AppConfig) -> String {
+    let mut value = match serde_json::to_value(config) {
+        Ok(v) => v,
+        Err(_) => return "{}".to_string(),
+    };
+    if let Some(services) = value.get_mut("services").and_then(|s| s.as_array_mut()) {
+        for svc in services {
+            if let Some(key) = svc.get("apiKey").and_then(|k| k.as_str()) {
+                svc["apiKey"] = serde_json::Value::String(redact_api_key(key));
+            }
+        }
+    }
+    serde_json::to_string_pretty(&value).unwrap_or_else(|_| "{}".to_string())
+}
+
+/// 生成 system-info.txt 内容。
+pub fn system_info(config: &AppConfig) -> String {
+    let now = chrono::Local::now().to_rfc3339();
+    format!(
+        "Shizi log export\nVersion: {}\nOS: {}\nExport time: {}\nLog level: {}\n",
+        env!("CARGO_PKG_VERSION"),
+        std::env::consts::OS,
+        now,
+        config.log_level
+    )
+}
+
+/// 把 `log_dir` 下所有 `*.log*` + config snapshot + system info 打包到 `zip_path`。
+pub fn write_export_zip(
+    zip_path: &Path,
+    log_dir: &Path,
+    config: &AppConfig,
+) -> std::io::Result<()> {
+    let file = std::fs::File::create(zip_path)?;
+    let mut zip = ZipWriter::new(file);
+    let opts = SimpleFileOptions::default();
+
+    if let Ok(entries) = std::fs::read_dir(log_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let name = match path.file_name().and_then(|n| n.to_str()) {
+                Some(n) => n.to_string(),
+                None => continue,
+            };
+            if !(name.ends_with(".log") || name.contains(".log.")) {
+                continue;
+            }
+            zip.start_file(&name, opts)?;
+            let bytes = std::fs::read(&path)?;
+            zip.write_all(&bytes)?;
+        }
+    }
+
+    zip.start_file("config-snapshot.json", opts)?;
+    zip.write_all(config_snapshot_json(config).as_bytes())?;
+
+    zip.start_file("system-info.txt", opts)?;
+    zip.write_all(system_info(config).as_bytes())?;
+
+    zip.finish()?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn export_logs(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let save_path = app
+        .dialog()
+        .file()
+        .add_filter("ZIP", &["zip"])
+        .set_file_name(format!("shizi-logs-{}.zip", chrono::Local::now().format("%Y%m%d-%H%M%S")))
+        .blocking_save_file()
+        .ok_or_else(|| "用户取消导出".to_string())?
+        .into_path()
+        .map_err(|_| "无效的保存路径".to_string())?;
+
+    let config = state.config_store.get().map_err(|e| e.to_string())?;
+    let dir = logs_dir(&app).ok_or_else(|| "无法解析日志目录".to_string())?;
+
+    write_export_zip(&save_path, &dir, &config).map_err(|e| e.to_string())?;
+
+    Ok(save_path.to_string_lossy().to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -156,5 +249,62 @@ mod tests {
         assert!(!should_log("debug", log::LevelFilter::Info));
         assert!(!should_log("info", log::LevelFilter::Warn));
         assert!(!should_log("unknown", log::LevelFilter::Debug));
+    }
+
+    #[test]
+    fn config_snapshot_redacts_api_keys() {
+        use crate::core::config::AppConfig;
+        let mut config = AppConfig::from_env();
+        config.services[0].api_key = Some("sk-abcdef12345678".to_string());
+        let json = config_snapshot_json(&config);
+        assert!(json.contains("sk-a...5678"), "apiKey 应脱敏: {json}");
+        assert!(!json.contains("abcdef12345678"), "原始 key 不应出现: {json}");
+    }
+
+    #[test]
+    fn config_snapshot_preserves_other_fields() {
+        use crate::core::config::AppConfig;
+        let config = AppConfig::from_env();
+        let json = config_snapshot_json(&config);
+        assert!(json.contains("\"targetLang\""));
+        assert!(json.contains("\"logLevel\""));
+    }
+
+    #[test]
+    fn system_info_includes_version_os_and_level() {
+        use crate::core::config::AppConfig;
+        let config = AppConfig::from_env();
+        let info = system_info(&config);
+        assert!(info.contains("Version:"));
+        assert!(info.contains("OS:"));
+        assert!(info.contains("Log level:"));
+        assert!(info.contains(&config.log_level));
+    }
+
+    #[test]
+    fn export_zip_bundles_log_files_and_snapshot() {
+        use crate::core::config::AppConfig;
+        use std::io::{Read, Seek, SeekFrom};
+        use zip::ZipArchive;
+
+        let dir = tempdir().unwrap();
+        // 造两个日志文件
+        fs::write(dir.path().join("Shizi.log"), "backend line\n").unwrap();
+        fs::write(dir.path().join("frontend.log"), "frontend line\n").unwrap();
+        fs::write(dir.path().join("config.json"), "{}").unwrap(); // 非日志，应被忽略
+
+        let zip_path = dir.path().join("export.zip");
+        let config = AppConfig::from_env();
+        write_export_zip(&zip_path, dir.path(), &config).unwrap();
+
+        let mut archive = ZipArchive::new(fs::File::open(&zip_path).unwrap()).unwrap();
+        let names: Vec<String> = (0..archive.len())
+            .map(|i| archive.by_index(i).unwrap().name().to_string())
+            .collect();
+        assert!(names.iter().any(|n| n == "Shizi.log"), "{names:?}");
+        assert!(names.iter().any(|n| n == "frontend.log"), "{names:?}");
+        assert!(names.iter().any(|n| n == "config-snapshot.json"), "{names:?}");
+        assert!(names.iter().any(|n| n == "system-info.txt"), "{names:?}");
+        assert!(!names.iter().any(|n| n == "config.json"), "非日志文件不应入包");
     }
 }
