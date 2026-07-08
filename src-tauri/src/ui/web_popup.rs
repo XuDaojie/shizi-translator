@@ -13,6 +13,7 @@ use crate::{
     core::{
         config::{AppConfig, ServiceInstanceConfig},
         llm::provider_for_service,
+        logging::redact_text,
         translation::{
             batch, TranslationEvent, TranslationInput, TranslationService,
             TranslationServiceMeta, TranslationSessionId,
@@ -88,6 +89,13 @@ pub fn start_translation_from_input(
         &batch_id,
     )?;
 
+    let log_level = config.log_level.clone();
+    log::info!(
+        "翻译入口: source_type={} {}",
+        input.kind(),
+        redact_text(&input.text(), &log_level)
+    );
+
     let enabled_services: Vec<ServiceInstanceConfig> = config
         .services
         .iter()
@@ -151,6 +159,13 @@ pub fn start_translation_from_input(
                             .await;
 
                         if let Err(error) = result {
+                            log::error!(
+                                "翻译失败: service={} session={} retryable={} err={}",
+                                failed_service.service_name,
+                                failed_session_id.0,
+                                error.retryable(),
+                                error
+                            );
                             let _ = emit_translation_event(
                                 &app_handle,
                                 TranslationEvent::Failed {
@@ -163,6 +178,11 @@ pub fn start_translation_from_input(
                         }
                     }
                     Err(message) => {
+                        log::error!(
+                            "provider 初始化失败: service={} err={}",
+                            failed_service.service_name,
+                            message
+                        );
                         let _ = emit_translation_event(
                             &app_handle,
                             TranslationEvent::Failed {

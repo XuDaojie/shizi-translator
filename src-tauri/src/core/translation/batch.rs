@@ -38,6 +38,15 @@ pub fn build_batch_requests(
     if requests.is_empty() {
         Err("请先在服务列表启用至少一个已配置服务".to_string())
     } else {
+        log::info!(
+            "构建翻译批次: batch_id={} services={}",
+            batch_id,
+            requests
+                .iter()
+                .map(|r| r.service.service_instance_id.as_str())
+                .collect::<Vec<_>>()
+                .join(",")
+        );
         Ok(requests)
     }
 }

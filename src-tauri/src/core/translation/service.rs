@@ -41,6 +41,13 @@ impl TranslationService {
     where
         F: FnMut(TranslationEvent) + Send,
     {
+        log::info!(
+            "翻译开始: service={} protocol={} session={}",
+            request.service.service_name,
+            request.service.protocol,
+            request.session_id.0
+        );
+
         let full_text = Arc::new(Mutex::new(String::new()));
         let usage: Arc<Mutex<Option<TokenUsage>>> = Arc::new(Mutex::new(None));
         let delta_text = full_text.clone();
@@ -78,6 +85,11 @@ impl TranslationService {
             .unwrap_or_default();
 
         if cancel.is_cancelled() {
+            log::warn!(
+                "翻译取消: service={} session={}",
+                request.service.service_name,
+                request.session_id.0
+            );
             emit(TranslationEvent::Cancelled {
                 session_id: request.session_id,
                 service: request.service,
@@ -87,6 +99,12 @@ impl TranslationService {
                 .lock()
                 .map(|slot| slot.clone())
                 .unwrap_or(None);
+            log::info!(
+                "翻译完成: service={} session={} len={}",
+                request.service.service_name,
+                request.session_id.0,
+                full_text.chars().count()
+            );
             emit(TranslationEvent::Finished {
                 session_id: request.session_id,
                 service: request.service,
