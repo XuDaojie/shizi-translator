@@ -110,6 +110,7 @@ impl TranslationService {
                 service: request.service,
                 full_text,
                 usage,
+                detected_source_lang: None,
             });
         }
 

@@ -155,6 +155,7 @@ pub enum TranslationEvent {
         service: TranslationServiceMeta,
         full_text: String,
         usage: Option<TokenUsage>,
+        detected_source_lang: Option<String>,
     },
     Failed {
         session_id: TranslationSessionId,
@@ -433,6 +434,7 @@ mod tests {
                 input_tokens: 27,
                 output_tokens: 18,
             }),
+            detected_source_lang: None,
         };
         let payload = serde_json::to_value(event).expect("事件应可序列化");
         assert_eq!(payload["type"], "finished");
@@ -449,10 +451,41 @@ mod tests {
             service: fake_service(),
             full_text: "你好".to_string(),
             usage: None,
+            detected_source_lang: None,
         };
         let payload = serde_json::to_value(event).expect("事件应可序列化");
         assert!(payload["usage"].is_null());
         assert_eq!(payload["serviceInstanceId"], "test");
+    }
+
+    fn finished_event(detected: Option<&str>) -> TranslationEvent {
+        TranslationEvent::Finished {
+            session_id: TranslationSessionId("s1".to_string()),
+            service: fake_service(),
+            full_text: "译文".to_string(),
+            usage: None,
+            detected_source_lang: detected.map(|s| s.to_string()),
+        }
+    }
+
+    #[test]
+    fn finished_event_serializes_with_detected_source_lang() {
+        let json = serde_json::to_string(&finished_event(Some("英语"))).expect("序列化");
+        assert!(
+            json.contains("\"detectedSourceLang\":\"英语\""),
+            "应输出 camelCase detectedSourceLang: {}",
+            json
+        );
+    }
+
+    #[test]
+    fn finished_event_detected_source_lang_null_when_none() {
+        let json = serde_json::to_string(&finished_event(None)).expect("序列化");
+        assert!(
+            json.contains("\"detectedSourceLang\":null"),
+            "None 时应为 null: {}",
+            json
+        );
     }
 
     #[test]
