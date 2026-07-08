@@ -22,7 +22,8 @@ use ui::{
     },
     service_probe::{list_service_models, validate_service_credential},
     web_popup::{
-        cancel_translation, retry_translation, start_translation, take_pending_source_text,
+        cancel_translation, get_session_languages, retry_translation, set_session_languages,
+        start_translation, take_pending_source_text,
     },
 };
 
@@ -44,6 +45,8 @@ pub fn run() {
             trigger_ocr_translation,
             cancel_translation,
             retry_translation,
+            get_session_languages,
+            set_session_languages,
             take_pending_source_text,
             get_app_config,
             save_app_config,

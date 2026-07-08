@@ -23,6 +23,15 @@ use crate::{
 
 pub const TRANSLATION_EVENT: &str = "translation:event";
 
+/// 会话语言 IPC DTO。字段为语言代码（如 "auto"/"zh-CN"），非显示名。
+/// 序列化为 `{ sourceLang, targetLang }`。仅 Serialize（get 返回；set 用两个 String 参数）。
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionLanguages {
+    pub source_lang: String,
+    pub target_lang: String,
+}
+
 pub fn emit_translation_event(
     app: &tauri::AppHandle,
     event: TranslationEvent,
@@ -81,10 +90,11 @@ pub fn start_translation_from_input(
 
     let batch_id = create_session_id()?;
 
+    let (session_source_lang, session_target_lang) = state.session_languages();
     let requests = batch::build_batch_requests(
         input.clone(),
-        config.target_lang.clone(),
-        config.default_source_lang.clone(),
+        session_target_lang,
+        session_source_lang,
         &config.services,
         &batch_id,
     )?;
@@ -230,6 +240,26 @@ pub async fn take_pending_source_text(
     state: tauri::State<'_, AppState>,
 ) -> Result<Option<String>, String> {
     state.take_pending_source_text()
+}
+
+#[tauri::command]
+pub async fn get_session_languages(
+    state: tauri::State<'_, AppState>,
+) -> Result<SessionLanguages, String> {
+    let (source_lang, target_lang) = state.session_languages();
+    Ok(SessionLanguages {
+        source_lang,
+        target_lang,
+    })
+}
+
+#[tauri::command]
+pub async fn set_session_languages(
+    source_lang: String,
+    target_lang: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    state.set_session_languages(source_lang, target_lang)
 }
 
 #[tauri::command]
