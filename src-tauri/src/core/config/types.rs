@@ -27,6 +27,37 @@ fn default_log_level() -> String {
     "info".to_string()
 }
 
+/// 把 OS locale（如 `zh-CN`、`zh-Hans`、`en-GB`）映射到语言下拉列表中的 code。
+/// 精确匹配优先；否则按主语言前缀映射；都不匹配回退 `en-US`。
+fn map_os_lang_to_list(os: &str) -> String {
+    let lower = os.to_lowercase();
+    let codes = [
+        "zh-CN", "zh-TW", "en-US", "ja-JP", "ko-KR", "fr-FR", "de-DE", "es-ES", "ru-RU",
+    ];
+    if let Some(matched) = codes.iter().find(|c| c.eq_ignore_ascii_case(&lower)) {
+        return (*matched).to_string();
+    }
+    let main = lower.split('-').next().unwrap_or("");
+    let mapped = match main {
+        "zh" => {
+            if lower.contains("hant") || lower.contains("tw") || lower.contains("hk") {
+                "zh-TW"
+            } else {
+                "zh-CN"
+            }
+        }
+        "en" => "en-US",
+        "ja" => "ja-JP",
+        "ko" => "ko-KR",
+        "fr" => "fr-FR",
+        "de" => "de-DE",
+        "es" => "es-ES",
+        "ru" => "ru-RU",
+        _ => "en-US",
+    };
+    mapped.to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ServiceInstanceConfig {
@@ -388,6 +419,39 @@ mod tests {
     fn from_env_default_target_lang_is_zh_cn() {
         let config = AppConfig::from_env();
         assert_eq!(config.target_lang, "zh-CN");
+    }
+
+    #[test]
+    fn map_os_lang_exact_match() {
+        assert_eq!(map_os_lang_to_list("zh-CN"), "zh-CN");
+        assert_eq!(map_os_lang_to_list("en-US"), "en-US");
+        assert_eq!(map_os_lang_to_list("fr-FR"), "fr-FR");
+    }
+
+    #[test]
+    fn map_os_lang_zh_variants() {
+        assert_eq!(map_os_lang_to_list("zh-Hans"), "zh-CN");
+        assert_eq!(map_os_lang_to_list("zh-SG"), "zh-CN");
+        assert_eq!(map_os_lang_to_list("zh-Hant"), "zh-TW");
+        assert_eq!(map_os_lang_to_list("zh-HK"), "zh-TW");
+        assert_eq!(map_os_lang_to_list("zh-TW"), "zh-TW");
+    }
+
+    #[test]
+    fn map_os_lang_main_prefix() {
+        assert_eq!(map_os_lang_to_list("en-GB"), "en-US");
+        assert_eq!(map_os_lang_to_list("ja-JP"), "ja-JP");
+        assert_eq!(map_os_lang_to_list("ko-KR"), "ko-KR");
+        assert_eq!(map_os_lang_to_list("de-DE"), "de-DE");
+        assert_eq!(map_os_lang_to_list("es-ES"), "es-ES");
+        assert_eq!(map_os_lang_to_list("ru-RU"), "ru-RU");
+    }
+
+    #[test]
+    fn map_os_lang_unmapped_falls_back_to_en_us() {
+        assert_eq!(map_os_lang_to_list("th-TH"), "en-US");
+        assert_eq!(map_os_lang_to_list("xx-YY"), "en-US");
+        assert_eq!(map_os_lang_to_list(""), "en-US");
     }
 
     #[test]
