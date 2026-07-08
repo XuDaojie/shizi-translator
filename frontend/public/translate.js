@@ -27,6 +27,7 @@ const sourceText = document.getElementById('sourceText');
 const speakSourceBtn = document.getElementById('speakSourceBtn');
 const copySourceBtn = document.getElementById('copySourceBtn');
 const sourceBadge = document.getElementById('sourceBadge');
+const langBadge = document.getElementById('langBadge');
 const pinBtn = document.getElementById('pinBtn');
 const ocrBtn = document.getElementById('ocrBtn');
 const settingsBtn = document.getElementById('settingsBtn');
@@ -142,6 +143,7 @@ function updateCardMeta(card, payload) {
 function renderLangLabels() {
   langSource.querySelector('.lang-label').textContent = LANG_LABEL(sessionSourceLang);
   langTarget.querySelector('.lang-label').textContent = LANG_LABEL(sessionTargetLang);
+  setLangBadge(sessionSourceLang === 'auto' ? '检测中…' : '');
 }
 
 /* === 来源徽章 === */
@@ -157,6 +159,11 @@ function setSourceBadge(sourceType) {
       sourceBadge.textContent = '';
       break;
   }
+}
+
+/* === 检测语言徽章（.lang-badge） === */
+function setLangBadge(text) {
+  langBadge.textContent = text || '';
 }
 
 /* === batchId 辅助 === */
@@ -256,7 +263,16 @@ function getCard(payload) {
 
   resultsList.appendChild(card);
 
-  const ref = { el: card, text, actions, tokens, inputTokens, outputTokens, status: 'pending' };
+  const ref = {
+    el: card,
+    text,
+    actions,
+    tokens,
+    inputTokens,
+    outputTokens,
+    status: 'pending',
+    detectedSourceLang: null,
+  };
   resultCards.set(id, ref);
   return ref;
 }
@@ -418,11 +434,16 @@ function updateBatchStatus() {
     isTranslating = false;
     currentBatchId = null;
     setSourceBadge(null);
+    if (sessionSourceLang === 'auto') {
+      const detected = cards.find((c) => c.detectedSourceLang)?.detectedSourceLang;
+      setLangBadge(detected || '');
+    }
     setStatus({ text: '翻译完成', loading: false, action: { label: '重试', onClick: retryTranslation } });
     applyPendingConfigRefresh();
   } else if (allFailed) {
     isTranslating = false;
     currentBatchId = null;
+    setLangBadge('');
     setStatus({ text: '翻译失败', loading: false, action: { label: '重试', onClick: retryTranslation } });
     applyPendingConfigRefresh();
   } else if (anyTranslating) {
@@ -431,6 +452,7 @@ function updateBatchStatus() {
     isTranslating = false;
     currentBatchId = null;
     setSourceBadge(null);
+    setLangBadge('');
     setStatus({ text: '部分完成', loading: false, action: { label: '重试', onClick: retryTranslation } });
     applyPendingConfigRefresh();
   }
@@ -461,6 +483,7 @@ function renderTranslationEvent(payload) {
         autoResize();
         updateCharCount();
         setSourceBadge(payload.sourceType);
+        setLangBadge(sessionSourceLang === 'auto' ? '检测中…' : '');
         isTranslating = true;
         setStatus({ text: '翻译中…', loading: true, action: { label: '取消', onClick: cancelTranslation } });
       }
@@ -493,6 +516,10 @@ function renderTranslationEvent(payload) {
       card.text.style.color = '';
       setStreamCursor(card, false);
       setHeaderDot(card, false);
+      card.detectedSourceLang = payload.detectedSourceLang ?? null;
+      if (sessionSourceLang === 'auto' && payload.detectedSourceLang) {
+        setLangBadge(payload.detectedSourceLang);
+      }
       if (payload.usage) {
         card.inputTokens.textContent = payload.usage.inputTokens;
         card.outputTokens.textContent = payload.usage.outputTokens;

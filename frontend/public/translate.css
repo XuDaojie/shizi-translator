@@ -205,6 +205,7 @@ body {
   line-height: 1.5;
   font-weight: 600;
 }
+.lang-badge:empty { display: none; }
 
 /* === 翻译工具栏 === */
 .lang-toolbar {
