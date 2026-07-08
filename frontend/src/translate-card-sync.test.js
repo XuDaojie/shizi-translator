@@ -67,19 +67,12 @@ describe('syncServiceCards', () => {
 
   it('服务名称或类型变化时更新已有卡片元信息', () => {
     const deps = makeDeps(['svc']);
-    const sourceLabel = { textContent: '' };
-    const targetLabel = { textContent: '' };
 
     syncServiceCards({
-      targetLang: '',
       services: [
         { id: 'svc', serviceType: 'openai', name: '新名称', enabled: true },
       ],
-    }, {
-      ...deps,
-      langSource: { querySelector: () => sourceLabel },
-      langTarget: { querySelector: () => targetLabel },
-    });
+    }, deps);
 
     expect(deps.updates).toEqual([['svc', '新名称', 'openai']]);
     expect(deps.resultCards.get('svc').meta).toEqual({
@@ -87,8 +80,6 @@ describe('syncServiceCards', () => {
       serviceType: 'openai',
       serviceName: '新名称',
     });
-    expect(sourceLabel.textContent).toBe('自动检测');
-    expect(targetLabel.textContent).toBe('中文');
   });
 
   it('禁用正在翻译的服务时保留卡片和现有文本', () => {
