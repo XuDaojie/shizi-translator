@@ -131,6 +131,8 @@ npm run test                # vitest 单测
    - **交接提示词只打印、不落盘**：直接在回复末尾以代码块输出，供用户复制到新对话，不写入文件、不进 git。新对话恢复上下文唯一依赖是已提交的 spec / plan 文档。
    - **编码执行阶段收尾**：所有任务落地、测试通过后，先按协作规范第 2 条同步文档，再执行 `finishing-a-development-branch`（或等价 finish 流程）。
 
+8. **Agent Team 多代理协作规范**：涉及 Agent Team（多代理调度与编排）协作时，必须遵循 [docs/agent-team.md](docs/agent-team.md) 的规范。该规范为代理任务拆分、编排、上下文交接、模型分配、验证收尾等提供统一约束，与第 6 条「Superpowers 子代理模型分配策略」配套。
+
 ## 提交规范
 
 遵循 Conventional Commits，格式：`<type>(<scope>): <中文描述>`
