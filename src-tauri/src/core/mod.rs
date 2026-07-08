@@ -5,3 +5,4 @@ pub mod ocr;
 pub mod ocr_translation;
 pub mod selection;
 pub mod translation;
+pub mod logging;
