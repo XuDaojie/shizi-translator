@@ -13,8 +13,10 @@ import { BUILTIN_SERVICES, buildServices, DEFAULT_PROMPTS } from '../tokens'
 import { projectToAppConfig, validateConfig } from '@/lib/config'
 import { invokeGetAppConfig, invokeGetShortcutConflicts, invokeSaveAppConfig, isTauriReady, type ShortcutConflict } from '@/lib/tauri'
 import { toast } from '@/lib/toast'
+import { createLogger } from '@public/logger.js'
 
 const STORAGE_KEY = 'app:settings:v1'
+const logger = createLogger('settings')
 /** 旧版本 key,首次启动时如有残留则迁移到新 key,确保用户数据不丢。 */
 const LEGACY_STORAGE_KEYS = ['shizi:settings:v1']
 
@@ -416,6 +418,7 @@ const persist = async (notify = false): Promise<void> => {
   if (err) {
     saveStatus.value = 'error'
     toast.error('保存失败', err)
+    logger.warn('配置校验失败', err)
     return
   }
   try {
@@ -435,6 +438,7 @@ const persist = async (notify = false): Promise<void> => {
   } catch (e) {
     saveStatus.value = 'error'
     toast.error('保存失败', String(e))
+    logger.error('保存配置失败', String(e))
   }
 }
 
@@ -491,6 +495,7 @@ export const useSettings = () => ({
     try {
       backend = await invokeGetAppConfig()
     } catch {
+      logger.warn('从后端同步配置失败')
       return
     }
     if (!backend.services || backend.services.length === 0) {
@@ -498,6 +503,7 @@ export const useSettings = () => ({
       try {
         await invokeSaveAppConfig(projectToAppConfig(state))
       } catch {
+        logger.warn('推送配置到后端失败')
         // 忽略：下次启动再试
       }
       syncingFromBackend = true
