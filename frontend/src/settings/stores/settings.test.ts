@@ -1,6 +1,6 @@
 import { nextTick } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { applyShortcutConflicts, mergeBackendIntoServices, useSettings } from './settings';
+import { applyBackendLogLevel, applyShortcutConflicts, mergeBackendIntoServices, useSettings } from './settings';
 import { DEFAULT_PROMPTS } from '../tokens';
 import type { ServiceInstanceConfig } from '@/types/config';
 import { invokeGetAppConfig, invokeGetShortcutConflicts, invokeSaveAppConfig, isTauriReady } from '@/lib/tauri';
@@ -582,3 +582,19 @@ describe('applyShortcutConflicts', () => {
     expect(result[0].error).toBeUndefined();
   });
 });
+
+describe('applyBackendLogLevel', () => {
+  it('后端有效值覆盖前端', () => {
+    expect(applyBackendLogLevel('info', 'debug')).toBe('debug')
+    expect(applyBackendLogLevel('debug', 'error')).toBe('error')
+  })
+
+  it('后端 undefined 保留前端', () => {
+    expect(applyBackendLogLevel('info', undefined)).toBe('info')
+  })
+
+  it('后端非法值保留前端', () => {
+    expect(applyBackendLogLevel('warn', 'trace')).toBe('warn')
+    expect(applyBackendLogLevel('warn', '')).toBe('warn')
+  })
+})

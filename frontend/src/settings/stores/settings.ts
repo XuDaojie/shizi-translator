@@ -2,6 +2,7 @@ import { reactive, watch } from 'vue'
 import type {
   AppSettings,
   CustomServiceType,
+  LogLevel,
   OcrHistoryEntry,
   ServiceId,
   ServiceInstance,
@@ -274,6 +275,17 @@ export const applyShortcutConflicts = (
   }))
 }
 
+const VALID_LOG_LEVELS: readonly LogLevel[] = ['error', 'warn', 'info', 'debug']
+
+/** 后端 logLevel 有效则覆盖前端，否则保留前端。 */
+export const applyBackendLogLevel = (
+  local: LogLevel,
+  backend: string | undefined,
+): LogLevel =>
+  backend && VALID_LOG_LEVELS.includes(backend as LogLevel)
+    ? (backend as LogLevel)
+    : local
+
 const loadFromStorage = (): AppSettings => {
   if (typeof window === 'undefined') return buildDefaults()
   try {
@@ -501,6 +513,10 @@ export const useSettings = () => ({
     state.translation.restoreClipboard =
       backend.restoreClipboard ?? state.translation.restoreClipboard
     state.shortcut.bindings = mergeBackendIntoShortcuts(state.shortcut.bindings, backend.shortcuts ?? {})
+    state.advanced.logLevel = applyBackendLogLevel(
+      state.advanced.logLevel,
+      backend.logLevel,
+    )
     await refreshShortcutConflicts()
     syncingFromBackend = false
     commitBaseline()
