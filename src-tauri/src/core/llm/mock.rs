@@ -17,12 +17,15 @@ impl LlmProvider for MockLlmProvider {
         on_event: &mut (dyn FnMut(LlmStreamEvent) + Send),
         cancel: &CancellationToken,
     ) -> Result<(), LlmError> {
-        let chunks = [
-            "[Mock 翻译] ".to_string(),
-            request.source_text().to_string(),
-            " -> ".to_string(),
-            request.target_lang.clone(),
-        ];
+        let is_auto = request.prompts.source_lang == "auto";
+        let mut chunks: Vec<String> = Vec::new();
+        if is_auto {
+            chunks.push("【源语言：英语】\n".to_string());
+        }
+        chunks.push("[Mock 翻译] ".to_string());
+        chunks.push(request.source_text().to_string());
+        chunks.push(" -> ".to_string());
+        chunks.push(request.target_lang.clone());
 
         for chunk in chunks {
             on_event(LlmStreamEvent::Delta(chunk));
@@ -113,6 +116,31 @@ mod tests {
         assert!(events
             .iter()
             .any(|ev| matches!(ev, LlmStreamEvent::Delta(_))));
+    }
+
+    #[tokio::test]
+    async fn mock_emits_detection_header_when_auto() {
+        let provider = MockLlmProvider;
+        let cancel = CancellationToken::new();
+        let mut events = Vec::new();
+        let mut req = request();
+        req.prompts.source_lang = "auto".to_string();
+        provider
+            .stream_translate(&req, &mut |ev: LlmStreamEvent| events.push(ev), &cancel)
+            .await
+            .expect("mock 应成功");
+        let text: String = events
+            .iter()
+            .filter_map(|ev| match ev {
+                LlmStreamEvent::Delta(t) => Some(t.clone()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            text.starts_with("【源语言：英语】\n"),
+            "auto 时应首行输出标记: {}",
+            text
+        );
     }
 }
 
