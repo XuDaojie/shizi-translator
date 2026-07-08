@@ -1,4 +1,4 @@
-# Agent Team 规范(基于 Superpowers)
+# Agent Team 规范(基于 Superpowers) 弃用
 
 > 项目:基于大模型的翻译软件(Rust + Tauri 2)
 > 编排框架:Claude Code + Superpowers 插件
