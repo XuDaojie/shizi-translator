@@ -3,7 +3,7 @@ use std::env;
 
 use serde::{Deserialize, Serialize};
 
-const DEFAULT_TARGET_LANG: &str = "中文";
+const DEFAULT_TARGET_LANG: &str = "zh-CN";
 const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 const DEFAULT_MODEL: &str = "gpt-4o-mini";
 const DEFAULT_TIMEOUT_SECONDS: u32 = 60;
@@ -385,6 +385,12 @@ mod tests {
     }
 
     #[test]
+    fn from_env_default_target_lang_is_zh_cn() {
+        let config = AppConfig::from_env();
+        assert_eq!(config.target_lang, "zh-CN");
+    }
+
+    #[test]
     fn serializes_camel_case() {
         let config = AppConfig::from_env();
         let json = serde_json::to_string(&config).expect("序列化");
@@ -400,12 +406,12 @@ mod tests {
     #[test]
     fn deserializes_with_defaults() {
         let json = r#"{
-            "targetLang": "中文"
+            "targetLang": "zh-CN"
         }"#;
         let config: AppConfig = serde_json::from_str::<AppConfig>(json)
             .expect("缺少字段应可反序列化")
             .normalized();
-        assert_eq!(config.target_lang, "中文");
+        assert_eq!(config.target_lang, "zh-CN");
         assert!(config.popup_precreate);
         assert!(config.overlay_precreate);
         assert!(config.collect_usage);
@@ -416,7 +422,7 @@ mod tests {
     #[test]
     fn deserializes_services_array() {
         let json = r#"{
-            "targetLang": "中文",
+            "targetLang": "zh-CN",
             "services": [
                 {
                     "id": "svc-1",
@@ -586,7 +592,7 @@ mod tests {
 
     #[test]
     fn deserializes_log_level_with_default() {
-        let json = r#"{ "targetLang": "中文" }"#;
+        let json = r#"{ "targetLang": "zh-CN" }"#;
         let config: AppConfig = serde_json::from_str::<AppConfig>(json)
             .expect("缺少字段应可反序列化")
             .normalized();
