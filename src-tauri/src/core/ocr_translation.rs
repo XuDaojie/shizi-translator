@@ -27,14 +27,27 @@ pub async fn recognize_cropped_for_translation<O>(
 where
     O: OcrEngine,
 {
+    log::info!("OCR 抓帧: {}x{}", frame.width, frame.height);
     let (x, y, w, h) = region;
-    let cropped = frame.crop(x, y, w, h)?;
-    let result = ocr.recognize(cropped, hints).await?;
+    let cropped = frame.crop(x, y, w, h).map_err(|e| {
+        log::error!("OCR 失败: {e}");
+        e
+    })?;
+    let result = ocr.recognize(cropped, hints).await.map_err(|e| {
+        log::error!("OCR 失败: {e}");
+        e
+    })?;
     let text = result.text.trim().to_string();
+    log::info!("OCR 识别: 文本长度={}", text.chars().count());
     if text.is_empty() {
+        log::error!("OCR 失败: 空文本");
         return Err(OcrError::EmptyResult.into());
     }
 
+    log::info!(
+        "OCR 翻译入口: {}",
+        crate::core::logging::redact_text(&text, "info")
+    );
     Ok(Some(TranslationInput::OcrText {
         text,
         image_id: None,

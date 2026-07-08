@@ -128,6 +128,8 @@ impl OpenAiCompatibleProvider {
                 )
             });
 
+        log::warn!("OpenAI 响应非 2xx: status={} retryable={}", status, retryable);
+
         if retryable {
             LlmError::Http(message)
         } else {
@@ -199,6 +201,13 @@ impl LlmProvider for OpenAiCompatibleProvider {
             .api_key
             .as_deref()
             .ok_or(LlmError::MissingConfig("OpenAI API Key"))?;
+
+        log::info!(
+            "OpenAI 请求: endpoint={} model={} key={}",
+            self.endpoint(),
+            self.config.model,
+            crate::core::logging::redact_api_key(api_key)
+        );
 
         let response = self
             .client

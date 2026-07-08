@@ -312,6 +312,13 @@ impl LlmProvider for ClaudeProvider {
             .as_deref()
             .ok_or(LlmError::MissingConfig("Claude API Key"))?;
 
+        log::info!(
+            "Claude 请求: endpoint={} model={} key={}",
+            self.endpoint(),
+            self.config.model,
+            crate::core::logging::redact_api_key(api_key)
+        );
+
         let body = self.request_body(request);
 
         let response = self
