@@ -4,7 +4,7 @@ mod platform;
 mod ui;
 
 use app::{
-    popup_window::ensure_popup_window,
+    logging, popup_window::ensure_popup_window,
     shortcuts::{handle_global_shortcut, register_global_shortcuts_at_startup},
     state::AppState,
     tray::setup_tray,
@@ -59,6 +59,20 @@ pub fn run() {
             let config_store = ConfigStore::load(app.handle())
                 .map_err(|error| tauri::Error::Anyhow(error.into()))?;
             app.manage(AppState::new(config_store));
+
+            // 日志初始化（best-effort，不阻止启动）
+            let log_level = app
+                .state::<AppState>()
+                .config_store
+                .get()
+                .map(|c| c.log_level)
+                .unwrap_or_else(|_| "info".to_string());
+            logging::init_logging(app.handle(), &log_level);
+            if let Some(dir) = logging::logs_dir(app.handle()) {
+                logging::cleanup_old_logs(&dir, 7);
+            }
+            log::info!("应用启动，日志等级: {}", log_level);
+
             setup_tray(app)?;
             setup_close_to_hide(app);
 

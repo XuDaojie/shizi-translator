@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use tauri::Manager;
+use tauri_plugin_log::{RotationStrategy, Target, TargetKind};
 
 /// 日志目录：`app_config_dir()/logs/`。
 pub fn logs_dir(app: &tauri::AppHandle) -> Option<PathBuf> {
@@ -41,6 +42,38 @@ pub fn cleanup_old_logs(dir: &Path, days: u64) {
             let _ = std::fs::remove_file(&path);
         }
     }
+}
+
+/// 初始化后端日志：注册 tauri-plugin-log，写入 `app_config_dir()/logs/Shizi.log`，
+/// 5MB KeepAll 轮转。注册时内部 level 设 Debug（不挡），全局 filter 由调用方
+/// 用 `log::set_max_level` 设置。best-effort，失败 eprintln 兜底不阻止启动。
+pub fn init_logging(app: &tauri::AppHandle, log_level: &str) {
+    let dir = match logs_dir(app) {
+        Some(d) => d,
+        None => {
+            eprintln!("日志：无法解析日志目录，跳过初始化");
+            return;
+        }
+    };
+    if let Err(error) = std::fs::create_dir_all(&dir) {
+        eprintln!("日志：无法创建日志目录 {dir:?}: {error}");
+        return;
+    }
+
+    let plugin = tauri_plugin_log::Builder::new()
+        .level(log::LevelFilter::Debug)
+        .max_file_size(5_000_000)
+        .rotation_strategy(RotationStrategy::KeepAll)
+        .targets(vec![Target::new(TargetKind::Folder { path: dir.clone(), file_name: None })])
+        .build();
+
+    if let Err(error) = app.plugin(plugin) {
+        eprintln!("日志：注册 tauri-plugin-log 失败: {error}");
+        return;
+    }
+
+    // 插件注册时会把全局 max_level 设为 Debug，这里覆盖为配置值。
+    log::set_max_level(parse_level_filter(log_level));
 }
 
 fn is_log_file(path: &Path) -> bool {
