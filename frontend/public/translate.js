@@ -2,6 +2,22 @@ import { syncServiceCards } from './translate-card-sync.js';
 import { createLogger } from './logger.js';
 const logger = createLogger('translate');
 
+// 语言代码↔名称映射。与 frontend/src/settings/tokens.ts LANGUAGES 同源，
+// 新增语言两处同步。translate.js 为纯静态不能 import Vue src，故复制。
+const LANGUAGES = [
+  { value: 'auto', label: '自动检测' },
+  { value: 'zh-CN', label: '简体中文' },
+  { value: 'zh-TW', label: '繁體中文' },
+  { value: 'en-US', label: 'English' },
+  { value: 'ja-JP', label: '日本語' },
+  { value: 'ko-KR', label: '한국어' },
+  { value: 'fr-FR', label: 'Français' },
+  { value: 'de-DE', label: 'Deutsch' },
+  { value: 'es-ES', label: 'Español' },
+  { value: 'ru-RU', label: 'Русский' },
+];
+const LANG_LABEL = (code) => LANGUAGES.find((l) => l.value === code)?.label ?? code;
+
 const invoke = window.__TAURI__?.core?.invoke;
 const listen = window.__TAURI__?.event?.listen;
 const getCurrentWindow = window.__TAURI__?.window?.getCurrentWindow;
@@ -28,6 +44,8 @@ let isTranslating = false;
 let currentBatchId = null;
 let pendingConfigRefresh = null;
 let pinned = false;
+let sessionSourceLang = 'auto';
+let sessionTargetLang = 'zh-CN';
 const resultCards = new Map();
 
 /* === Toast === */
@@ -120,6 +138,12 @@ function updateCardMeta(card, payload) {
   }
 }
 
+/* === 语言标签 === */
+function renderLangLabels() {
+  langSource.querySelector('.lang-label').textContent = LANG_LABEL(sessionSourceLang);
+  langTarget.querySelector('.lang-label').textContent = LANG_LABEL(sessionTargetLang);
+}
+
 /* === 来源徽章 === */
 function setSourceBadge(sourceType) {
   switch (sourceType) {
@@ -157,6 +181,7 @@ function getCard(payload) {
     '<div class="result-card-header">',
     '  <svg class="result-engine-icon" viewBox="0 0 20 20"></svg>',
     '  <span class="result-engine-name">' + displayName + '</span>',
+    '  <span class="result-header-status" hidden><span class="result-header-dot"></span></span>',
     '  <button class="result-collapse-btn" title="折叠">',
     '    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>',
     '  </button>',
@@ -281,8 +306,91 @@ function setStreamCursor(card, visible) {
   }
 }
 
+function setHeaderDot(card, visible) {
+  const dot = card.el.querySelector('.result-header-status');
+  if (dot) dot.hidden = !visible;
+}
+
 function scrollToBottom(card) {
   card.text.scrollTop = card.text.scrollHeight;
+}
+
+/* === 语言下拉 === */
+let activeDropdown = null;
+
+function closeDropdown() {
+  if (activeDropdown) {
+    activeDropdown.remove();
+    activeDropdown = null;
+    document.removeEventListener('mousedown', onDropdownOutsideClick, true);
+    document.removeEventListener('keydown', onDropdownEsc, true);
+  }
+}
+
+function onDropdownOutsideClick(e) {
+  if (activeDropdown && !activeDropdown.contains(e.target) && !e.target.closest('.lang-side')) {
+    closeDropdown();
+  }
+}
+
+function onDropdownEsc(e) {
+  if (e.key === 'Escape') closeDropdown();
+}
+
+function openDropdown(side) {
+  closeDropdown();
+  const options = side === 'source'
+    ? LANGUAGES
+    : LANGUAGES.filter((l) => l.value !== 'auto');
+  const current = side === 'source' ? sessionSourceLang : sessionTargetLang;
+  const dd = document.createElement('div');
+  dd.className = 'lang-dropdown';
+  options.forEach((opt) => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'lang-dropdown-item' + (opt.value === current ? ' selected' : '');
+    item.textContent = opt.label;
+    item.addEventListener('click', () => {
+      selectLang(side, opt.value);
+      closeDropdown();
+    });
+    dd.appendChild(item);
+  });
+  const anchor = side === 'source' ? langSource : langTarget;
+  anchor.parentElement.appendChild(dd);
+  const rect = anchor.getBoundingClientRect();
+  const parentRect = anchor.parentElement.getBoundingClientRect();
+  dd.style.left = (rect.left - parentRect.left) + 'px';
+  dd.style.top = (rect.bottom - parentRect.top) + 'px';
+  dd.style.minWidth = rect.width + 'px';
+  activeDropdown = dd;
+  document.addEventListener('mousedown', onDropdownOutsideClick, true);
+  document.addEventListener('keydown', onDropdownEsc, true);
+}
+
+async function selectLang(side, code) {
+  if (side === 'source') sessionSourceLang = code;
+  else sessionTargetLang = code;
+  renderLangLabels();
+  try {
+    await invoke('set_session_languages', { sourceLang: sessionSourceLang, targetLang: sessionTargetLang });
+  } catch (e) {
+    showToast(String(e));
+  }
+}
+
+async function swapLangs() {
+  if (sessionSourceLang === 'auto' || sessionTargetLang === 'auto') {
+    showToast('自动检测不支持交换');
+    return;
+  }
+  [sessionSourceLang, sessionTargetLang] = [sessionTargetLang, sessionSourceLang];
+  renderLangLabels();
+  try {
+    await invoke('set_session_languages', { sourceLang: sessionSourceLang, targetLang: sessionTargetLang });
+  } catch (e) {
+    showToast(String(e));
+  }
 }
 
 /* === 状态栏 === */
@@ -347,6 +455,7 @@ function renderTranslationEvent(payload) {
           c.el.classList.remove('has-overflow', 'expanded');
           const expandLabel = c.el.querySelector('.result-expand-label');
           if (expandLabel) expandLabel.textContent = '展开全文';
+          setHeaderDot(c, false);
         });
         sourceText.value = payload.sourceText ?? sourceText.value;
         autoResize();
@@ -364,6 +473,7 @@ function renderTranslationEvent(payload) {
       card.el.classList.remove('collapsed');
       card.el.classList.remove('failed', 'cancelled');
       setStreamCursor(card, true);
+      setHeaderDot(card, true);
       break;
     }
     case 'delta': {
@@ -382,6 +492,7 @@ function renderTranslationEvent(payload) {
       card.text.textContent = payload.fullText ?? card.text.textContent;
       card.text.style.color = '';
       setStreamCursor(card, false);
+      setHeaderDot(card, false);
       if (payload.usage) {
         card.inputTokens.textContent = payload.usage.inputTokens;
         card.outputTokens.textContent = payload.usage.outputTokens;
@@ -404,6 +515,7 @@ function renderTranslationEvent(payload) {
       card.text.textContent = payload.message ?? '翻译失败';
       card.text.style.color = 'var(--danger)';
       setStreamCursor(card, false);
+      setHeaderDot(card, false);
       card.actions.style.visibility = 'hidden';
       card.tokens.style.display = 'none';
       card.el.classList.add('failed');
@@ -418,6 +530,7 @@ function renderTranslationEvent(payload) {
       card.text.appendChild(document.createTextNode('\n[已取消]'));
       card.text.style.color = 'var(--fg-3)';
       setStreamCursor(card, false);
+      setHeaderDot(card, false);
       card.el.classList.add('cancelled');
       card.status = 'cancelled';
       updateBatchStatus();
@@ -527,6 +640,9 @@ ocrBtn.addEventListener('click', triggerOcr);
 settingsBtn.addEventListener('click', openSettings);
 speakSourceBtn.addEventListener('click', () => speakText(sourceText.value, 'en-US'));
 copySourceBtn.addEventListener('click', () => copyText(sourceText.value, copySourceBtn));
+langSource.addEventListener('click', () => openDropdown('source'));
+langTarget.addEventListener('click', () => openDropdown('target'));
+langSwap.addEventListener('click', swapLangs);
 
 /* === 待回填原文 === */
 async function applyPendingSourceText() {
@@ -574,8 +690,6 @@ function refreshCardsFromConfig(config) {
       getCard,
       updateCardMeta,
       resultsList,
-      langSource,
-      langTarget,
       allowCreate: false,
       allowRemove: false,
     });
@@ -588,8 +702,6 @@ function refreshCardsFromConfig(config) {
     getCard,
     updateCardMeta,
     resultsList,
-    langSource,
-    langTarget,
   });
   adjustHeight();
 }
@@ -604,8 +716,14 @@ function applyPendingConfigRefresh() {
 async function initCards() {
   if (!invoke) return;
   try {
-    const config = await invoke('get_app_config');
+    const [config, langs] = await Promise.all([
+      invoke('get_app_config'),
+      invoke('get_session_languages'),
+    ]);
     if (config?.logLevel) logger.setLevel(config.logLevel);
+    sessionSourceLang = langs?.sourceLang ?? 'auto';
+    sessionTargetLang = langs?.targetLang ?? 'zh-CN';
+    renderLangLabels();
     refreshCardsFromConfig(config);
   } catch {
     return;

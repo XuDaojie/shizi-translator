@@ -32,15 +32,5 @@ export function syncServiceCards(config, deps) {
     }
   });
 
-  const sourceLabel = deps.langSource?.querySelector('.lang-label');
-  if (sourceLabel) {
-    sourceLabel.textContent = !config?.defaultSourceLang || config.defaultSourceLang === 'auto'
-      ? '自动检测'
-      : config.defaultSourceLang;
-  }
-
-  const targetLabel = deps.langTarget?.querySelector('.lang-label');
-  if (targetLabel) {
-    targetLabel.textContent = config?.targetLang || '中文';
-  }
+  return payloads;
 }

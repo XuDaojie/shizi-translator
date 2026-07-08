@@ -216,6 +216,7 @@ body {
   align-items: center;
   height: 32px;
   padding: 0 2px;
+  position: relative;
 }
 .lang-side {
   flex: 1;
@@ -229,24 +230,29 @@ body {
   font-family: var(--font-family);
   font-size: 0.75rem;
   color: var(--fg);
-  cursor: default;
+  cursor: pointer;
   user-select: none;
   transition: background .15s, color .15s;
   min-width: 0;
   height: 28px;
   border-radius: 6px;
 }
+.lang-side:hover { background: var(--bg-soft); }
+.lang-side:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .lang-side .lang-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lang-side .lang-chevron { width: 10px; height: 10px; color: var(--fg-2); flex-shrink: 0; }
 .lang-swap {
   width: 28px; height: 28px;
   flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
   background: transparent; border: none;
   color: var(--fg-2);
-  cursor: default;
+  cursor: pointer;
   border-radius: 6px;
   transition: background .15s, color .15s;
 }
+.lang-swap:hover { background: var(--bg-soft); color: var(--accent); }
+.lang-swap:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .lang-swap svg { width: 12px; height: 12px; }
 
 /* === 翻译结果区 === */
@@ -509,4 +515,55 @@ body {
   transform: rotate(180deg);
 }
 
+/* === 语言下拉 === */
+.lang-dropdown {
+  position: absolute;
+  z-index: 50;
+  background: var(--bg-card);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-popup);
+  padding: 4px;
+  max-height: 240px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-2) transparent;
+}
+.lang-dropdown-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  font-family: var(--font-family);
+  font-size: 0.75rem;
+  color: var(--fg);
+  padding: 6px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background .12s, color .12s;
+}
+.lang-dropdown-item:hover { background: var(--bg-soft); color: var(--accent); }
+.lang-dropdown-item.selected { color: var(--accent); font-weight: 600; }
+.lang-dropdown-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
+/* === 卡片头部翻译中蓝点 === */
+.result-header-status {
+  display: none;
+  align-items: center;
+  margin-left: auto;
+  margin-right: 2px;
+}
+.result-header-status:not([hidden]) { display: inline-flex; }
+.result-header-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+  animation: pulse-dot 1.2s ease-in-out infinite;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.4; transform: scale(0.85); }
+}
