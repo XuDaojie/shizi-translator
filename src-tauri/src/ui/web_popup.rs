@@ -12,11 +12,10 @@ use crate::{
     app::{popup_window, state::AppState},
     core::{
         config::{AppConfig, ServiceInstanceConfig},
-        llm::provider_for_service,
         logging::redact_text,
         translation::{
-            batch, TranslationEvent, TranslationInput, TranslationService,
-            TranslationServiceMeta, TranslationSessionId,
+            batch, provider_for_service, TranslationEvent, TranslationInput,
+            TranslationService, TranslationServiceMeta, TranslationSessionId,
         },
     },
 };
@@ -159,7 +158,7 @@ pub fn start_translation_from_input(
                 let failed_session_id = request.session_id.clone();
                 let failed_service = request.service.clone();
 
-                match provider_for_service(&service_config) {
+                match provider_for_service(&service_config, None) {
                     Ok(provider) => {
                         let translation_service = TranslationService::new(provider);
                         let result = translation_service
