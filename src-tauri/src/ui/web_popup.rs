@@ -148,17 +148,19 @@ pub fn start_translation_from_input(
 
     let app_handle = app.clone();
     let state_for_task = state.clone();
+    let edge_env = state.edge_translate_env();
     let collect_usage = config.collect_usage;
 
     tauri::async_runtime::spawn(async move {
         let jobs = requests.into_iter().zip(enabled_services).map(|(request, service_config)| {
             let app_handle = app_handle.clone();
             let cancel = cancel_token.clone();
+            let edge_env = edge_env.clone();
             async move {
                 let failed_session_id = request.session_id.clone();
                 let failed_service = request.service.clone();
 
-                match provider_for_service(&service_config, None) {
+                match provider_for_service(&service_config, edge_env.as_ref()) {
                     Ok(provider) => {
                         let translation_service = TranslationService::new(provider);
                         let result = translation_service
@@ -284,6 +286,18 @@ pub async fn retry_translation(
         .take_last_translation_input()?
         .ok_or_else(|| "没有可重试的翻译".to_string())?;
     start_translation_from_input(input, app, state.inner())
+}
+
+#[tauri::command]
+pub async fn save_edge_translate_env(
+    user_agent: String,
+    accept_language: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    state.set_edge_translate_env(crate::core::mt::EdgeTranslateEnv {
+        user_agent,
+        accept_language,
+    })
 }
 
 fn create_session_id() -> Result<String, String> {

@@ -773,6 +773,22 @@ function applyPendingConfigRefresh() {
   refreshCardsFromConfig(config);
 }
 
+/* === 采集浏览器环境信息供微软翻译拼装请求头 === */
+async function collectEdgeTranslateEnv() {
+  if (!invoke) return;
+  try {
+    const userAgent = navigator.userAgent;
+    const langs = navigator.languages ?? [navigator.language];
+    const acceptLanguage = langs
+      .map((l, i) => (i === 0 ? l : `${l};q=${(1 - i * 0.1).toFixed(1)}`))
+      .join(',');
+    await invoke('save_edge_translate_env', { userAgent, acceptLanguage });
+  } catch (e) {
+    // 采集失败不阻塞翻译，后端用默认 UA 兜底
+    logger.warn('采集 Edge 翻译环境失败', String(e));
+  }
+}
+
 async function initCards() {
   if (!invoke) return;
   try {
@@ -796,6 +812,7 @@ resizeObserver.observe(popupEl);
 /* === 初始化 === */
 initMaxHeight();
 initCards();
+collectEdgeTranslateEnv();
 requestAnimationFrame(autoResize);
 if (document.fonts) document.fonts.ready.then(autoResize);
 updateCharCount();

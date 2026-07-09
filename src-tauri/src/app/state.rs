@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use crate::app::shortcuts::ShortcutBindingError;
 use crate::core::capture::CapturedImage;
 use crate::core::config::ConfigStore;
+use crate::core::mt::EdgeTranslateEnv;
 use crate::core::translation::TranslationInput;
 use tokio_util::sync::CancellationToken;
 
@@ -34,6 +35,9 @@ pub struct AppState {
     // 存语言代码（如 "auto"/"zh-CN"），非显示名。
     session_source_lang: Arc<Mutex<String>>,
     session_target_lang: Arc<Mutex<String>>,
+    // WebView 初始化采集的浏览器环境信息（UA/Accept-Language），供微软翻译拼装请求头。
+    // 进程级内存，不持久化；每次启动由前端 main 窗口重新采集写入。
+    edge_translate_env: Arc<Mutex<Option<EdgeTranslateEnv>>>,
 }
 
 impl AppState {
@@ -58,6 +62,7 @@ impl AppState {
             shortcut_conflicts: Arc::new(Mutex::new(Vec::new())),
             session_source_lang: Arc::new(Mutex::new(default_source_lang)),
             session_target_lang: Arc::new(Mutex::new(default_target_lang)),
+            edge_translate_env: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -292,6 +297,24 @@ impl AppState {
         *s = source;
         *t = target;
         Ok(())
+    }
+
+    /// 写入前端采集的浏览器环境信息。锁毒化返回 Err。不持久化。
+    pub fn set_edge_translate_env(&self, env: EdgeTranslateEnv) -> Result<(), String> {
+        let mut slot = self
+            .edge_translate_env
+            .lock()
+            .map_err(|_| "Edge 翻译环境锁已损坏".to_string())?;
+        *slot = Some(env);
+        Ok(())
+    }
+
+    /// 读浏览器环境信息（clone）。锁毒化返回 None，不返回 Err。
+    pub fn edge_translate_env(&self) -> Option<EdgeTranslateEnv> {
+        self.edge_translate_env
+            .lock()
+            .map(|slot| slot.clone())
+            .unwrap_or(None)
     }
 }
 
@@ -605,5 +628,20 @@ mod tests {
         let (source, target) = state.session_languages();
         assert_eq!(source, "auto");
         assert_eq!(target, "en-US");
+    }
+
+    #[test]
+    fn edge_translate_env_round_trips() {
+        let state = app_state();
+        assert!(state.edge_translate_env().is_none(), "初始应为 None");
+        state
+            .set_edge_translate_env(crate::core::mt::EdgeTranslateEnv {
+                user_agent: "UA".to_string(),
+                accept_language: "zh-CN".to_string(),
+            })
+            .expect("写入 env");
+        let env = state.edge_translate_env().expect("读取 env");
+        assert_eq!(env.user_agent, "UA");
+        assert_eq!(env.accept_language, "zh-CN");
     }
 }
