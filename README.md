@@ -12,6 +12,7 @@
 - OpenAI-compatible 流式翻译 provider：调用兼容 `/v1/chat/completions` 的流式接口。
 - Claude / Anthropic 流式翻译 provider：调用 Anthropic Messages API 的 SSE 流式接口，支持 thinking 模式。
 - Mock provider：用于无真实 API Key 的本地验证。
+- 微软翻译 provider（Edge 引擎，免 Key 机器翻译）：调用 Edge 浏览器翻译接口，无需 API Key；机器翻译渠道当前仅微软翻译已对接，DeepL/Google/百度等保持开发中。
 - 启动翻译弹窗与独立设置页：启动即显示翻译弹窗；设置页为独立窗口，可从翻译弹窗设置按钮或托盘「设置」打开。设置页含通用 / 翻译 / 快捷键 / 服务 / 历史 / 高级 6 个分类面板，支持多服务实例管理。翻译弹窗已去除 Windows 原生标题栏，改为自绘顶部工具栏（图钉 / 收藏 / 截图翻译 / 书签 / 设置）作为标题栏并支持拖拽，宽固定 420px、高度随内容自适应（最高 80% 屏幕高），视觉对齐 OpenDesign 原型。
 - 配置实时同步：设置页保存服务启用 / 关闭后，会通过 `app-config:changed` 通知已打开的翻译弹窗同步结果卡片；非翻译中即时新增、删除、排序，翻译进行中保留正在输出的卡片，不新增未参与当前批次的服务卡片。
 - 流式结果展示：Rust 后端通过 Tauri event 推送翻译状态和增量文本，前端实时渲染。
@@ -65,7 +66,7 @@
 ### 服务协议与多结果翻译（v0.2）
 
 - 服务列表默认展示 DeepSeek 与智谱 AI，默认关闭；启用后按列表顺序参与翻译。
-- 服务实例通过 `protocol` 选择调用协议；协议 id 前后端统一为 `openai_chat` / `claude_messages` / `mock`，未知协议后端报错而非静默走 OpenAI 兼容。
+- 服务实例通过 `protocol` 选择调用协议；协议 id 前后端统一为 `openai_chat` / `claude_messages` / `mock` / `microsoft_edge`，未知协议后端报错而非静默走 OpenAI 兼容。
 - 前后端配置以 `config.json` 为事实来源：设置页挂载时从后端拉取，后端 `services` 为空则推前端覆盖（用于旧格式残留 / 首次启动），后端非空则按实例 id 合并（后端核心字段覆盖前端、前端独有字段如提示词保留）。
 - 翻译弹窗按启用服务渲染多个结果卡，单个服务失败不影响其他服务；卡片图标按渠道 id（openai/deepseek/zhipu/claude/mock）区分。
 - 翻译弹窗打开时即展示所有启用服务的占位卡片，翻译开始后原地刷新内容，无需等待首个结果返回。

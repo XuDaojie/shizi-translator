@@ -76,6 +76,7 @@ src-tauri/src/ui/settings_commands.rs
 - `Alt+T` 划词复制翻译：模拟 `Ctrl+C`、读取选中文本、触发翻译。
 - 翻译窗口交互状态收敛：busy 保护、按钮状态、事件 session 过滤、输出自动滚动。
 - 服务模块打磨（v0.2.1）：协议 id 前后端统一为 `openai_chat`/`claude_messages`/`mock`，未知协议报错；设置页挂载时与后端 `config.json` 双向同步；未对接渠道标记"开发中"并置灰启用；翻译弹窗卡片图标按渠道 id 区分。
+- provider 抽象层重构与微软翻译渠道（已完成，2026-07）：LLM 专用 `LlmProvider` 重构为 LLM/ML 平级通用 `TranslationProvider`（含 `BatchTranslateProvider` + `StreamingAdapter` 非流式适配）；auto 解析下沉至 `core/translation/auto_lang.rs`；新增微软翻译渠道（`core/mt/`，`MicrosoftMtProvider` impl `BatchTranslateProvider`，Edge 引擎免 Key）；`provider_for_service` 迁移至 `core/translation/protocol.rs` 并接入 Microsoft 分支；前端 UA 采集 + `save_edge_translate_env` command；设置页 microsoft 渠道详情页精简、免 Key 校验放行。
 
 暂未完成 / 后续演进：
 

@@ -17,9 +17,10 @@ src-tauri/         Rust 后端 + Tauri 配置
   src/main.rs      薄入口，调用 shizi_lib::run()
   src/app/         应用编排：托盘、全局快捷键、窗口控制、AppState（含 capture/translation 锁）
   src/core/config/ 本地配置模型与 JSON 存储
-  src/core/llm/    LLM provider 抽象、mock、OpenAI-compatible、Claude 流式 provider
+  src/core/llm/    LLM provider（mock、OpenAI-compatible、Claude 流式）；通用 provider 抽象已迁至 core/translation/provider.rs
   src/core/selection/ 划词复制：剪贴板文本读取、Ctrl+C 模拟
-  src/core/translation/ 翻译请求、事件与 TranslationService
+  src/core/translation/ 翻译请求、事件、TranslationService、通用 provider 抽象（provider.rs）、auto 解析（auto_lang.rs）、协议分发（protocol.rs）
+  src/core/mt/        机器翻译 provider（mod.rs EdgeTranslateEnv + microsoft.rs MicrosoftMtProvider，Edge 引擎免 Key）
   src/core/capture/ 截图抽象：CapturedImage、crop 内存裁剪、css_rect_to_physical DPI 换算
   src/core/ocr/ OCR engine 抽象、Windows.Media.Ocr 实现
   src/core/ocr_translation.rs 截图+OCR→TranslationInput 编排（含区域裁剪 workflow）
@@ -56,21 +57,21 @@ cd src-tauri && cargo clean           # 清理 Rust 编译缓存
 ## 架构关键点
 
 - **分层结构**：
-  - **核心层**：Rust 实现，承载翻译业务、配置管理、LLM provider、划词复制等能力。
+  - **核心层**：Rust 实现，承载翻译业务、配置管理、通用 provider 抽象（LLM/ML 平级）、划词复制等能力。
   - **UI 层**：已拆成 ①**翻译弹窗**（`main` 窗口加载 `translate.html`）与 ②**设置页**（独立 `settings` 窗口加载 `settings.html`）两个可替换模块，截图 overlay 为第三个独立页面。新增能力时不要把核心逻辑写进前端，也不要让 UI 模块互相耦合。
 - **托盘驻留模型**：窗口的 `CloseRequested` 被拦截改为 `hide()`，应用通过托盘菜单「退出」才会真正退出；详见 [src-tauri/src/app/window.rs](src-tauri/src/app/window.rs) 与 [src-tauri/src/app/tray.rs](src-tauri/src/app/tray.rs)。
 - **启动窗口与设置窗口**：`main` 窗口加载 `translate.html`，应用启动后默认显示翻译弹窗；设置页由独立 `settings` 窗口加载 `settings.html`，通过弹窗设置按钮、托盘「设置」或 `open_settings` command 打开。
 - **翻译弹窗窗口**：`main` 窗口配置 `decorations(false)` + `transparent(true)` + `resizable(false)`，去除 Windows 原生标题栏；顶部 `.toolbar` 加 `data-tauri-drag-region` 实现自绘标题栏拖拽（Tauri 2 原生，零 JS）。`.popup` 宽 420px 固定，`body` 设 `padding:16px` + `background:transparent` 留阴影空间；高度由前端 `ResizeObserver` 监听 `.popup` 内容高度变化后 `getCurrentWindow().setSize({ type:"Logical", width:452, height:h+32 })` 动态调整，上限屏幕高 80%（超出由 `.content` `overflow-y:auto` 滚动）。图钉按钮 `setAlwaysOnTop` 需 `core:window:allow-set-always-on-top` 权限，`setSize` 需 `core:window:allow-set-size`，均已在 `capabilities/default.json` 授权。
-- **服务协议配置**：后端配置以 `services[]` 为事实来源，每个服务实例包含 `protocol`、`endpoint`、`model`、`apiKey` 与启用状态；旧单 provider 配置不再作为运行路径。`provider_for_service` 将协议标识映射到对应的 LLM provider。
-- **前后端配置同步**：`config.json` 的 `services[]` 是事实来源。设置页 `SettingsPage` 挂载时调 `settings.syncFromBackend()`：后端 `services` 为空（旧格式残留 / 首次启动）→ 前端 `projectToAppConfig` 推 `invokeSaveAppConfig` 覆盖后端；后端非空 → `mergeBackendIntoServices` 按 id 合并（后端 `enabled/apiKey/endpoint/model/protocol` 覆盖前端同 id 实例，前端 `prompts/keyStatus/chainOfThought/pulledModels/note` 保留；后端多出补进、前端多出删除）。协议 id 前后端统一为 `openai_chat`/`claude_messages`/`mock`，后端 `provider_for_service` 未知协议返回错误。未对接渠道（`ServiceMeta.protocols.length === 0`）在添加 Dialog / 服务列表 / 详情页三处标 amber"开发中"，启用开关 `disabled`。
+- **服务协议配置**：后端配置以 `services[]` 为事实来源，每个服务实例包含 `protocol`、`endpoint`、`model`、`apiKey` 与启用状态；旧单 provider 配置不再作为运行路径。`provider_for_service`（位于 `core/translation/protocol.rs`）将协议标识映射到对应的 `TranslationProvider`（LLM/ML 平级通用 trait）：`openai_chat`/`claude_messages`/`mock` 走 LLM 流式 provider，`microsoft_edge` 经 `BatchTranslateProvider` + `StreamingAdapter` 适配为流式。
+- **前后端配置同步**：`config.json` 的 `services[]` 是事实来源。设置页 `SettingsPage` 挂载时调 `settings.syncFromBackend()`：后端 `services` 为空（旧格式残留 / 首次启动）→ 前端 `projectToAppConfig` 推 `invokeSaveAppConfig` 覆盖后端；后端非空 → `mergeBackendIntoServices` 按 id 合并（后端 `enabled/apiKey/endpoint/model/protocol` 覆盖前端同 id 实例，前端 `prompts/keyStatus/chainOfThought/pulledModels/note` 保留；后端多出补进、前端多出删除）。协议 id 前后端统一为 `openai_chat`/`claude_messages`/`mock`/`microsoft_edge`，后端 `provider_for_service` 未知协议返回错误。未对接渠道（`ServiceMeta.protocols.length === 0`）在添加 Dialog / 服务列表 / 详情页三处标 amber"开发中"，启用开关 `disabled`。
 - **配置变更事件**：`save_app_config` 保存成功后广播 `app-config:changed`，翻译弹窗监听该事件并同步启用服务卡片；非翻译中即时新增、删除、排序和更新卡片，翻译进行中保留正在输出的卡片，不新增未参与当前批次的服务卡片。
 - **批次翻译**：翻译入口过滤启用服务并保持列表顺序，为每个服务创建 `{batch_id}:{service_id}` session，事件携带 `serviceInstanceId/serviceName/serviceType/protocol`。各服务并发执行，单服务失败不影响其他。
 - **翻译弹窗**：弹窗打开时通过 `initCards` 调 `get_app_config` 获取启用服务列表并预建占位卡片；输入为空或暂无翻译内容时卡片默认 `collapsed`，翻译开始后 `getCard` 按 `serviceInstanceId` 复用已有卡片并自动展开原地更新，new batch 重置而非销毁卡片。单服务失败只更新对应卡片。
 - **翻译弹窗语言下拉**：inline 搜索式 combobox（`.lang-picker`，非浮层，规避 `.content` overflow 裁剪），带搜索框、英文名双列、键盘 ↑↓/Enter/Esc 导航。
-- **源语言自动检测**：`TranslationEvent::Finished` 含 `detectedSourceLang: Option<String>`（source=auto 时由 `TranslationService::translate_with` 流式首行解析状态机填充，序列化为 camelCase `detectedSourceLang`），前端译文区右下角 `.lang-badge` 动态显示。
+- **源语言自动检测**：`TranslationEvent::Finished` 含 `detectedSourceLang: Option<String>`（source=auto 时由 provider 事件 `TranslationStreamEvent::DetectedSourceLang` 填充：LLM 流式首行解析状态机或 ML 响应 `detectedLanguage`，序列化为 camelCase `detectedSourceLang`），前端译文区右下角 `.lang-badge` 动态显示。
 - **默认目标语言**：`AppConfig::from_env` 默认 `target_lang` 读 OS 语言（`sys-locale` + `map_os_lang_to_list`），`normalized` 兜底用常量 `FALLBACK_TARGET_LANG = "en-US"`（不读 OS）；存量用户已选目标语言不受影响。
 - **全局快捷键**：`Alt+D` 划词复制并自动翻译；`Alt+E` 触发截图 OCR 翻译（DXGI 抓光标所在显示器整屏帧 → 自建 overlay 区域框选 → crop → Windows.Media.Ocr → 复用翻译链路）。由 `tauri-plugin-global-shortcut` 注册，逻辑集中在 `src-tauri/src/app/shortcuts.rs`。启动注册为 best-effort：单条快捷键被其他应用占用只记录到 `AppState.shortcut_conflicts`，不阻止启动；冲突列表经 `get_shortcut_conflicts` command 供设置页快捷键模块展示（保存路径仍为 all-or-nothing，失败回滚旧配置）。新增快捷键时需在 `capabilities/default.json` 同步授权。
-- **前后端通信**：当前已有 Tauri commands：`start_translation`、`take_pending_source_text`、`get_app_config`、`save_app_config`、`get_shortcut_conflicts`，以及截图 overlay 四命令 `get_capture_frame_meta` / `get_capture_frame_bytes` / `submit_capture_region` / `cancel_capture`，日志两命令 `write_frontend_log` / `export_logs`。后端通过 `translation:event` 向前端推送 `Started` / `Delta` / `Finished` / `Failed`（`Finished` 含 `detectedSourceLang: Option<String>`，源语言为自动检测时回传模型识别的原文语言）。
+- **前后端通信**：当前已有 Tauri commands：`start_translation`、`take_pending_source_text`、`get_app_config`、`save_app_config`、`get_shortcut_conflicts`，以及截图 overlay 四命令 `get_capture_frame_meta` / `get_capture_frame_bytes` / `submit_capture_region` / `cancel_capture`，日志两命令 `write_frontend_log` / `export_logs`，Edge UA 采集一命令 `save_edge_translate_env`（前端采集 UA/Accept-Language 存 AppState 进程级内存）。后端通过 `translation:event` 向前端推送 `Started` / `Delta` / `Finished` / `Failed`（`Finished` 含 `detectedSourceLang: Option<String>`，由 provider 事件 `TranslationStreamEvent::DetectedSourceLang` 回传，LLM 首行解析或 ML 响应 `detectedLanguage` 填充）。
 - **配置存储**：当前设置面板将 provider 配置保存到 Tauri app config dir 下的 `config.json`，含 `logLevel` 字段（error/warn/info/debug，默认 info）。支持 OpenAI-compatible 和 Claude 两种 provider。API Key 在 MVP 阶段明文保存，后续产品化需迁移到系统 SecretStore。
 - **日志系统**：前后端各一套日志，物理分开保存到 `app_config_dir()/logs/`。后端 `Shizi.log` 由 `tauri-plugin-log` 写（注册时内部 level Debug 不挡，全局 `log::set_max_level` 控制；5MB `KeepAll` 轮转，轮转文件 `Shizi_<timestamp>.log`；文件名按 `productName` 固定为 `Shizi.log`，不支持自定义）。前端 `frontend.log` 由 `write_frontend_log` command 直接 `std::fs::append` 写、不走 log facade（5MB 轮转 `frontend.log.1`/`.2`）。运行时等级切换：`save_app_config` 保存 `logLevel` 后调 `log::set_max_level` 即时生效，前端 `logger.setLevel` 订阅 `app-config:changed`。脱敏：API Key 前 4+后 4（`redact_api_key`），翻译正文 info 记摘要（长度+前 20 字）、debug 记全文（`redact_text`）。启动清理 7 天旧日志（`cleanup_old_logs`）。`export_logs` 打包 zip 含日志 + `config-snapshot.json`（apiKey 脱敏）+ `system-info.txt`。日志系统任何环节失败 best-effort，不影响翻译主流程。
 
