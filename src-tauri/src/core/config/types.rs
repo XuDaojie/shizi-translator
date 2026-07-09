@@ -16,6 +16,7 @@ const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 const DEFAULT_MODEL: &str = "gpt-4o-mini";
 const DEFAULT_TIMEOUT_SECONDS: u32 = 60;
 const DEFAULT_CLAUDE_BASE_URL: &str = "https://api.anthropic.com";
+const DEFAULT_EDGE_TRANSLATE_URL: &str = "https://edge.microsoft.com/translate/translatetext";
 const DEFAULT_CLAUDE_MODEL: &str = "claude-haiku-4-5";
 const DEFAULT_PROTOCOL: &str = "openai_chat";
 
@@ -122,6 +123,7 @@ impl ServiceInstanceConfig {
         if self.endpoint.trim().is_empty() {
             self.endpoint = match self.protocol.as_str() {
                 "claude_messages" => DEFAULT_CLAUDE_BASE_URL.to_string(),
+                "microsoft_edge" => DEFAULT_EDGE_TRANSLATE_URL.to_string(),
                 _ => DEFAULT_BASE_URL.to_string(),
             };
         }
@@ -268,7 +270,7 @@ impl AppConfig {
                 return false;
             }
             match s.protocol.as_str() {
-                "mock" => true,
+                "mock" | "microsoft_edge" => true,
                 _ => s.api_key.is_some(),
             }
         })
@@ -376,6 +378,15 @@ mod tests {
         let mut config = AppConfig::from_env();
         config.services[0].protocol = "mock".to_string();
         config.services[0].api_key = None;
+        assert!(config.is_configured());
+    }
+
+    #[test]
+    fn is_configured_true_with_microsoft_edge_no_key() {
+        let mut config = AppConfig::from_env();
+        config.services[0].protocol = "microsoft_edge".to_string();
+        config.services[0].api_key = None;
+        config.services[0].model = String::new();
         assert!(config.is_configured());
     }
 
@@ -590,6 +601,30 @@ mod tests {
         }
         .normalized();
         assert_eq!(svc.endpoint, DEFAULT_CLAUDE_BASE_URL);
+    }
+
+    #[test]
+    fn normalized_fills_edge_url_for_microsoft_edge() {
+        let svc = ServiceInstanceConfig {
+            id: "ms".to_string(),
+            service_type: "microsoft".to_string(),
+            name: "微软翻译".to_string(),
+            enabled: true,
+            protocol: "microsoft_edge".to_string(),
+            api_key: None,
+            endpoint: "".to_string(),
+            model: String::new(),
+            timeout_seconds: 0,
+            system_prompt: String::new(),
+            translation_prompt: String::new(),
+            reflection_prompt: String::new(),
+            reflection_enabled: false,
+            chain_of_thought: default_chain_of_thought(),
+        }
+        .normalized();
+        assert_eq!(svc.endpoint, "https://edge.microsoft.com/translate/translatetext");
+        assert!(svc.api_key.is_none());
+        assert_eq!(svc.model, DEFAULT_MODEL);
     }
 
     #[test]
