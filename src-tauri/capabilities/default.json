@@ -8,6 +8,7 @@
     "core:window:allow-set-size",
     "core:window:allow-hide",
     "global-shortcut:default",
-    "dialog:allow-save"
+    "dialog:allow-save",
+    "mcp-bridge:default"
   ]
 }

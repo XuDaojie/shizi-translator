@@ -21,6 +21,14 @@
 - **升级命令**：
 px chrome-devtools-mcp@latest（自动使用最新版）
 
+### Tauri MCP
+
+- **配置方式**：用户级 Claude Code 配置（`~/.claude.json` 的 `mcpServers.tauri`），启动命令 `cmd /c npx -y @hypothesi/tauri-mcp-server`
+- **功能**：让 AI 助手构建/测试/调试 Tauri v2 应用，提供 21 个工具：UI 自动化（截图、点击、输入、DOM 快照、元素选取）、IPC 监控与执行、窗口管理、控制台/系统日志、移动设备列表
+- **来源**：https://github.com/hypothesi/mcp-server-tauri
+- **升级命令**：`npx @hypothesi/tauri-mcp-server`（npx 自动取最新版）
+- **项目集成**：shizi 已在 `src-tauri` 集成 `tauri-plugin-mcp-bridge = "0.2"`（实际 v0.2.2），`#[cfg(debug_assertions)]` 下注册、WebSocket 绑 `127.0.0.1`，默认端口 9223，被占用时在 9223-9322 自动顺延；release 包不带此插件。前端无需 TS 绑定
+
 ### ponytail
 
 - **安装方式**：`claude plugin marketplace add DietrichGebert/ponytail` 后运行 `claude plugin install ponytail@ponytail`

@@ -31,7 +31,7 @@ use crate::core::config::AppConfig;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default()
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, shortcut, event| {
@@ -39,7 +39,20 @@ pub fn run() {
                 })
                 .build(),
         )
-        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_dialog::init());
+
+    // MCP Bridge 插件：仅 debug 构建注册，绑定 127.0.0.1 仅供本机 MCP server 连接，
+    // release 包不带此插件、不开放端口。
+    #[cfg(debug_assertions)]
+    {
+        builder = builder.plugin(
+            tauri_plugin_mcp_bridge::Builder::new()
+                .bind_address("127.0.0.1")
+                .build(),
+        );
+    }
+
+    builder
         .invoke_handler(tauri::generate_handler![
             start_translation,
             trigger_ocr_translation,
