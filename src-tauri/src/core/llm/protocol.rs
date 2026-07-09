@@ -3,9 +3,10 @@ use std::sync::Arc;
 use crate::core::{
     config::ServiceInstanceConfig,
     llm::{
-        ClaudeConfig, ClaudeProvider, LlmProvider, MockLlmProvider, OpenAiCompatibleConfig,
+        ClaudeConfig, ClaudeProvider, MockLlmProvider, OpenAiCompatibleConfig,
         OpenAiCompatibleProvider,
     },
+    translation::provider::TranslationProvider,
 };
 
 /// 协议 id 映射到的 provider 类型，供 `provider_for_service` 分发与单测断言。
@@ -37,7 +38,7 @@ pub fn protocol_to_kind(protocol: &str) -> Result<ProviderKind, String> {
 /// 协议 id 由 [`protocol_to_kind`] 解析，未知协议返回 `Err`，避免静默误匹配。
 pub fn provider_for_service(
     config: &ServiceInstanceConfig,
-) -> Result<Arc<dyn LlmProvider>, String> {
+) -> Result<Arc<dyn TranslationProvider>, String> {
     match protocol_to_kind(&config.protocol)? {
         ProviderKind::Mock => Ok(Arc::new(MockLlmProvider)),
         ProviderKind::Claude => Ok(Arc::new(ClaudeProvider::new(ClaudeConfig {

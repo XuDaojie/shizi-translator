@@ -19,6 +19,7 @@ pub fn build_batch_requests(
         .map(|s| TranslationRequest {
             session_id: TranslationSessionId(format!("{}:{}", batch_id, s.id)),
             input: input.clone(),
+            source_lang: source_lang.clone(),
             target_lang: target_lang.clone(),
             service: TranslationServiceMeta {
                 service_instance_id: s.id.clone(),
@@ -27,7 +28,6 @@ pub fn build_batch_requests(
                 protocol: s.protocol.clone(),
             },
             prompts: TranslationPromptConfig {
-                source_lang: source_lang.clone(),
                 system_prompt: s.system_prompt.clone(),
                 translation_prompt: s.translation_prompt.clone(),
                 chain_of_thought: s.chain_of_thought.clone(),
@@ -119,7 +119,7 @@ mod tests {
         )
         .expect("应生成批次");
 
-        assert_eq!(requests[0].prompts.source_lang, "English");
+        assert_eq!(requests[0].source_lang, "English");
         assert_eq!(requests[0].prompts.system_prompt, "sys");
         assert_eq!(
             requests[0].prompts.translation_prompt,

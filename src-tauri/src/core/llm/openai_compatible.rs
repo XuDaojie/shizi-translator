@@ -6,8 +6,11 @@ use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
 use crate::core::{
-    llm::{LlmError, LlmProvider, LlmStreamEvent},
-    translation::{TokenUsage, TranslationRequest},
+    translation::{
+        auto_lang::AutoLangHeaderParser,
+        provider::{TranslationError, TranslationProvider, TranslationStreamEvent},
+        TokenUsage, TranslationRequest,
+    },
 };
 
 pub struct OpenAiCompatibleProvider {
@@ -114,7 +117,7 @@ impl OpenAiCompatibleProvider {
         }
     }
 
-    async fn parse_error_response(response: reqwest::Response) -> LlmError {
+    async fn parse_error_response(response: reqwest::Response) -> TranslationError {
         let status = response.status();
         let retryable = status.as_u16() == 429 || status.is_server_error();
         let body = response.text().await.unwrap_or_default();
@@ -131,9 +134,9 @@ impl OpenAiCompatibleProvider {
         log::warn!("OpenAI 响应非 2xx: status={} retryable={}", status, retryable);
 
         if retryable {
-            LlmError::Http(message)
+            TranslationError::Http(message)
         } else {
-            LlmError::Api {
+            TranslationError::Api {
                 message,
                 retryable: false,
             }
@@ -142,8 +145,8 @@ impl OpenAiCompatibleProvider {
 
     fn consume_sse_event(
         event: &str,
-        on_event: &mut (dyn FnMut(LlmStreamEvent) + Send),
-    ) -> Result<bool, LlmError> {
+        on_event: &mut (dyn FnMut(TranslationStreamEvent) + Send),
+    ) -> Result<bool, TranslationError> {
         for line in event.lines() {
             let Some(data) = line.strip_prefix("data:") else {
                 continue;
@@ -157,17 +160,17 @@ impl OpenAiCompatibleProvider {
             }
 
             let chunk = serde_json::from_str::<ChatCompletionChunk>(data)
-                .map_err(|error| LlmError::Parse(error.to_string()))?;
+                .map_err(|error| TranslationError::Parse(error.to_string()))?;
 
             if let Some(error) = chunk.error {
-                return Err(LlmError::Api {
+                return Err(TranslationError::Api {
                     message: error.message,
                     retryable: false,
                 });
             }
 
             if let Some(usage) = chunk.usage {
-                on_event(LlmStreamEvent::Usage(TokenUsage {
+                on_event(TranslationStreamEvent::Usage(TokenUsage {
                     input_tokens: usage.prompt_tokens,
                     output_tokens: usage.completion_tokens,
                 }));
@@ -177,7 +180,7 @@ impl OpenAiCompatibleProvider {
                 for choice in choices {
                     if let Some(content) = choice.delta.and_then(|delta| delta.content) {
                         if !content.is_empty() {
-                            on_event(LlmStreamEvent::Delta(content));
+                            on_event(TranslationStreamEvent::Delta(content));
                         }
                     }
                 }
@@ -186,21 +189,95 @@ impl OpenAiCompatibleProvider {
 
         Ok(false)
     }
+
+    /// 消费 SSE 字节流，解析事件并经 forward 闭包（注入 AutoLangHeaderParser）转发。
+    /// `[DONE]` 或流自然结束时执行 finish：补发 pending 译文与 DetectedSourceLang。
+    /// cancel 时直接返回，不执行 finish（取消不应补发）。
+    async fn process_stream<S, B, E>(
+        stream: S,
+        is_auto: bool,
+        on_event: &mut (dyn FnMut(TranslationStreamEvent) + Send),
+        cancel: &CancellationToken,
+    ) -> Result<(), TranslationError>
+    where
+        S: futures_util::Stream<Item = Result<B, E>> + Unpin,
+        B: AsRef<[u8]>,
+        E: std::fmt::Display,
+    {
+        let mut parser = AutoLangHeaderParser::new();
+
+        let mut forward = |ev: TranslationStreamEvent| {
+            if let TranslationStreamEvent::Delta(text) = ev {
+                if is_auto {
+                    for piece in parser.feed(&text) {
+                        on_event(TranslationStreamEvent::Delta(piece));
+                    }
+                } else {
+                    on_event(TranslationStreamEvent::Delta(text));
+                }
+            } else {
+                on_event(ev);
+            }
+        };
+
+        let mut stream = stream;
+        let mut buffer = String::new();
+
+        'sse: loop {
+            tokio::select! {
+                _ = cancel.cancelled() => return Ok(()),
+                bytes = stream.next() => {
+                    let Some(bytes) = bytes else { break };
+                    let bytes = bytes.map_err(|e| TranslationError::Http(e.to_string()))?;
+                    buffer.push_str(&String::from_utf8_lossy(bytes.as_ref()));
+                    buffer = buffer.replace("\r\n", "\n");
+
+                    while let Some(index) = buffer.find("\n\n") {
+                        let event = buffer[..index].to_string();
+                        buffer = buffer[index + 2..].to_string();
+
+                        if Self::consume_sse_event(&event, &mut forward)? {
+                            break 'sse;
+                        }
+                    }
+                }
+            }
+        }
+
+        if !buffer.trim().is_empty() {
+            Self::consume_sse_event(&buffer, &mut forward)?;
+        }
+
+        // 释放 forward 持有的 &mut parser 与 &mut on_event 借用，供后续 finish/on_event 使用。
+        drop(forward);
+
+        if is_auto {
+            let (pieces, lang) = parser.finish();
+            for piece in pieces {
+                on_event(TranslationStreamEvent::Delta(piece));
+            }
+            if let Some(lang) = lang {
+                on_event(TranslationStreamEvent::DetectedSourceLang(lang));
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[async_trait::async_trait]
-impl LlmProvider for OpenAiCompatibleProvider {
-    async fn stream_translate(
+impl TranslationProvider for OpenAiCompatibleProvider {
+    async fn translate(
         &self,
         request: &TranslationRequest,
-        on_event: &mut (dyn FnMut(LlmStreamEvent) + Send),
+        on_event: &mut (dyn FnMut(TranslationStreamEvent) + Send),
         cancel: &CancellationToken,
-    ) -> Result<(), LlmError> {
+    ) -> Result<(), TranslationError> {
         let api_key = self
             .config
             .api_key
             .as_deref()
-            .ok_or(LlmError::MissingConfig("OpenAI API Key"))?;
+            .ok_or(TranslationError::MissingConfig("OpenAI API Key"))?;
 
         log::info!(
             "OpenAI 请求: endpoint={} model={} key={}",
@@ -216,41 +293,14 @@ impl LlmProvider for OpenAiCompatibleProvider {
             .json(&self.request_body(request))
             .send()
             .await
-            .map_err(|error| LlmError::Http(error.to_string()))?;
+            .map_err(|error| TranslationError::Http(error.to_string()))?;
 
         if !response.status().is_success() {
             return Err(Self::parse_error_response(response).await);
         }
 
-        let mut stream = response.bytes_stream();
-        let mut buffer = String::new();
-
-        loop {
-            tokio::select! {
-                _ = cancel.cancelled() => return Ok(()),
-                bytes = stream.next() => {
-                    let Some(bytes) = bytes else { break };
-                    let bytes = bytes.map_err(|error| LlmError::Http(error.to_string()))?;
-                    buffer.push_str(&String::from_utf8_lossy(&bytes));
-                    buffer = buffer.replace("\r\n", "\n");
-
-                    while let Some(index) = buffer.find("\n\n") {
-                        let event = buffer[..index].to_string();
-                        buffer = buffer[index + 2..].to_string();
-
-                        if Self::consume_sse_event(&event, on_event)? {
-                            return Ok(());
-                        }
-                    }
-                }
-            }
-        }
-
-        if !buffer.trim().is_empty() {
-            Self::consume_sse_event(&buffer, on_event)?;
-        }
-
-        Ok(())
+        let is_auto = request.source_lang == "auto";
+        Self::process_stream(response.bytes_stream(), is_auto, on_event, cancel).await
     }
 }
 
@@ -274,6 +324,7 @@ mod tests {
         TranslationRequest {
             session_id: TranslationSessionId("test".to_string()),
             input: TranslationInput::ManualText("hi".to_string()),
+            source_lang: String::new(),
             target_lang: "中文".to_string(),
             service: fake_service(),
             prompts: TranslationPromptConfig::default(),
@@ -284,14 +335,14 @@ mod tests {
     fn consume_sse_event_extracts_usage_from_final_chunk() {
         let event =
             "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":27,\"completion_tokens\":18}}";
-        let mut events: Vec<LlmStreamEvent> = Vec::new();
+        let mut events: Vec<TranslationStreamEvent> = Vec::new();
         let done = OpenAiCompatibleProvider::consume_sse_event(event, &mut |ev| {
             events.push(ev);
         })
         .unwrap();
         assert!(!done);
         let usage = events.iter().find_map(|ev| match ev {
-            LlmStreamEvent::Usage(u) => Some(u.clone()),
+            TranslationStreamEvent::Usage(u) => Some(u.clone()),
             _ => None,
         });
         assert_eq!(
@@ -327,8 +378,8 @@ mod tests {
         };
         let provider = OpenAiCompatibleProvider::new(config);
         let mut request = request();
+        request.source_lang = "English".to_string();
         request.prompts = TranslationPromptConfig {
-            source_lang: "English".to_string(),
             system_prompt: "sys".to_string(),
             translation_prompt: "{source_lang}->{target_lang}:{text}".to_string(),
             chain_of_thought: "off".to_string(),
@@ -338,5 +389,84 @@ mod tests {
 
         assert_eq!(json["messages"][0]["content"], "sys");
         assert_eq!(json["messages"][1]["content"], "English->中文:hi");
+    }
+
+    #[tokio::test]
+    async fn process_stream_done_emits_detected_source_lang_and_flushes_pending() {
+        // 端到端验证 [DONE] -> break 'sse -> finish 逻辑执行：
+        // auto 模式发 DetectedSourceLang，译文不被标记行污染。
+        let sse = "data: {\"choices\":[{\"delta\":{\"content\":\"【源语言：英语】\\n你好\"}}]}\n\ndata: [DONE]\n\n";
+        let stream = futures_util::stream::iter(vec![Ok::<&[u8], String>(sse.as_bytes())]);
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let mut events: Vec<TranslationStreamEvent> = Vec::new();
+        let mut on_event = |ev: TranslationStreamEvent| events.push(ev);
+        OpenAiCompatibleProvider::process_stream(stream, true, &mut on_event, &cancel)
+            .await
+            .expect("process_stream 应成功");
+
+        let detected = events.iter().find_map(|ev| match ev {
+            TranslationStreamEvent::DetectedSourceLang(l) => Some(l.clone()),
+            _ => None,
+        });
+        assert_eq!(detected, Some("英语".to_string()));
+
+        let text: String = events
+            .iter()
+            .filter_map(|ev| match ev {
+                TranslationStreamEvent::Delta(t) => Some(t.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(text, "你好");
+    }
+
+    #[tokio::test]
+    async fn process_stream_done_flushes_pending_when_no_newline() {
+        // 短译文无 \n 时滞留 parser.pending，[DONE] 后 finish 应补发。
+        let sse = "data: {\"choices\":[{\"delta\":{\"content\":\"你好\"}}]}\n\ndata: [DONE]\n\n";
+        let stream = futures_util::stream::iter(vec![Ok::<&[u8], String>(sse.as_bytes())]);
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let mut events: Vec<TranslationStreamEvent> = Vec::new();
+        let mut on_event = |ev: TranslationStreamEvent| events.push(ev);
+        OpenAiCompatibleProvider::process_stream(stream, true, &mut on_event, &cancel)
+            .await
+            .expect("process_stream 应成功");
+
+        let text: String = events
+            .iter()
+            .filter_map(|ev| match ev {
+                TranslationStreamEvent::Delta(t) => Some(t.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(text, "你好");
+        assert!(events
+            .iter()
+            .all(|ev| !matches!(ev, TranslationStreamEvent::DetectedSourceLang(_))));
+    }
+
+    #[tokio::test]
+    async fn process_stream_non_auto_done_passes_delta_directly() {
+        // 非 auto 模式：Delta 直通，不发 DetectedSourceLang。
+        let sse = "data: {\"choices\":[{\"delta\":{\"content\":\"你好\"}}]}\n\ndata: [DONE]\n\n";
+        let stream = futures_util::stream::iter(vec![Ok::<&[u8], String>(sse.as_bytes())]);
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let mut events: Vec<TranslationStreamEvent> = Vec::new();
+        let mut on_event = |ev: TranslationStreamEvent| events.push(ev);
+        OpenAiCompatibleProvider::process_stream(stream, false, &mut on_event, &cancel)
+            .await
+            .expect("process_stream 应成功");
+
+        let text: String = events
+            .iter()
+            .filter_map(|ev| match ev {
+                TranslationStreamEvent::Delta(t) => Some(t.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(text, "你好");
+        assert!(events
+            .iter()
+            .all(|ev| !matches!(ev, TranslationStreamEvent::DetectedSourceLang(_))));
     }
 }

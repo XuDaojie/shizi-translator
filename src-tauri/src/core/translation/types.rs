@@ -23,7 +23,6 @@ pub struct TranslationServiceMeta {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TranslationPromptConfig {
-    pub source_lang: String,
     pub system_prompt: String,
     pub translation_prompt: String,
     pub chain_of_thought: String,
@@ -32,7 +31,6 @@ pub struct TranslationPromptConfig {
 impl Default for TranslationPromptConfig {
     fn default() -> Self {
         Self {
-            source_lang: String::new(),
             system_prompt: String::new(),
             translation_prompt: String::new(),
             chain_of_thought: "off".to_string(),
@@ -45,6 +43,7 @@ impl Default for TranslationPromptConfig {
 pub struct TranslationRequest {
     pub session_id: TranslationSessionId,
     pub input: TranslationInput,
+    pub source_lang: String,
     pub target_lang: String,
     pub service: TranslationServiceMeta,
     pub prompts: TranslationPromptConfig,
@@ -74,7 +73,7 @@ impl TranslationRequest {
             )
         } else {
             let rendered = template
-                .replace("{source_lang}", &self.prompts.source_lang)
+                .replace("{source_lang}", &self.source_lang)
                 .replace("{target_lang}", &self.target_lang)
                 .replace("{text}", self.source_text());
             if template.contains("{text}") {
@@ -84,7 +83,7 @@ impl TranslationRequest {
             }
         };
 
-        if self.prompts.source_lang == "auto" {
+        if self.source_lang == "auto" {
             format!(
                 "{base}\n\n请先在第一行用【源语言：语言名称】输出你检测到的原文语言（如：英语、日语、中文），换行后再输出译文。"
             )
@@ -229,6 +228,7 @@ mod tests {
         let request = TranslationRequest {
             session_id: TranslationSessionId("session-1".to_string()),
             input: TranslationInput::SelectedText("hello".to_string()),
+            source_lang: String::new(),
             target_lang: "中文".to_string(),
             service: fake_service(),
             prompts: TranslationPromptConfig::default(),
@@ -242,10 +242,10 @@ mod tests {
         let request = TranslationRequest {
             session_id: TranslationSessionId("s1".to_string()),
             input: TranslationInput::ManualText("hello".to_string()),
+            source_lang: "English".to_string(),
             target_lang: "中文".to_string(),
             service: fake_service(),
             prompts: TranslationPromptConfig {
-                source_lang: "English".to_string(),
                 system_prompt: "sys".to_string(),
                 translation_prompt: "from {source_lang} to {target_lang}: {text}".to_string(),
                 chain_of_thought: "off".to_string(),
@@ -261,10 +261,10 @@ mod tests {
         let request = TranslationRequest {
             session_id: TranslationSessionId("s1".to_string()),
             input: TranslationInput::ManualText("hello".to_string()),
+            source_lang: "English".to_string(),
             target_lang: "中文".to_string(),
             service: fake_service(),
             prompts: TranslationPromptConfig {
-                source_lang: "English".to_string(),
                 system_prompt: "sys".to_string(),
                 translation_prompt: "translate to {target_lang}".to_string(),
                 chain_of_thought: "off".to_string(),
@@ -279,6 +279,7 @@ mod tests {
         let mut request = TranslationRequest {
             session_id: TranslationSessionId("s1".to_string()),
             input: TranslationInput::ManualText("hello".to_string()),
+            source_lang: String::new(),
             target_lang: "中文".to_string(),
             service: fake_service(),
             prompts: TranslationPromptConfig::default(),
@@ -302,10 +303,10 @@ mod tests {
         let request = TranslationRequest {
             session_id: TranslationSessionId("s1".to_string()),
             input: TranslationInput::ManualText("hello".to_string()),
+            source_lang: "auto".to_string(),
             target_lang: "中文".to_string(),
             service: fake_service(),
             prompts: TranslationPromptConfig {
-                source_lang: "auto".to_string(),
                 system_prompt: "".to_string(),
                 translation_prompt: "".to_string(),
                 chain_of_thought: "off".to_string(),
@@ -321,12 +322,10 @@ mod tests {
         TranslationRequest {
             session_id: TranslationSessionId("test".to_string()),
             input: TranslationInput::ManualText("hello".to_string()),
+            source_lang: source_lang.to_string(),
             target_lang: "中文".to_string(),
             service: fake_service(),
-            prompts: TranslationPromptConfig {
-                source_lang: source_lang.to_string(),
-                ..Default::default()
-            },
+            prompts: TranslationPromptConfig::default(),
         }
     }
 

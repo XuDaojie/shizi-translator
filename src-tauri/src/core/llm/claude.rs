@@ -4,9 +4,10 @@ use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
-use crate::core::{
-    llm::{LlmError, LlmProvider, LlmStreamEvent},
-    translation::{TokenUsage, TranslationRequest},
+use crate::core::translation::{
+    auto_lang::AutoLangHeaderParser,
+    provider::{TranslationError, TranslationProvider, TranslationStreamEvent},
+    TokenUsage, TranslationRequest,
 };
 
 #[derive(Debug, Clone)]
@@ -123,8 +124,8 @@ impl ClaudeProvider {
     pub fn consume_sse_event(
         event: &str,
         input_tokens: &mut Option<u64>,
-        on_event: &mut (dyn FnMut(LlmStreamEvent) + Send),
-    ) -> Result<bool, LlmError> {
+        on_event: &mut (dyn FnMut(TranslationStreamEvent) + Send),
+    ) -> Result<bool, TranslationError> {
         for line in event.lines() {
             let Some(data) = line.strip_prefix("data:") else {
                 continue;
@@ -135,7 +136,7 @@ impl ClaudeProvider {
             }
 
             let parsed: ClaudeSseEvent =
-                serde_json::from_str(data).map_err(|e| LlmError::Parse(e.to_string()))?;
+                serde_json::from_str(data).map_err(|e| TranslationError::Parse(e.to_string()))?;
 
             let event_type = event
                 .lines()
@@ -144,7 +145,7 @@ impl ClaudeProvider {
 
             if event_type == "error" {
                 if let Some(err) = parsed.error {
-                    return Err(LlmError::Api {
+                    return Err(TranslationError::Api {
                         message: err.message,
                         retryable: false,
                     });
@@ -162,7 +163,7 @@ impl ClaudeProvider {
                     .and_then(|u| u.input_tokens)
                 {
                     *input_tokens = Some(input);
-                    on_event(LlmStreamEvent::Usage(TokenUsage {
+                    on_event(TranslationStreamEvent::Usage(TokenUsage {
                         input_tokens: input,
                         output_tokens: 0,
                     }));
@@ -172,7 +173,7 @@ impl ClaudeProvider {
             if event_type == "message_delta" {
                 if let Some(output) = parsed.usage.and_then(|u| u.output_tokens) {
                     let input = input_tokens.unwrap_or(0);
-                    on_event(LlmStreamEvent::Usage(TokenUsage {
+                    on_event(TranslationStreamEvent::Usage(TokenUsage {
                         input_tokens: input,
                         output_tokens: output,
                     }));
@@ -184,7 +185,7 @@ impl ClaudeProvider {
                     if delta.delta_type.as_deref() == Some("text_delta") {
                         if let Some(text) = &delta.text {
                             if !text.is_empty() {
-                                on_event(LlmStreamEvent::Delta(text.clone()));
+                                on_event(TranslationStreamEvent::Delta(text.clone()));
                             }
                         }
                     }
@@ -195,7 +196,7 @@ impl ClaudeProvider {
         Ok(false)
     }
 
-    async fn parse_error_response(response: reqwest::Response) -> LlmError {
+    async fn parse_error_response(response: reqwest::Response) -> TranslationError {
         let status = response.status();
         let retryable = status.as_u16() == 429 || status.is_server_error();
         let body = response.text().await.unwrap_or_default();
@@ -209,13 +210,88 @@ impl ClaudeProvider {
                 )
             });
         if retryable {
-            LlmError::Http(message)
+            TranslationError::Http(message)
         } else {
-            LlmError::Api {
+            TranslationError::Api {
                 message,
                 retryable: false,
             }
         }
+    }
+
+    /// 消费 SSE 字节流，解析事件并经 forward 闭包（注入 AutoLangHeaderParser）转发。
+    /// `message_stop` 或流自然结束时执行 finish：补发 pending 译文与 DetectedSourceLang。
+    /// cancel 时直接返回，不执行 finish（取消不应补发）。
+    async fn process_stream<S, B, E>(
+        stream: S,
+        is_auto: bool,
+        on_event: &mut (dyn FnMut(TranslationStreamEvent) + Send),
+        cancel: &CancellationToken,
+    ) -> Result<(), TranslationError>
+    where
+        S: futures_util::Stream<Item = Result<B, E>> + Unpin,
+        B: AsRef<[u8]>,
+        E: std::fmt::Display,
+    {
+        let mut parser = AutoLangHeaderParser::new();
+        let mut input_tokens: Option<u64> = None;
+
+        let mut forward = |ev: TranslationStreamEvent| {
+            if let TranslationStreamEvent::Delta(text) = ev {
+                if is_auto {
+                    for piece in parser.feed(&text) {
+                        on_event(TranslationStreamEvent::Delta(piece));
+                    }
+                } else {
+                    on_event(TranslationStreamEvent::Delta(text));
+                }
+            } else {
+                on_event(ev);
+            }
+        };
+
+        let mut stream = stream;
+        let mut buffer = String::new();
+
+        'sse: loop {
+            tokio::select! {
+                _ = cancel.cancelled() => return Ok(()),
+                bytes = stream.next() => {
+                    let Some(bytes) = bytes else { break };
+                    let bytes = bytes.map_err(|e| TranslationError::Http(e.to_string()))?;
+                    buffer.push_str(&String::from_utf8_lossy(bytes.as_ref()));
+                    buffer = buffer.replace("\r\n", "\n");
+
+                    while let Some(index) = buffer.find("\n\n") {
+                        let event = buffer[..index].to_string();
+                        buffer = buffer[index + 2..].to_string();
+
+                        if Self::consume_sse_event(&event, &mut input_tokens, &mut forward)? {
+                            break 'sse;
+                        }
+                    }
+                }
+            }
+        }
+
+        if !buffer.trim().is_empty() {
+            Self::consume_sse_event(&buffer, &mut input_tokens, &mut forward)?;
+        }
+
+        // 释放 forward 持有的 &mut parser 与 &mut on_event 借用，供后续 finish/on_event 使用。
+        drop(forward);
+
+        if is_auto {
+            let (pieces, lang) = parser.finish();
+            for piece in pieces {
+                on_event(TranslationStreamEvent::Delta(piece));
+            }
+            if let Some(lang) = lang {
+                on_event(TranslationStreamEvent::DetectedSourceLang(lang));
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -299,18 +375,18 @@ struct ClaudeUsage {
 }
 
 #[async_trait::async_trait]
-impl LlmProvider for ClaudeProvider {
-    async fn stream_translate(
+impl TranslationProvider for ClaudeProvider {
+    async fn translate(
         &self,
         request: &TranslationRequest,
-        on_event: &mut (dyn FnMut(LlmStreamEvent) + Send),
+        on_event: &mut (dyn FnMut(TranslationStreamEvent) + Send),
         cancel: &CancellationToken,
-    ) -> Result<(), LlmError> {
+    ) -> Result<(), TranslationError> {
         let api_key = self
             .config
             .api_key
             .as_deref()
-            .ok_or(LlmError::MissingConfig("Claude API Key"))?;
+            .ok_or(TranslationError::MissingConfig("Claude API Key"))?;
 
         log::info!(
             "Claude 请求: endpoint={} model={} key={}",
@@ -329,49 +405,21 @@ impl LlmProvider for ClaudeProvider {
             .json(&body)
             .send()
             .await
-            .map_err(|e| LlmError::Http(e.to_string()))?;
+            .map_err(|e| TranslationError::Http(e.to_string()))?;
 
         if !response.status().is_success() {
             return Err(Self::parse_error_response(response).await);
         }
 
-        let mut stream = response.bytes_stream();
-        let mut buffer = String::new();
-        let mut input_tokens: Option<u64> = None;
-
-        loop {
-            tokio::select! {
-                _ = cancel.cancelled() => return Ok(()),
-                bytes = stream.next() => {
-                    let Some(bytes) = bytes else { break };
-                    let bytes = bytes.map_err(|e| LlmError::Http(e.to_string()))?;
-                    buffer.push_str(&String::from_utf8_lossy(&bytes));
-                    buffer = buffer.replace("\r\n", "\n");
-
-                    while let Some(index) = buffer.find("\n\n") {
-                        let event = buffer[..index].to_string();
-                        buffer = buffer[index + 2..].to_string();
-
-                        if Self::consume_sse_event(&event, &mut input_tokens, on_event)? {
-                            return Ok(());
-                        }
-                    }
-                }
-            }
-        }
-
-        if !buffer.trim().is_empty() {
-            Self::consume_sse_event(&buffer, &mut input_tokens, on_event)?;
-        }
-
-        Ok(())
+        let is_auto = request.source_lang == "auto";
+        Self::process_stream(response.bytes_stream(), is_auto, on_event, cancel).await
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::llm::LlmStreamEvent;
+    use crate::core::translation::provider::TranslationStreamEvent;
     use crate::core::translation::TranslationPromptConfig;
 
     #[test]
@@ -380,7 +428,7 @@ mod tests {
         let mut texts = Vec::new();
         let mut input_tokens: Option<u64> = None;
         let done = ClaudeProvider::consume_sse_event(event, &mut input_tokens, &mut |ev| {
-            if let LlmStreamEvent::Delta(t) = ev {
+            if let TranslationStreamEvent::Delta(t) = ev {
                 texts.push(t);
             }
         })
@@ -395,7 +443,7 @@ mod tests {
         let mut texts = Vec::new();
         let mut input_tokens: Option<u64> = None;
         let done = ClaudeProvider::consume_sse_event(event, &mut input_tokens, &mut |ev| {
-            if let LlmStreamEvent::Delta(t) = ev {
+            if let TranslationStreamEvent::Delta(t) = ev {
                 texts.push(t);
             }
         })
@@ -410,7 +458,7 @@ mod tests {
         let mut texts = Vec::new();
         let mut input_tokens: Option<u64> = None;
         let done = ClaudeProvider::consume_sse_event(event, &mut input_tokens, &mut |ev| {
-            if let LlmStreamEvent::Delta(t) = ev {
+            if let TranslationStreamEvent::Delta(t) = ev {
                 texts.push(t);
             }
         })
@@ -425,7 +473,7 @@ mod tests {
         let mut input_tokens: Option<u64> = None;
         let result = ClaudeProvider::consume_sse_event(event, &mut input_tokens, &mut |_| {});
         match result {
-            Err(LlmError::Api {
+            Err(TranslationError::Api {
                 retryable: false, ..
             }) => {}
             other => panic!("预期 Api(retryable=false)，得到：{other:?}"),
@@ -438,7 +486,7 @@ mod tests {
         let mut texts = Vec::new();
         let mut input_tokens: Option<u64> = None;
         let done = ClaudeProvider::consume_sse_event(event, &mut input_tokens, &mut |ev| {
-            if let LlmStreamEvent::Delta(t) = ev {
+            if let TranslationStreamEvent::Delta(t) = ev {
                 texts.push(t);
             }
         })
@@ -448,21 +496,22 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn stream_translate_requires_api_key() {
+    async fn translate_requires_api_key() {
         let provider = ClaudeProvider::new(ClaudeConfig::new());
         let request = crate::core::translation::TranslationRequest {
             session_id: crate::core::translation::TranslationSessionId("test".to_string()),
             input: crate::core::translation::TranslationInput::ManualText("hello".to_string()),
+            source_lang: String::new(),
             target_lang: "中文".to_string(),
             service: crate::core::translation::TranslationServiceMeta::default(),
             prompts: TranslationPromptConfig::default(),
         };
         let cancel = tokio_util::sync::CancellationToken::new();
         let result = provider
-            .stream_translate(&request, &mut |_| {}, &cancel)
+            .translate(&request, &mut |_| {}, &cancel)
             .await;
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), LlmError::MissingConfig(_)));
+        assert!(matches!(result.unwrap_err(), TranslationError::MissingConfig(_)));
     }
 
     #[test]
@@ -476,10 +525,10 @@ mod tests {
         let request = crate::core::translation::TranslationRequest {
             session_id: crate::core::translation::TranslationSessionId("test".to_string()),
             input: crate::core::translation::TranslationInput::ManualText("hi".to_string()),
+            source_lang: "English".to_string(),
             target_lang: "中文".to_string(),
             service: crate::core::translation::TranslationServiceMeta::default(),
             prompts: TranslationPromptConfig {
-                source_lang: "English".to_string(),
                 system_prompt: "sys".to_string(),
                 translation_prompt: "{source_lang}->{target_lang}:{text}".to_string(),
                 chain_of_thought: "medium".to_string(),
@@ -506,10 +555,10 @@ mod tests {
         let request = crate::core::translation::TranslationRequest {
             session_id: crate::core::translation::TranslationSessionId("test".to_string()),
             input: crate::core::translation::TranslationInput::ManualText("hi".to_string()),
+            source_lang: "English".to_string(),
             target_lang: "中文".to_string(),
             service: crate::core::translation::TranslationServiceMeta::default(),
             prompts: TranslationPromptConfig {
-                source_lang: "English".to_string(),
                 system_prompt: "sys".to_string(),
                 translation_prompt: "{source_lang}->{target_lang}:{text}".to_string(),
                 chain_of_thought: "medium".to_string(),
@@ -533,10 +582,10 @@ mod tests {
         let mut request = crate::core::translation::TranslationRequest {
             session_id: crate::core::translation::TranslationSessionId("test".to_string()),
             input: crate::core::translation::TranslationInput::ManualText("hi".to_string()),
+            source_lang: "English".to_string(),
             target_lang: "中文".to_string(),
             service: crate::core::translation::TranslationServiceMeta::default(),
             prompts: TranslationPromptConfig {
-                source_lang: "English".to_string(),
                 system_prompt: "sys".to_string(),
                 translation_prompt: "{source_lang}->{target_lang}:{text}".to_string(),
                 chain_of_thought: "short".to_string(),
@@ -567,5 +616,59 @@ mod tests {
             short_json["output_config"]["effort"],
             long_json["output_config"]["effort"]
         );
+    }
+
+    #[tokio::test]
+    async fn process_stream_message_stop_emits_detected_source_lang_and_flushes_pending() {
+        // 端到端验证 message_stop -> break 'sse -> finish 逻辑执行：
+        // auto 模式发 DetectedSourceLang，译文不被标记行污染。
+        let sse = "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"【源语言：英语】\\n你好\"}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n";
+        let stream = futures_util::stream::iter(vec![Ok::<&[u8], String>(sse.as_bytes())]);
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let mut events: Vec<TranslationStreamEvent> = Vec::new();
+        let mut on_event = |ev: TranslationStreamEvent| events.push(ev);
+        ClaudeProvider::process_stream(stream, true, &mut on_event, &cancel)
+            .await
+            .expect("process_stream 应成功");
+
+        let detected = events.iter().find_map(|ev| match ev {
+            TranslationStreamEvent::DetectedSourceLang(l) => Some(l.clone()),
+            _ => None,
+        });
+        assert_eq!(detected, Some("英语".to_string()));
+
+        let text: String = events
+            .iter()
+            .filter_map(|ev| match ev {
+                TranslationStreamEvent::Delta(t) => Some(t.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(text, "你好");
+    }
+
+    #[tokio::test]
+    async fn process_stream_message_stop_flushes_pending_when_no_newline() {
+        // 短译文无 \n 时滞留 parser.pending，message_stop 后 finish 应补发。
+        let sse = "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"你好\"}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n";
+        let stream = futures_util::stream::iter(vec![Ok::<&[u8], String>(sse.as_bytes())]);
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let mut events: Vec<TranslationStreamEvent> = Vec::new();
+        let mut on_event = |ev: TranslationStreamEvent| events.push(ev);
+        ClaudeProvider::process_stream(stream, true, &mut on_event, &cancel)
+            .await
+            .expect("process_stream 应成功");
+
+        let text: String = events
+            .iter()
+            .filter_map(|ev| match ev {
+                TranslationStreamEvent::Delta(t) => Some(t.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(text, "你好");
+        assert!(events
+            .iter()
+            .all(|ev| !matches!(ev, TranslationStreamEvent::DetectedSourceLang(_))));
     }
 }
