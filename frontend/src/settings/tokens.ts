@@ -21,6 +21,15 @@ const CLAUDE_MESSAGES = {
   status: 'available' as const,
 }
 
+const MICROSOFT_EDGE = {
+  id: 'microsoft_edge' as const,
+  label: 'Edge 翻译',
+  defaultEndpoint: 'https://edge.microsoft.com/translate/translatetext',
+  defaultModel: '',
+  editableEndpoint: false,
+  status: 'available' as const,
+}
+
 /**
  * 厂商官方 logo（Iconify simple-icons 集）有则填，无则统一用 lucide `Plug` 兜底。
  * Logo 候选来源：https://api.iconify.design/?prefix=simple-icons
@@ -75,6 +84,17 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     category: 'llm',
     keyRequired: true,
     protocols: [CLAUDE_MESSAGES],
+  },
+  {
+    id: 'microsoft',
+    name: '微软翻译',
+    description: 'Edge 浏览器默认翻译引擎，免 Key，复用浏览器环境信息调用。',
+    builtin: true,
+    defaultModel: '',
+    iconifyId: 'simple-icons:microsoftedge',
+    category: 'ml',
+    keyRequired: false,
+    protocols: [MICROSOFT_EDGE],
   },
   {
     id: 'gemini',
@@ -294,6 +314,7 @@ export const MOCK_PULLED_MODELS: Record<ServiceId, string[]> = {
     'claude-3-opus-latest',
     'claude-3-7-sonnet-latest',
   ],
+  microsoft: [],
   gemini: ['gemini-2.0-flash-exp', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-1.5-flash-8b'],
   deepl: [],
   google: [],

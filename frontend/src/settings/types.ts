@@ -33,6 +33,7 @@ export type BuiltinServiceId =
   | 'openai'
   | 'deepseek'
   | 'claude'
+  | 'microsoft'
   | 'gemini'
   | 'deepl'
   | 'google'

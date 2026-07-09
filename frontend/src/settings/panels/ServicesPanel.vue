@@ -666,6 +666,7 @@ const onDragEnd = (): void => {
         </div>
       </header>
 
+      <template v-if="activeService.id !== 'microsoft'">
       <div
         v-if="activeService.protocols.length === 0"
         class="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
@@ -831,6 +832,7 @@ const onDragEnd = (): void => {
           />
         </SettingRow>
       </SettingGroup>
+      </template>
 
       <SettingGroup title="危险操作" bare>
         <SettingRow
@@ -845,7 +847,7 @@ const onDragEnd = (): void => {
       </SettingGroup>
 
       <div
-        v-if="!activeInstance.apiKey"
+        v-if="activeService.id !== 'microsoft' && !activeInstance.apiKey"
         class="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
       >
         <CircleAlert class="h-3.5 w-3.5 mt-0.5 shrink-0" />

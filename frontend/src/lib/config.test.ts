@@ -208,4 +208,16 @@ describe('validateConfig', () => {
       }],
     })).toBe('DeepSeek Endpoint 请输入有效的 http(s) 地址');
   });
+
+  it('microsoft_edge 免 Key 渠道允许保存', () => {
+    expect(validateConfig({
+      ...base,
+      services: [{
+        id: 'ms-1', serviceType: 'microsoft', name: '微软翻译', enabled: true,
+        protocol: 'microsoft_edge', apiKey: null, endpoint: 'https://edge.microsoft.com/translate/translatetext',
+        model: '', timeoutSeconds: 60, systemPrompt: '', translationPrompt: '',
+        reflectionPrompt: '', reflectionEnabled: false, chainOfThought: 'off',
+      }],
+    })).toBeNull()
+  });
 });

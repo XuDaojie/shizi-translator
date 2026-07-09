@@ -70,4 +70,9 @@ describe('validateServiceForEnable', () => {
     const noKeyMeta = { ...meta, keyRequired: false }
     expect(validateServiceForEnable(inst({ apiKey: '' }), noKeyMeta)).toBeNull()
   })
+
+  it('免 Key 渠道 model 为空时允许开启', () => {
+    const noKeyMeta = { ...meta, id: 'microsoft', keyRequired: false, category: 'ml' as const }
+    expect(validateServiceForEnable(inst({ apiKey: '', model: '' }), noKeyMeta)).toBeNull()
+  })
 })

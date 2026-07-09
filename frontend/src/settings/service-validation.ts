@@ -23,7 +23,7 @@ export function validateServiceForEnable(
     return 'Endpoint 请输入有效的 http(s) 地址'
   }
 
-  if (!instance.model.trim()) {
+  if (meta?.keyRequired !== false && !instance.model.trim()) {
     return 'Model 不能为空'
   }
 
