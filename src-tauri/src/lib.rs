@@ -82,14 +82,7 @@ pub fn run() {
         .setup(|app| {
             let config_store = ConfigStore::load(app.handle())
                 .map_err(|error| tauri::Error::Anyhow(error.into()))?;
-            let history_store = HistoryStore::load(app.handle())
-                .map_err(|error| tauri::Error::Anyhow(error.into()))?;
-            app.manage(AppState::new(config_store, history_store));
-
-            // 日志初始化（best-effort，不阻止启动）
-            let log_level = app
-                .state::<AppState>()
-                .config_store
+            let log_level = config_store
                 .get()
                 .map(|c| c.log_level)
                 .unwrap_or_else(|_| "info".to_string());
@@ -98,6 +91,16 @@ pub fn run() {
                 logging::cleanup_old_logs(&dir, 7);
             }
             log::info!("应用启动，日志等级: {}", log_level);
+            let history_store = match HistoryStore::load(app.handle()) {
+                Ok(store) => store,
+                Err(error) => {
+                    log::error!("历史库加载失败，降级到内存存储: {}", error);
+                    HistoryStore::in_memory().map_err(|fallback_error| {
+                        tauri::Error::Anyhow(fallback_error.into())
+                    })?
+                }
+            };
+            app.manage(AppState::new(config_store, history_store));
 
             setup_tray(app)?;
             setup_close_to_hide(app);

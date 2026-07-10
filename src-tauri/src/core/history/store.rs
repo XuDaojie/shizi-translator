@@ -50,28 +50,30 @@ impl HistoryStore {
 
     pub fn open(path: PathBuf) -> Result<Self, HistoryError> {
         let conn = Connection::open(&path).map_err(HistoryError::Open)?;
+        Self::from_connection(path, conn)
+    }
+
+    pub fn in_memory() -> Result<Self, HistoryError> {
+        let conn = Connection::open_in_memory().map_err(HistoryError::Open)?;
+        Self::from_connection(PathBuf::from(":memory:"), conn)
+    }
+
+    #[cfg(test)]
+    pub fn in_memory_for_test() -> Result<Self, HistoryError> {
+        Self::in_memory()
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    fn from_connection(path: PathBuf, conn: Connection) -> Result<Self, HistoryError> {
         let store = Self {
             path,
             conn: Arc::new(Mutex::new(conn)),
         };
         store.init().map_err(HistoryError::Init)?;
         Ok(store)
-    }
-
-    #[cfg(test)]
-    pub fn in_memory_for_test() -> Result<Self, HistoryError> {
-        let store = Self {
-            path: PathBuf::from(":memory:"),
-            conn: Arc::new(Mutex::new(
-                Connection::open_in_memory().map_err(HistoryError::Open)?,
-            )),
-        };
-        store.init().map_err(HistoryError::Init)?;
-        Ok(store)
-    }
-
-    pub fn path(&self) -> &Path {
-        &self.path
     }
 
     fn with_conn<T>(
