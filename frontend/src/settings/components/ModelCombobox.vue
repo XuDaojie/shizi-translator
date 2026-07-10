@@ -54,6 +54,7 @@ const showHint = computed(
   () => !props.loading && filteredModels.value.length === 0 && !canCommitCustom.value,
 )
 
+/** 拉取中且列表仍为空时展示「正在拉取…」；已有静态候选时仍靠右上角 spinner + 底栏 loading-bar。 */
 const showLoadingHint = computed(() => props.loading && filteredModels.value.length === 0)
 
 function openDropdown(): void {

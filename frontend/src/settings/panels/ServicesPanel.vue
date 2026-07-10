@@ -52,7 +52,8 @@ const chainOfThoughtOptions = [
 const activeInstanceId = ref<string>(props.state.services[0]?.id ?? '')
 const search = ref('')
 const pickerOpen = ref(false)
-const pulling = ref<Record<string, boolean>>({})
+/** 正在拉取模型的实例 id；用单值 ref 保证模板 loading 能可靠刷新。 */
+const pullingId = ref<string | null>(null)
 const keyStatusById = ref<Record<string, ServiceInstance['keyStatus']>>({})
 const tab = ref<'translate' | 'ocr'>('translate')
 
@@ -151,12 +152,49 @@ const onAddService = (type: ServiceId): void => {
   pickerOpen.value = false
 }
 
+/** 下拉候选 = 内置静态 models ∪ 已拉取列表（去重，拉取结果在前便于发现新模型）。 */
+const modelOptions = computed((): string[] => {
+  const inst = activeInstance.value
+  if (!inst) return []
+  const builtin = serviceById(inst.type)?.models ?? []
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const m of [...inst.pulledModels, ...builtin]) {
+    const id = m.trim()
+    if (!id || seen.has(id)) continue
+    seen.add(id)
+    out.push(id)
+  }
+  return out
+})
+
+/**
+ * 打开模型下拉时拉取 OpenAI 兼容 `GET {endpoint}/models`（DeepSeek/智谱/Moonshot 等同一路径）。
+ * - 已成功拉取过（pulledModels 非空）则跳过，避免每次打开都打接口
+ * - 缺 Key / Endpoint 时先 toast，并仍显示 loading 一瞬，避免「点了没反应」
+ */
 const onPullModels = async (instanceId: string): Promise<void> => {
-  if (pulling.value[instanceId]) return
+  if (pullingId.value === instanceId) return
   const inst = props.state.services.find((s) => s.id === instanceId)
   if (!inst) return
+
+  const meta = serviceById(inst.type)
+  if (!meta?.hasModelApi) return
+  // 已有拉取结果：不重复请求（用户改 Key/Endpoint 后可清空 pulledModels 或删实例重建）
   if (inst.pulledModels.length > 0) return
-  pulling.value[instanceId] = true
+
+  if (!inst.apiKey.trim()) {
+    toast.error('拉取失败', '请先填写 API Key')
+    return
+  }
+  if (!inst.endpoint.trim()) {
+    toast.error('拉取失败', '请先填写 Endpoint')
+    return
+  }
+
+  pullingId.value = instanceId
+  // 让出一帧，确保 ModelCombobox 的 loading 转圈 / 底栏能先画出来
+  await nextTick()
   try {
     const result = await invokeListServiceModels(probeRequest(inst))
     if (activeInstance.value?.id !== inst.id) return
@@ -168,7 +206,7 @@ const onPullModels = async (instanceId: string): Promise<void> => {
     if (activeInstance.value?.id !== inst.id) return
     toast.error('拉取失败', String(err))
   } finally {
-    pulling.value[instanceId] = false
+    if (pullingId.value === instanceId) pullingId.value = null
   }
 }
 
@@ -745,8 +783,8 @@ const onDragEnd = (): void => {
         >
           <ModelCombobox
             :model-value="activeInstance.model"
-            :models="activeInstance.pulledModels"
-            :loading="pulling[activeInstance.id] ?? false"
+            :models="modelOptions"
+            :loading="pullingId === activeInstance.id"
             :placeholder="activeService.hasModelApi ? '打开下拉拉取模型,或直接输入' : '请输入模型名'"
             @update:model-value="(v) => (activeInstance!.model = v)"
             @open="() => onPullModels(activeInstance!.id)"

@@ -57,7 +57,7 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     iconifyId: 'simple-icons:openai',
     category: 'llm',
     keyRequired: true,
-    protocols: [OPENAI_CHAT('https://api.openai.com', 'gpt-4o-mini')],
+    protocols: [OPENAI_CHAT('https://api.openai.com/v1', 'gpt-4o-mini')],
   },
   {
     id: 'deepseek',
