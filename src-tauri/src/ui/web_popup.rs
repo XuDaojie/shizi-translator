@@ -12,10 +12,11 @@ use crate::{
     app::{popup_window, state::AppState},
     core::{
         config::{AppConfig, ServiceInstanceConfig},
+        history::{NewHistoryResult, NewHistorySession},
         logging::redact_text,
         translation::{
-            batch, provider_for_service, TranslationEvent, TranslationInput,
-            TranslationService, TranslationServiceMeta, TranslationSessionId,
+            batch, provider_for_service, TranslationEvent, TranslationInput, TranslationService,
+            TranslationServiceMeta, TranslationSessionId,
         },
     },
 };
@@ -64,6 +65,14 @@ fn cache_automatic_source_text_for_popup(
     }
 }
 
+fn now_iso() -> String {
+    chrono::Utc::now().to_rfc3339()
+}
+
+fn log_history_error(action: &str, error: impl std::fmt::Display) {
+    log::warn!("历史写入失败: {action}: {error}");
+}
+
 pub fn start_translation_from_input(
     input: TranslationInput,
     app: tauri::AppHandle,
@@ -92,8 +101,8 @@ pub fn start_translation_from_input(
     let (session_source_lang, session_target_lang) = state.session_languages();
     let requests = batch::build_batch_requests(
         input.clone(),
-        session_target_lang,
-        session_source_lang,
+        session_target_lang.clone(),
+        session_source_lang.clone(),
         &config.services,
         &batch_id,
     )?;
@@ -119,18 +128,32 @@ pub fn start_translation_from_input(
         let _ = state.finish_translation_if_current(generation);
         return Err(error);
     }
-    if let Err(error) =
-        cache_automatic_source_text_for_popup(&input, input.text(), state)
-    {
+    if let Err(error) = cache_automatic_source_text_for_popup(&input, input.text(), state) {
         let _ = state.finish_translation_if_current(generation);
         return Err(error);
+    }
+
+    let history_session = NewHistorySession::from_translation(
+        &batch_id,
+        &input,
+        session_source_lang,
+        session_target_lang,
+        now_iso(),
+    );
+    if let Err(error) = state.history_store.create_session(&history_session) {
+        log_history_error("create_session", error);
     }
 
     // ponytail: 短暂延迟让弹窗渲染完成
     thread::sleep(Duration::from_millis(120));
 
     // 为每个服务发送 Started 事件
-    for request in &requests {
+    for (request, service_config) in requests.iter().zip(enabled_services.iter()) {
+        let history_result = NewHistoryResult::from_request(request, service_config, &batch_id);
+        if let Err(error) = state.history_store.upsert_pending_result(&history_result) {
+            log_history_error("upsert_pending_result", error);
+        }
+
         emit_translation_event(
             &app,
             TranslationEvent::Started {
@@ -150,65 +173,116 @@ pub fn start_translation_from_input(
     let state_for_task = state.clone();
     let edge_env = state.edge_translate_env();
     let collect_usage = config.collect_usage;
+    let history_store = state.history_store.clone();
+    let history_batch_id = batch_id.clone();
+    let history_limit = config.history_limit;
 
     tauri::async_runtime::spawn(async move {
-        let jobs = requests.into_iter().zip(enabled_services).map(|(request, service_config)| {
-            let app_handle = app_handle.clone();
-            let cancel = cancel_token.clone();
-            let edge_env = edge_env.clone();
-            async move {
-                let failed_session_id = request.session_id.clone();
-                let failed_service = request.service.clone();
+        let jobs = requests
+            .into_iter()
+            .zip(enabled_services)
+            .map(|(request, service_config)| {
+                let app_handle = app_handle.clone();
+                let cancel = cancel_token.clone();
+                let edge_env = edge_env.clone();
+                let history_store = history_store.clone();
+                let history_batch_id = history_batch_id.clone();
+                async move {
+                    let failed_session_id = request.session_id.clone();
+                    let failed_service = request.service.clone();
 
-                match provider_for_service(&service_config, edge_env.as_ref()) {
-                    Ok(provider) => {
-                        let translation_service = TranslationService::new(provider);
-                        let result = translation_service
-                            .translate_with(request, collect_usage, cancel, |event| {
-                                let _ = emit_translation_event(&app_handle, event);
-                            })
-                            .await;
+                    match provider_for_service(&service_config, edge_env.as_ref()) {
+                        Ok(provider) => {
+                            let translation_service = TranslationService::new(provider);
+                            let result = translation_service
+                                .translate_with(request, collect_usage, cancel, |event| {
+                                    match &event {
+                                        TranslationEvent::Finished {
+                                            service,
+                                            full_text,
+                                            usage,
+                                            ..
+                                        } => {
+                                            if let Err(error) = history_store.mark_success(
+                                                &history_batch_id,
+                                                &service.service_instance_id,
+                                                full_text,
+                                                usage.as_ref(),
+                                            ) {
+                                                log_history_error("mark_success", error);
+                                            }
+                                        }
+                                        TranslationEvent::Cancelled { service, .. } => {
+                                            if let Err(error) = history_store.mark_cancelled(
+                                                &history_batch_id,
+                                                &service.service_instance_id,
+                                            ) {
+                                                log_history_error("mark_cancelled", error);
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                    let _ = emit_translation_event(&app_handle, event);
+                                })
+                                .await;
 
-                        if let Err(error) = result {
+                            if let Err(error) = result {
+                                log::error!(
+                                    "翻译失败: service={} session={} retryable={} err={}",
+                                    failed_service.service_name,
+                                    failed_session_id.0,
+                                    error.retryable(),
+                                    error
+                                );
+                                if let Err(history_error) = history_store.mark_error(
+                                    &history_batch_id,
+                                    &failed_service.service_instance_id,
+                                    &error.to_string(),
+                                ) {
+                                    log_history_error("mark_error", history_error);
+                                }
+                                let _ = emit_translation_event(
+                                    &app_handle,
+                                    TranslationEvent::Failed {
+                                        session_id: failed_session_id,
+                                        service: failed_service,
+                                        message: error.to_string(),
+                                        retryable: error.retryable(),
+                                    },
+                                );
+                            }
+                        }
+                        Err(message) => {
                             log::error!(
-                                "翻译失败: service={} session={} retryable={} err={}",
+                                "provider 初始化失败: service={} err={}",
                                 failed_service.service_name,
-                                failed_session_id.0,
-                                error.retryable(),
-                                error
+                                message
                             );
+                            if let Err(history_error) = history_store.mark_error(
+                                &history_batch_id,
+                                &failed_service.service_instance_id,
+                                &message,
+                            ) {
+                                log_history_error("mark_error", history_error);
+                            }
                             let _ = emit_translation_event(
                                 &app_handle,
                                 TranslationEvent::Failed {
                                     session_id: failed_session_id,
                                     service: failed_service,
-                                    message: error.to_string(),
-                                    retryable: error.retryable(),
+                                    message,
+                                    retryable: false,
                                 },
                             );
                         }
                     }
-                    Err(message) => {
-                        log::error!(
-                            "provider 初始化失败: service={} err={}",
-                            failed_service.service_name,
-                            message
-                        );
-                        let _ = emit_translation_event(
-                            &app_handle,
-                            TranslationEvent::Failed {
-                                session_id: failed_session_id,
-                                service: failed_service,
-                                message,
-                                retryable: false,
-                            },
-                        );
-                    }
                 }
-            }
-        });
+            });
 
         join_all(jobs).await;
+        if let Err(error) = history_store.trim_sessions(history_limit.max(1)) {
+            log_history_error("trim_sessions", error);
+        }
         let _ = state_for_task.finish_translation_if_current(generation);
     });
 
@@ -217,11 +291,7 @@ pub fn start_translation_from_input(
 
 pub fn show_translation_error(app: &tauri::AppHandle, message: impl Into<String>) {
     let session_id = create_session_id().unwrap_or_else(|_| "selection-error".to_string());
-    let config = app
-        .state::<AppState>()
-        .config_store
-        .get()
-        .ok();
+    let config = app.state::<AppState>().config_store.get().ok();
     if let Some(config) = config {
         let _ = show_translation_popup(app, &config);
     }
@@ -344,7 +414,8 @@ mod tests {
         let state = app_state();
         let input = TranslationInput::ManualText("手动输入".to_string());
 
-        cache_automatic_source_text_for_popup(&input, "手动输入", &state).expect("手动输入不需要缓存");
+        cache_automatic_source_text_for_popup(&input, "手动输入", &state)
+            .expect("手动输入不需要缓存");
 
         assert_eq!(
             state.take_pending_source_text().expect("读取待回填原文"),

@@ -1,4 +1,7 @@
-use crate::core::translation::TranslationInput;
+use crate::core::{
+    config::ServiceInstanceConfig,
+    translation::{TranslationInput, TranslationRequest},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -73,6 +76,43 @@ pub fn history_trigger_for_input(input: &TranslationInput) -> HistoryTrigger {
     }
 }
 
+impl NewHistorySession {
+    pub fn from_translation(
+        batch_id: &str,
+        input: &TranslationInput,
+        source_lang: String,
+        target_lang: String,
+        created_at: String,
+    ) -> Self {
+        Self {
+            id: batch_id.to_string(),
+            batch_id: batch_id.to_string(),
+            trigger: history_trigger_for_input(input),
+            source_lang,
+            target_lang,
+            source_text: input.text().to_string(),
+            created_at,
+        }
+    }
+}
+
+impl NewHistoryResult {
+    pub fn from_request(
+        request: &TranslationRequest,
+        service: &ServiceInstanceConfig,
+        session_id: &str,
+    ) -> Self {
+        Self {
+            session_id: session_id.to_string(),
+            service_instance_id: request.service.service_instance_id.clone(),
+            service_name: request.service.service_name.clone(),
+            service_type: request.service.service_type.clone(),
+            protocol: request.service.protocol.clone(),
+            model_name: service.model.clone(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -94,5 +134,21 @@ mod tests {
             }),
             HistoryTrigger::Screenshot
         );
+    }
+
+    #[test]
+    fn new_history_session_uses_batch_id_as_session_id() {
+        let item = NewHistorySession::from_translation(
+            "batch-1",
+            &TranslationInput::ManualText("hello".to_string()),
+            "auto".to_string(),
+            "zh-CN".to_string(),
+            "2026-07-11T00:00:00Z".to_string(),
+        );
+
+        assert_eq!(item.id, "batch-1");
+        assert_eq!(item.batch_id, "batch-1");
+        assert_eq!(item.trigger, HistoryTrigger::Manual);
+        assert_eq!(item.source_text, "hello");
     }
 }
