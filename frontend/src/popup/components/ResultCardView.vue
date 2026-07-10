@@ -57,7 +57,7 @@ const dotClass = (): string => {
   if (props.status === 'error' || props.status === 'aborted') return 'result-header-dot is-error'
   return 'result-header-dot'
 }
-const showDotFinal = (): boolean => props.loading || props.status === 'loading' || props.status === 'pending'
+const showDotFinal = (): boolean => props.loading || props.status === 'loading'
 </script>
 
 <template>
@@ -85,7 +85,7 @@ const showDotFinal = (): boolean => props.loading || props.status === 'loading' 
       <div class="result-card-body-inner">
         <div class="result-text-clip">
           <slot>
-            <div class="result-text">{{ text }}<span v-if="status === 'loading' || status === 'pending'" class="stream-cursor" /></div>
+            <div class="result-text">{{ text }}<span v-if="status === 'loading'" class="stream-cursor" /></div>
           </slot>
         </div>
         <button class="result-expand-btn" type="button" tabindex="-1" @click="onExpandClick">
