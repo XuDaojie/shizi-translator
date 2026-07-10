@@ -28,6 +28,7 @@ export interface AppConfig {
   defaultSourceLang: string;
   autoCopy: boolean;
   restoreClipboard: boolean;
+  historyLimit: number;
   services: ServiceInstanceConfig[];
   popupPrecreate: boolean;
   overlayPrecreate: boolean;

@@ -81,6 +81,7 @@ describe('projectToAppConfig', () => {
     const config = projectToAppConfig(state);
 
     expect(config.targetLang).toBe('中文');
+    expect(config.historyLimit).toBe(500);
     expect(config.popupPrecreate).toBe(true);
     expect(config.overlayPrecreate).toBe(false);
     expect(config.collectUsage).toBe(true);
@@ -153,6 +154,7 @@ describe('validateConfig', () => {
     defaultSourceLang: 'auto',
     autoCopy: true,
     restoreClipboard: true,
+    historyLimit: 500,
     services: [],
     popupPrecreate: true,
     overlayPrecreate: true,

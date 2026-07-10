@@ -39,6 +39,7 @@ export function projectToAppConfig(state: AppSettings): AppConfig {
     defaultSourceLang: state.translation.defaultSourceLang,
     autoCopy: state.translation.autoCopy,
     restoreClipboard: state.translation.restoreClipboard,
+    historyLimit: Math.max(1, Number(state.translation.historyLimit) || 500),
     services: state.services.map((service) => ({
       id: service.id,
       serviceType: service.type,

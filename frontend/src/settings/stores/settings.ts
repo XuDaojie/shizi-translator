@@ -515,6 +515,8 @@ export const useSettings = () => ({
     state.translation.autoCopy = backend.autoCopy ?? state.translation.autoCopy
     state.translation.restoreClipboard =
       backend.restoreClipboard ?? state.translation.restoreClipboard
+    state.translation.historyLimit =
+      backend.historyLimit ?? state.translation.historyLimit
     state.shortcut.bindings = mergeBackendIntoShortcuts(state.shortcut.bindings, backend.shortcuts ?? {})
     state.advanced.logLevel = applyBackendLogLevel(
       state.advanced.logLevel,

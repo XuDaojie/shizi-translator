@@ -251,6 +251,7 @@ describe('syncFromBackend', () => {
       defaultSourceLang: 'auto',
       autoCopy: true,
       restoreClipboard: true,
+      historyLimit: 500,
       services: [],
       popupPrecreate: true,
       overlayPrecreate: true,
@@ -320,6 +321,7 @@ describe('syncFromBackend', () => {
       defaultSourceLang: 'en',
       autoCopy: false,
       restoreClipboard: false,
+      historyLimit: 123,
       popupPrecreate: true,
       overlayPrecreate: true,
       collectUsage: true,
@@ -340,6 +342,7 @@ describe('syncFromBackend', () => {
     expect(settings.state.translation.defaultSourceLang).toBe('en');
     expect(settings.state.translation.autoCopy).toBe(false);
     expect(settings.state.translation.restoreClipboard).toBe(false);
+    expect(settings.state.translation.historyLimit).toBe(123);
     expect(invokeSaveAppConfig).not.toHaveBeenCalled();
   });
   it('后端非空时把 shortcuts 合并回本地绑定，只覆盖 keys', async () => {
@@ -353,6 +356,7 @@ describe('syncFromBackend', () => {
       defaultSourceLang: 'auto',
       autoCopy: true,
       restoreClipboard: true,
+      historyLimit: 500,
       services: [
         makeBackend({
           id: localId,
@@ -395,6 +399,7 @@ describe('syncFromBackend', () => {
       defaultSourceLang: 'auto',
       autoCopy: true,
       restoreClipboard: true,
+      historyLimit: 500,
       services: [
         makeBackend({
           id: localId,
@@ -438,6 +443,7 @@ describe('syncFromBackend', () => {
         defaultSourceLang: 'auto',
         autoCopy: true,
         restoreClipboard: true,
+        historyLimit: 500,
         services: [
           makeBackend({
             id: localId,
@@ -484,6 +490,7 @@ describe('syncFromBackend', () => {
       defaultSourceLang: 'auto',
       autoCopy: true,
       restoreClipboard: true,
+      historyLimit: 500,
       services: [
         makeBackend({
           id: localId,
@@ -521,6 +528,7 @@ describe('syncFromBackend', () => {
         defaultSourceLang: 'auto',
         autoCopy: true,
         restoreClipboard: true,
+        historyLimit: 500,
         services: [
           makeBackend({
             id: localId,
@@ -613,6 +621,7 @@ describe('defaultTargetLang', () => {
       defaultSourceLang: 'auto',
       autoCopy: true,
       restoreClipboard: true,
+      historyLimit: 500,
       services: [{ id: 'svc-1', serviceType: 'llm', name: 'A', enabled: true, protocol: 'openai_chat', apiKey: 'k', endpoint: 'e', model: 'm', timeoutSeconds: 60, systemPrompt: '', translationPrompt: '', reflectionPrompt: '', reflectionEnabled: false, chainOfThought: 'off' }],
       popupPrecreate: true,
       overlayPrecreate: true,

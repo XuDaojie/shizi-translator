@@ -36,6 +36,10 @@ fn default_log_level() -> String {
     "info".to_string()
 }
 
+fn default_history_limit() -> usize {
+    500
+}
+
 /// 把 OS locale（如 `zh-CN`、`zh-Hans`、`en-GB`）映射到语言下拉列表中的 code。
 /// 精确匹配优先；否则按主语言前缀映射；都不匹配回退 `en-US`。
 fn map_os_lang_to_list(os: &str) -> String {
@@ -106,6 +110,8 @@ pub struct AppConfig {
     pub auto_copy: bool,
     #[serde(default = "default_true")]
     pub restore_clipboard: bool,
+    #[serde(default = "default_history_limit")]
+    pub history_limit: usize,
     #[serde(default = "default_true")]
     pub popup_precreate: bool,
     #[serde(default = "default_true")]
@@ -239,6 +245,7 @@ impl AppConfig {
             default_source_lang: default_source_lang(),
             auto_copy: true,
             restore_clipboard: true,
+            history_limit: default_history_limit(),
             popup_precreate: true,
             overlay_precreate: true,
             collect_usage: env::var("SHIZI_COLLECT_USAGE")
@@ -254,6 +261,9 @@ impl AppConfig {
         self.services = self.services.into_iter().map(|s| s.normalized()).collect();
         self.target_lang = normalize_string(self.target_lang, FALLBACK_TARGET_LANG);
         self.default_source_lang = normalize_string(self.default_source_lang, "auto");
+        if self.history_limit == 0 {
+            self.history_limit = default_history_limit();
+        }
         self.log_level = normalize_log_level(self.log_level);
         self
     }
@@ -353,6 +363,16 @@ mod tests {
         assert_eq!(normalized.services[0].system_prompt, "");
         assert_eq!(normalized.services[0].translation_prompt, "");
         assert_eq!(normalized.services[0].chain_of_thought, "off");
+    }
+
+    #[test]
+    fn normalized_fills_empty_history_limit() {
+        let mut config = AppConfig::from_env();
+        config.history_limit = 0;
+
+        let normalized = config.normalized();
+
+        assert_eq!(normalized.history_limit, 500);
     }
 
     #[test]
