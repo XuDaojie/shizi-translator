@@ -18,6 +18,7 @@ async-trait = "0.1"
 enigo = "0.2"
 futures-util = "0.3"
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-global-shortcut = "2"
 serde = { version = "1", features = ["derive"] }
