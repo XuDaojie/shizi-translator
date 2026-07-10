@@ -117,3 +117,146 @@ describe('useTranslationEvents.dispatch', () => {
     expect(h.cards.get('svc-b')!.status).toBe('translating')
   })
 })
+
+describe('useTranslationEvents.collapsed 状态机', () => {
+  it('started 后 collapsed 仍为 true（不因 started 展开）', () => {
+    const h = makeHarness()
+    h.dispatch({
+      type: 'started',
+      sessionId: 'batch-1:svc-a',
+      serviceInstanceId: 'svc-a',
+      serviceName: 'A',
+      serviceType: 'openai',
+    })
+    expect(h.cards.get('svc-a')!.collapsed).toBe(true)
+    expect(h.cards.get('svc-a')!.status).toBe('translating')
+  })
+
+  it('首条非空 delta 后该卡 collapsed=false', () => {
+    const h = makeHarness()
+    h.dispatch({
+      type: 'started',
+      sessionId: 'batch-1:svc-a',
+      serviceInstanceId: 'svc-a',
+      serviceName: 'A',
+      serviceType: 'openai',
+    })
+    h.dispatch({
+      type: 'delta',
+      sessionId: 'batch-1:svc-a',
+      serviceInstanceId: 'svc-a',
+      text: 'Hel',
+    })
+    expect(h.cards.get('svc-a')!.collapsed).toBe(false)
+    expect(h.cards.get('svc-a')!.text).toBe('Hel')
+  })
+
+  it('空 delta 不展开', () => {
+    const h = makeHarness()
+    h.dispatch({
+      type: 'started',
+      sessionId: 'batch-1:svc-a',
+      serviceInstanceId: 'svc-a',
+      serviceName: 'A',
+      serviceType: 'openai',
+    })
+    h.dispatch({
+      type: 'delta',
+      sessionId: 'batch-1:svc-a',
+      serviceInstanceId: 'svc-a',
+      text: '',
+    })
+    expect(h.cards.get('svc-a')!.collapsed).toBe(true)
+  })
+
+  it('failed 无正文也展开', () => {
+    const h = makeHarness()
+    h.dispatch({
+      type: 'started',
+      sessionId: 'batch-1:svc-a',
+      serviceInstanceId: 'svc-a',
+      serviceName: 'A',
+      serviceType: 'openai',
+    })
+    h.dispatch({
+      type: 'failed',
+      sessionId: 'batch-1:svc-a',
+      serviceInstanceId: 'svc-a',
+      message: '网络错误',
+    })
+    expect(h.cards.get('svc-a')!.collapsed).toBe(false)
+    expect(h.cards.get('svc-a')!.status).toBe('failed')
+  })
+
+  it('仅 finished（无中间 delta）展开', () => {
+    const h = makeHarness()
+    h.dispatch({
+      type: 'started',
+      sessionId: 'batch-1:svc-a',
+      serviceInstanceId: 'svc-a',
+      serviceName: 'A',
+      serviceType: 'openai',
+    })
+    h.dispatch({
+      type: 'finished',
+      sessionId: 'batch-1:svc-a',
+      serviceInstanceId: 'svc-a',
+      fullText: '完整译文',
+    })
+    expect(h.cards.get('svc-a')!.collapsed).toBe(false)
+    expect(h.cards.get('svc-a')!.text).toBe('完整译文')
+  })
+
+  it('多服务：A 出字只展开 A，B 仍收缩', () => {
+    const h = makeHarness()
+    h.dispatch({
+      type: 'started',
+      sessionId: 'batch-1:svc-a',
+      serviceInstanceId: 'svc-a',
+      serviceName: 'A',
+      serviceType: 'openai',
+    })
+    h.dispatch({
+      type: 'started',
+      sessionId: 'batch-1:svc-b',
+      serviceInstanceId: 'svc-b',
+      serviceName: 'B',
+      serviceType: 'claude',
+    })
+    h.dispatch({
+      type: 'delta',
+      sessionId: 'batch-1:svc-a',
+      serviceInstanceId: 'svc-a',
+      text: '仅 A',
+    })
+    expect(h.cards.get('svc-a')!.collapsed).toBe(false)
+    expect(h.cards.get('svc-b')!.collapsed).toBe(true)
+  })
+
+  it('新 batch 先收回再各自等首包', () => {
+    const h = makeHarness()
+    h.dispatch({
+      type: 'started',
+      sessionId: 'batch-1:svc-a',
+      serviceInstanceId: 'svc-a',
+      serviceName: 'A',
+      serviceType: 'openai',
+    })
+    h.dispatch({
+      type: 'delta',
+      sessionId: 'batch-1:svc-a',
+      serviceInstanceId: 'svc-a',
+      text: '旧',
+    })
+    expect(h.cards.get('svc-a')!.collapsed).toBe(false)
+    h.dispatch({
+      type: 'started',
+      sessionId: 'batch-2:svc-a',
+      serviceInstanceId: 'svc-a',
+      serviceName: 'A',
+      serviceType: 'openai',
+    })
+    expect(h.cards.get('svc-a')!.text).toBe('')
+    expect(h.cards.get('svc-a')!.collapsed).toBe(true)
+  })
+})

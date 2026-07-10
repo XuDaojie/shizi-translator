@@ -11,6 +11,8 @@ export interface CardState {
   text: string
   status: CardStatus
   collapsed: boolean
+  /** 用户在本 batch 内手动改过折叠；true 时自动规则不改 collapsed，新 batch 清除 */
+  collapseUserOverride: boolean
   expanded: boolean
   hasOverflow: boolean
   showActions: boolean
@@ -62,7 +64,8 @@ function ensureCard(cards: Map<string, CardState>, payload: TranslationEventPayl
       modelName: payload.modelName ?? '',
       text: '',
       status: 'pending',
-      collapsed: false,
+      collapsed: true,
+      collapseUserOverride: false,
       expanded: false,
       hasOverflow: false,
       showActions: false,
@@ -82,6 +85,8 @@ function resetCardForNewBatch(card: CardState): void {
   card.expanded = false
   card.hasOverflow = false
   card.detectedSourceLang = null
+  card.collapsed = true
+  card.collapseUserOverride = false
 }
 
 export interface UseTranslationEventsReturn {
@@ -115,14 +120,20 @@ export function useTranslationEvents(opts: UseTranslationEventsOptions): UseTran
         card.expanded = false
         card.hasOverflow = false
         card.detectedSourceLang = null
-        card.collapsed = false
+        if (!card.collapseUserOverride) {
+          card.collapsed = true
+        }
         break
       }
       case 'delta': {
         if (batchIdFromSession(payload.sessionId) !== opts.getCurrentBatchId()) return
         const card = opts.cards.get(payload.serviceInstanceId ?? 'default')
         if (!card) return
+        const prevLen = card.text.length
         card.text += payload.text ?? ''
+        if (!card.collapseUserOverride && prevLen === 0 && card.text.length > 0) {
+          card.collapsed = false
+        }
         break
       }
       case 'finished': {
@@ -134,6 +145,9 @@ export function useTranslationEvents(opts: UseTranslationEventsOptions): UseTran
         card.usage = payload.usage ?? null
         card.showActions = true
         card.detectedSourceLang = payload.detectedSourceLang ?? null
+        if (!card.collapseUserOverride && card.text.trim().length > 0) {
+          card.collapsed = false
+        }
         if (payload.detectedSourceLang) opts.onDetectedLang(payload.detectedSourceLang)
         opts.onBatchStatusChange()
         break
@@ -147,6 +161,9 @@ export function useTranslationEvents(opts: UseTranslationEventsOptions): UseTran
         card.status = 'failed'
         card.showActions = false
         card.usage = null
+        if (!card.collapseUserOverride) {
+          card.collapsed = false
+        }
         opts.onBatchStatusChange()
         break
       }

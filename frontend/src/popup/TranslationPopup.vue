@@ -151,6 +151,7 @@ const refreshCardsFromConfig = (config: AppConfig): void => {
         text: '',
         status: 'pending',
         collapsed: !sourceText.value.trim(),
+        collapseUserOverride: false,
         expanded: false,
         hasOverflow: false,
         showActions: false,
