@@ -246,11 +246,12 @@ const onDragEnd = (): void => {
 </script>
 
 <template>
-    <div class="grid min-h-full grid-cols-[220px_minmax(0,1fr)] items-stretch gap-2.5">
-    <!-- 左侧:服务实例列表(sticky,不随右侧编辑区滚动) -->
-    <aside class="sticky top-2.5 flex max-h-[calc(600px-2rem)] min-h-0 flex-col gap-2.5 overflow-hidden">
+  <!-- 铺满内容区高度:左侧列表固定高度内部滚,「添加服务」钉在底部;右侧详情独立滚 -->
+  <div class="grid h-full min-h-0 grid-cols-[220px_minmax(0,1fr)] grid-rows-[minmax(0,1fr)] gap-2.5 overflow-hidden">
+    <!-- 左侧:服务实例列表(固定高度,内部独立滚动,不随外层/右侧滚动) -->
+    <aside class="flex h-full min-h-0 flex-col gap-2.5 overflow-hidden self-stretch">
       <!-- Tab 栏:翻译服务 / 文字识别 -->
-      <div class="flex items-center gap-1 border-b border-border">
+      <div class="flex shrink-0 items-center gap-1 border-b border-border">
         <button
           type="button"
           :class="[
@@ -295,7 +296,7 @@ const onDragEnd = (): void => {
 
       <!-- 翻译服务 Tab -->
       <template v-if="tab === 'translate'">
-        <div class="flex items-center gap-2 rounded-md border border-input bg-background px-2.5">
+        <div class="flex shrink-0 items-center gap-2 rounded-md border border-input bg-background px-2.5">
           <Search class="h-3.5 w-3.5 text-muted-foreground" />
           <Input
             v-model="search"
@@ -306,7 +307,7 @@ const onDragEnd = (): void => {
         </div>
 
         <div class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card">
-          <ul class="min-h-0 flex-1 overflow-y-auto divide-y divide-border scrollbar-thin">
+          <ul class="min-h-0 flex-1 overflow-y-auto overscroll-contain divide-y divide-border scrollbar-thin">
             <li v-for="inst in filteredInstances" :key="inst.id">
               <div
                 :class="[
@@ -394,7 +395,8 @@ const onDragEnd = (): void => {
               没有匹配的服务实例
             </li>
           </ul>
-          <div class="border-t border-border p-2">
+          <!-- 固定在左侧栏底部,不随列表滚动 -->
+          <div class="shrink-0 border-t border-border p-2">
             <Dialog
               v-model:open="pickerOpen"
               title="添加服务"
@@ -446,7 +448,7 @@ const onDragEnd = (): void => {
       <!-- 文字识别 (OCR) Tab -->
       <template v-else>
         <div class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card">
-          <ul class="min-h-0 flex-1 divide-y divide-border">
+          <ul class="min-h-0 flex-1 overflow-y-auto overscroll-contain divide-y divide-border scrollbar-thin">
             <li>
               <div class="flex items-center gap-3 px-3 py-2.5">
                 <span
@@ -473,7 +475,7 @@ const onDragEnd = (): void => {
               </div>
             </li>
           </ul>
-          <div class="border-t border-border p-2">
+          <div class="shrink-0 border-t border-border p-2">
             <div :title="'自定义 OCR 服务暂未开放,后续版本支持'">
               <Button
                 variant="outline"
@@ -490,8 +492,12 @@ const onDragEnd = (): void => {
       </template>
     </aside>
 
-    <!-- 右侧:实例详情(翻译服务) / OCR 信息面板(文字识别) -->
-    <div v-if="tab === 'ocr'" class="flex min-w-0 flex-col gap-2.5 pt-1">
+    <!-- 右侧:实例详情(翻译服务) / OCR 信息面板(文字识别) — 高度锁在网格行内,自身滚动 -->
+    <div
+      v-if="tab === 'ocr'"
+      class="h-full min-h-0 min-w-0 self-stretch overflow-y-auto overscroll-contain pt-1 scrollbar-thin"
+    >
+      <div class="flex flex-col gap-2.5">
       <header class="flex items-start gap-3">
         <span
           class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary"
@@ -601,9 +607,14 @@ const onDragEnd = (): void => {
         <ScanText class="h-3.5 w-3.5 shrink-0" />
         <span>由 Windows 系统提供 · 始终可用 · 无需网络 · 截图后即时识别</span>
       </div>
+      </div>
     </div>
 
-    <div v-else-if="activeInstance && activeService" class="flex min-w-0 flex-col gap-2.5 pt-1">
+    <div
+      v-else-if="activeInstance && activeService"
+      class="h-full min-h-0 min-w-0 self-stretch overflow-y-auto overscroll-contain pt-1 scrollbar-thin"
+    >
+      <div class="flex flex-col gap-2.5">
       <header class="flex items-start justify-between gap-3">
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2">
@@ -852,6 +863,7 @@ const onDragEnd = (): void => {
       >
         <CircleAlert class="h-3.5 w-3.5 mt-0.5 shrink-0" />
         <span>未配置 API Key,该实例将无法用于翻译。可前往对应服务商申请。</span>
+      </div>
       </div>
     </div>
   </div>

@@ -42,6 +42,7 @@ onMounted(() => {
 
 <template>
   <SettingsLayout
+    class="h-full min-h-0"
     :active="active"
     @update:active="onUpdateActive"
   >

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useSettings } from './stores/settings'
 import SettingsSidebar from './SettingsSidebar.vue'
 
@@ -14,6 +15,8 @@ const emit = defineEmits<{
   (e: 'update:active', value: string): void
 }>()
 
+/** 服务页自管左右分栏滚动,外层不再出滚动条。 */
+const isServices = computed(() => props.active === 'services')
 </script>
 
 <template>
@@ -23,9 +26,21 @@ const emit = defineEmits<{
       @update:model-value="(v) => emit('update:active', v)"
     />
 
-    <main class="flex-1 min-w-0 flex flex-col bg-background">
-      <div class="flex-1 overflow-y-auto p-2.5 scrollbar-thin">
-        <div class="mx-auto flex min-h-full max-w-[var(--content-max-width)] flex-col gap-3">
+    <main class="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
+      <div
+        :class="[
+          'min-h-0 flex-1 p-2.5 scrollbar-thin',
+          isServices ? 'flex flex-col overflow-hidden' : 'overflow-y-auto',
+        ]"
+      >
+        <div
+          :class="[
+            'mx-auto flex max-w-[var(--content-max-width)] flex-col',
+            isServices
+              ? 'h-full min-h-0 w-full flex-1 overflow-hidden'
+              : 'min-h-full gap-3',
+          ]"
+        >
           <slot :state="state" />
         </div>
       </div>
