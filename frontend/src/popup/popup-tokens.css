@@ -1,0 +1,35 @@
+/* 翻译弹窗设计 tokens：暖米白 / 灰文字 / 蓝 accent。
+   作用域：全局 :root，被 src/popup 组件 + src/settings/panels/HistoryPanel.vue 共同消费。
+   变量值与旧 frontend/public/translate.css 的 :root 一致（1:1 迁移），仅加 --popup- 前缀，
+   避免与 styles/main.css 的 shadcn HSL 变量（如 --border）冲突。 */
+
+:root {
+  --popup-bg-popup:      #F5F2EC;
+  --popup-bg-card:       #FFFFFF;
+  --popup-bg-soft:       #FAF8F3;
+  --popup-bg-soft-2:     #F0EDE5;
+
+  --popup-fg:            #1F1E1B;
+  --popup-fg-2:          #5B584F;
+  --popup-fg-3:          #7A7770;
+
+  --popup-border:        #E6E2D8;
+  --popup-border-2:      #D8D3C5;
+
+  --popup-accent:        #0078D4;
+  --popup-accent-hover:  #106EBE;
+  --popup-accent-soft:   rgba(0, 120, 212, 0.08);
+  --popup-success:       #107C10;
+  --popup-warning:       #CA5010;
+  --popup-danger:        #b42318;
+
+  --popup-radius-sm:     5px;
+  --popup-radius-md:     9px;
+  --popup-radius-lg:     14px;
+
+  --popup-font-family:   "Segoe UI Variable", "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Microsoft YaHei", system-ui, sans-serif;
+
+  --popup-shadow-popup:  0 8px 24px rgba(28, 25, 23, 0.10), 0 1px 2px rgba(28, 25, 23, 0.04);
+  --popup-shadow-card:   0 1px 2px rgba(28, 25, 23, 0.04);
+  --popup-shadow-card-h: 0 2px 8px rgba(28, 25, 23, 0.07);
+}
