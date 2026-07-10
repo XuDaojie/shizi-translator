@@ -67,3 +67,37 @@ export async function invokeWriteFrontendLog(entries: FrontendLogEntry[]): Promi
 export async function invokeExportLogs(): Promise<string> {
   return requireInvoke()<string>('export_logs');
 }
+
+export type HistoryTrigger = 'selection' | 'manual' | 'screenshot'
+export type HistoryResultStatus = 'success' | 'error' | 'cancelled' | 'pending'
+
+export interface HistoryResultDto {
+  serviceInstanceId: string
+  serviceName: string
+  serviceType: string
+  protocol: string
+  modelName: string
+  translation: string
+  errorMessage: string
+  status: HistoryResultStatus
+  inputTokens: number | null
+  outputTokens: number | null
+}
+
+export interface HistorySessionDto {
+  id: string
+  timestamp: string
+  trigger: HistoryTrigger
+  sourceLang: string
+  targetLang: string
+  source: string
+  results: HistoryResultDto[]
+}
+
+export async function invokeListTranslationHistory(limit?: number): Promise<HistorySessionDto[]> {
+  return requireInvoke()<HistorySessionDto[]>('list_translation_history', { limit })
+}
+
+export async function invokeClearTranslationHistory(): Promise<void> {
+  return requireInvoke()<void>('clear_translation_history')
+}
