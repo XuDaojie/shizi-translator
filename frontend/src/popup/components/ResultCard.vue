@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import ResultCardView from './ResultCardView.vue'
 import type { CardState } from '../composables/useTranslationEvents'
 import { speakText, copyText, getTauriApis } from '../composables/utils'
@@ -85,7 +85,12 @@ const detectOverflow = (): void => {
   props.card.hasOverflow = textRef.value.scrollHeight > el.clientHeight + 1
 }
 watch(() => props.card.text, () => { nextTick(detectOverflow) })
-watch(() => props.card.status, (s) => { if (s === 'finished') nextTick(detectOverflow) })
+watch(() => props.card.status, (s) => {
+  if (s !== 'translating') {
+    textRef.value?.querySelector('.stream-cursor')?.remove()
+  }
+  if (s === 'finished') nextTick(detectOverflow)
+})
 
 const onSpeak = (): void => {
   const text = textRef.value?.textContent ?? props.card.text
@@ -108,10 +113,6 @@ const onRefresh = async (): Promise<void> => {
     toast.error('重试失败', String(e))
   }
 }
-
-onBeforeUnmount(() => {
-  /* 卡片由父组件按 serviceInstanceId 复用，组件销毁时无需清理 DOM（Vue 自动处理）。 */
-})
 </script>
 
 <template>
