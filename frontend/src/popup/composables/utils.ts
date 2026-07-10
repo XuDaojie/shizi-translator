@@ -3,7 +3,12 @@
 export interface TauriApis {
   invoke: <T = unknown>(cmd: string, args?: Record<string, unknown>) => Promise<T>
   listen: <T = unknown>(event: string, handler: (event: { payload: T }) => void) => Promise<UnlistenFn>
-  getCurrentWindow: () => { setAlwaysOnTop: (top: boolean) => Promise<void>; setSize: (size: LogicalSize) => Promise<void> }
+  getCurrentWindow: () => {
+    setAlwaysOnTop: (top: boolean) => Promise<void>
+    setSize: (size: LogicalSize) => Promise<void>
+    show: () => Promise<void>
+    setFocus: () => Promise<void>
+  }
 }
 type UnlistenFn = () => void
 interface LogicalSize { type: 'Logical'; width: number; height: number }

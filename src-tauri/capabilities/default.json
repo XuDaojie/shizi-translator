@@ -7,6 +7,8 @@
     "core:window:allow-set-always-on-top",
     "core:window:allow-set-size",
     "core:window:allow-hide",
+    "core:window:allow-show",
+    "core:window:allow-set-focus",
     "global-shortcut:default",
     "dialog:allow-save",
     "mcp-bridge:default"
