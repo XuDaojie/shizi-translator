@@ -10,7 +10,10 @@ use app::{
     tray::setup_tray,
     window::{ensure_settings_window, setup_close_to_hide},
 };
-use core::{config::ConfigStore, history::HistoryStore};
+use core::{
+    config::ConfigStore,
+    history::{store::HistoryError, HistoryStore},
+};
 use tauri::Manager;
 use ui::{
     config::{get_app_config, get_shortcut_conflicts, open_settings, save_app_config},
@@ -29,6 +32,20 @@ use ui::{
 };
 
 use crate::core::config::AppConfig;
+
+fn load_history_store_or_fallback(
+    result: Result<HistoryStore, HistoryError>,
+) -> Result<HistoryStore, tauri::Error> {
+    match result {
+        Ok(store) => Ok(store),
+        Err(error) => {
+            let message = format!("历史库加载失败，将使用内存历史库: {}", error);
+            log::error!("{}", message);
+            eprintln!("{}", message);
+            HistoryStore::in_memory().map_err(|fallback_error| tauri::Error::Anyhow(fallback_error.into()))
+        }
+    }
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -91,15 +108,7 @@ pub fn run() {
                 logging::cleanup_old_logs(&dir, 7);
             }
             log::info!("应用启动，日志等级: {}", log_level);
-            let history_store = match HistoryStore::load(app.handle()) {
-                Ok(store) => store,
-                Err(error) => {
-                    log::error!("历史库加载失败，降级到内存存储: {}", error);
-                    HistoryStore::in_memory().map_err(|fallback_error| {
-                        tauri::Error::Anyhow(fallback_error.into())
-                    })?
-                }
-            };
+            let history_store = load_history_store_or_fallback(HistoryStore::load(app.handle()))?;
             app.manage(AppState::new(config_store, history_store));
 
             setup_tray(app)?;
@@ -124,4 +133,26 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("启动应用失败");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::load_history_store_or_fallback;
+    use crate::core::history::{store::HistoryError, HistoryStore};
+    use std::path::Path;
+
+    #[test]
+    fn history_store_load_failure_falls_back_to_memory_store() {
+        let store = load_history_store_or_fallback(Err(HistoryError::Lock)).expect("应降级到内存历史库");
+        assert_eq!(store.path(), Path::new(":memory:"));
+        assert!(store.list_recent(1).expect("内存历史库应可读").is_empty());
+    }
+
+    #[test]
+    fn history_store_load_success_keeps_original_store() {
+        let store = HistoryStore::in_memory().expect("创建内存历史库");
+        let path = store.path().to_path_buf();
+        let selected = load_history_store_or_fallback(Ok(store)).expect("成功路径应直接返回");
+        assert_eq!(selected.path(), path.as_path());
+    }
 }
