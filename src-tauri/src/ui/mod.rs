@@ -1,4 +1,5 @@
 pub mod config;
+pub mod history;
 pub mod service_probe;
 pub mod logging;
 pub mod ocr_popup;

@@ -32,6 +32,7 @@ pub enum HistoryError {
     Sql(rusqlite::Error),
 }
 
+#[derive(Clone)]
 pub struct HistoryStore {
     path: PathBuf,
     conn: Arc<Mutex<Connection>>,

@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use crate::app::shortcuts::ShortcutBindingError;
 use crate::core::capture::CapturedImage;
 use crate::core::config::ConfigStore;
+use crate::core::history::HistoryStore;
 use crate::core::mt::EdgeTranslateEnv;
 use crate::core::translation::TranslationInput;
 use tokio_util::sync::CancellationToken;
@@ -10,6 +11,7 @@ use tokio_util::sync::CancellationToken;
 #[derive(Clone)]
 pub struct AppState {
     pub config_store: ConfigStore,
+    pub history_store: HistoryStore,
     pending_source_text: Arc<Mutex<Option<String>>>,
     translation_busy: Arc<Mutex<bool>>,
     // 翻译代次：每次 begin_translation_overriding 递增，用于区分"当前翻译"与"已被
@@ -41,7 +43,7 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(config_store: ConfigStore) -> Self {
+    pub fn new(config_store: ConfigStore, history_store: HistoryStore) -> Self {
         let default_source_lang = config_store
             .get()
             .map(|c| c.default_source_lang)
@@ -52,6 +54,7 @@ impl AppState {
             .unwrap_or_else(|_| "zh-CN".to_string());
         Self {
             config_store,
+            history_store,
             pending_source_text: Arc::new(Mutex::new(None)),
             translation_busy: Arc::new(Mutex::new(false)),
             translation_generation: Arc::new(Mutex::new(0)),
@@ -64,6 +67,14 @@ impl AppState {
             session_target_lang: Arc::new(Mutex::new(default_target_lang)),
             edge_translate_env: Arc::new(Mutex::new(None)),
         }
+    }
+
+    #[cfg(test)]
+    pub fn new_for_test(config_store: ConfigStore) -> Self {
+        Self::new(
+            config_store,
+            HistoryStore::in_memory_for_test().expect("创建内存历史存储"),
+        )
     }
 
     pub fn set_pending_source_text(&self, text: String) -> Result<(), String> {
@@ -328,7 +339,7 @@ mod tests {
     };
 
     fn app_state() -> AppState {
-        AppState::new(ConfigStore::from_parts_for_test(
+        AppState::new_for_test(ConfigStore::from_parts_for_test(
             PathBuf::from("unused-config.json"),
             Arc::new(RwLock::new(AppConfig::from_env())),
         ))
@@ -590,7 +601,7 @@ mod tests {
         let mut config = AppConfig::from_env();
         config.default_source_lang = "en-US".to_string();
         config.target_lang = "ja-JP".to_string();
-        let state = AppState::new(ConfigStore::from_parts_for_test(
+        let state = AppState::new_for_test(ConfigStore::from_parts_for_test(
             PathBuf::from("unused-config.json"),
             Arc::new(RwLock::new(config)),
         ));
@@ -615,7 +626,7 @@ mod tests {
         let mut config = AppConfig::from_env();
         config.target_lang = "zh-CN".to_string();
         let store = Arc::new(RwLock::new(config));
-        let state = AppState::new(ConfigStore::from_parts_for_test(
+        let state = AppState::new_for_test(ConfigStore::from_parts_for_test(
             PathBuf::from("unused-config.json"),
             store.clone(),
         ));

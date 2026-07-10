@@ -10,10 +10,11 @@ use app::{
     tray::setup_tray,
     window::{ensure_settings_window, setup_close_to_hide},
 };
-use core::config::ConfigStore;
+use core::{config::ConfigStore, history::HistoryStore};
 use tauri::Manager;
 use ui::{
     config::{get_app_config, get_shortcut_conflicts, open_settings, save_app_config},
+    history::{clear_translation_history, list_translation_history},
     logging::{export_logs, write_frontend_log},
     ocr_popup::trigger_ocr_translation,
     overlay::{
@@ -65,6 +66,8 @@ pub fn run() {
             get_app_config,
             save_app_config,
             get_shortcut_conflicts,
+            list_translation_history,
+            clear_translation_history,
             open_settings,
             list_service_models,
             validate_service_credential,
@@ -79,7 +82,9 @@ pub fn run() {
         .setup(|app| {
             let config_store = ConfigStore::load(app.handle())
                 .map_err(|error| tauri::Error::Anyhow(error.into()))?;
-            app.manage(AppState::new(config_store));
+            let history_store = HistoryStore::load(app.handle())
+                .map_err(|error| tauri::Error::Anyhow(error.into()))?;
+            app.manage(AppState::new(config_store, history_store));
 
             // 日志初始化（best-effort，不阻止启动）
             let log_level = app
