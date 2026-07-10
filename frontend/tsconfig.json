@@ -17,6 +17,6 @@
       "@public/*": ["./public/*"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.vue", "settings.html"],
+  "include": ["src/**/*.ts", "src/**/*.vue", "settings.html", "translate.html"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

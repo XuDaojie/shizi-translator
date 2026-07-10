@@ -19,7 +19,10 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     rollupOptions: {
-      input: resolve(frontendDir, 'settings.html'),
+      input: {
+        settings: resolve(frontendDir, 'settings.html'),
+        translate: resolve(frontendDir, 'translate.html'),
+      },
     },
   },
   server: {
