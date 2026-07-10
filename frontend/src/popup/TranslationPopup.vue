@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { Toaster } from '@/components/ui/toast'
 import { createLogger } from '@public/logger.js'
 import PopupToolbar from './components/PopupToolbar.vue'
@@ -110,6 +110,10 @@ const events = useTranslationEvents({
     refreshCardsFromConfig(cfg)
   },
   logger,
+})
+
+onBeforeUnmount(() => {
+  events.unlisten()
 })
 
 /* === 卡片配置同步（复刻旧 refreshCardsFromConfig + syncServiceCards） === */
