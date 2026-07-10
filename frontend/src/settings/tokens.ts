@@ -233,12 +233,13 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     name: '自定义 OpenAI 兼容',
     description: '接入任意 OpenAI 兼容协议的端点(如本地 Ollama、Azure OpenAI 等)。',
     builtin: true,
-    defaultModel: 'custom',
+    defaultModel: '',
     needsEndpoint: true,
     hasModelApi: true,
     category: 'llm',
     keyRequired: true,
-    protocols: [],
+    // 与 openai/deepseek/zhipu 共用 openai_chat 后端路径，用户自填 endpoint/model/key。
+    protocols: [OPENAI_CHAT('http://localhost:11434/v1', '')],
   },
 ]
 
@@ -274,11 +275,12 @@ export const buildServices = (customTypes: CustomServiceType[]): ServiceMeta[] =
     description: `由用户创建的自定义渠道(${t.createdAt.slice(0, 10)})`,
     builtin: false,
     defaultModel: '',
-    needsEndpoint: false,
-    hasModelApi: false,
+    needsEndpoint: true,
+    hasModelApi: true,
     category: 'llm',
     keyRequired: true,
-    protocols: [],
+    // 用户自建渠道同样走 OpenAI Chat 兼容协议（endpoint/model 由用户填写）。
+    protocols: [OPENAI_CHAT('', '')],
   }))
   return [...BUILTIN_SERVICES, ...customs]
 }
@@ -295,9 +297,12 @@ export const LUCIDE_CUSTOM_FALLBACK: Component = WandSparkles
  * 用户在设置页可覆盖;UI 旁提供"重置为默认"按钮。
  */
 export const DEFAULT_PROMPTS = {
-  system: '你是一位专业的翻译助手,擅长准确、自然地将文本从源语言翻译成目标语言。保持原文的语气、风格和专业术语的一致性;遇到专有名词、品牌名、代码片段保留原文;只输出翻译结果,不要附加解释。',
-  translation: '请将以下文本从 {source_lang} 翻译成 {target_lang},只输出翻译结果,不要添加任何解释或说明:\n\n{text}',
-  reflection: '请审视上面的翻译,从以下角度检查并改进:\n1. 是否有不符合目标语言习惯的表达?\n2. 专业术语是否一致?\n3. 是否保持了原文的语气和风格?\n4. 是否有遗漏或错译?\n\n请直接输出改进后的最终翻译,不要附加说明。',
+  system:
+    '你是一位专业的翻译助手,擅长准确、自然地将文本从源语言翻译成目标语言。保持原文的语气、风格和专业术语的一致性;遇到专有名词、品牌名、代码片段保留原文;必须完整翻译全部内容,保留原文的换行、段落与列表结构,不得遗漏条目或提前结束;只输出翻译结果,不要附加解释。',
+  translation:
+    '请将以下文本从 {source_lang} 完整翻译成 {target_lang}（保留所有段落、换行与列表项,勿省略任何内容）。只输出翻译结果,不要添加任何解释或说明:\n\n{text}',
+  reflection:
+    '请审视上面的翻译,从以下角度检查并改进:\n1. 是否有不符合目标语言习惯的表达?\n2. 专业术语是否一致?\n3. 是否保持了原文的语气和风格?\n4. 是否有遗漏或错译?\n\n请直接输出改进后的最终翻译,不要附加说明。',
 } as const
 
 /**

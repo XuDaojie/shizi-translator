@@ -57,7 +57,7 @@ impl TranslationRequest {
     pub fn system_prompt(&self) -> String {
         let prompt = self.prompts.system_prompt.trim();
         if prompt.is_empty() {
-            "你是一个专业翻译引擎。只输出译文，不要解释。".to_string()
+            "你是一个专业翻译引擎。只输出译文，不要解释。必须完整翻译全部内容，保留原文的换行、段落与列表结构，不得遗漏条目或提前结束。".to_string()
         } else {
             prompt.to_string()
         }
@@ -67,7 +67,7 @@ impl TranslationRequest {
         let template = self.prompts.translation_prompt.trim();
         let base = if template.is_empty() {
             format!(
-                "请将以下文本翻译为{}：\n\n{}",
+                "请将以下文本完整翻译为{}（保留所有段落、换行与列表项，勿省略任何内容）：\n\n{}",
                 self.target_lang,
                 self.source_text()
             )
@@ -85,7 +85,7 @@ impl TranslationRequest {
 
         if self.source_lang == "auto" {
             format!(
-                "{base}\n\n请先在第一行用【源语言：语言名称】输出你检测到的原文语言（如：英语、日语、中文），换行后再输出译文。"
+                "{base}\n\n请先在第一行用【源语言：语言名称】输出你检测到的原文语言（如：英语、日语、中文），换行后再输出完整译文。"
             )
         } else {
             base
@@ -314,8 +314,17 @@ mod tests {
         };
 
         assert!(request.system_prompt().contains("专业翻译"));
+        assert!(
+            request.system_prompt().contains("完整翻译"),
+            "默认 system prompt 应要求完整翻译"
+        );
         assert!(request.user_prompt().contains("中文"));
         assert!(request.user_prompt().contains("hello"));
+        assert!(
+            request.user_prompt().contains("完整翻译"),
+            "默认 user prompt 应要求完整翻译: {}",
+            request.user_prompt()
+        );
     }
 
     fn request_with_source_lang(source_lang: &str) -> TranslationRequest {
