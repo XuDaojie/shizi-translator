@@ -74,6 +74,7 @@ px chrome-devtools-mcp@latest（自动使用最新版）
 | shadcn-vue | latest | UI 组件库（new-york 风格，按需拷贝源码至 `frontend/src/components/ui/`） |
 | reka-ui | ^2 | shadcn-vue 底层无样式组件库 |
 | `@iconify/vue` | ^4 | 图标组件 |
+| `@lucide/vue` | ^1.23.0 | 图标库（翻译弹窗/历史面板） |
 | class-variance-authority | ^0.7 | 组件变体管理 |
 | clsx | ^2 | 类名合并工具 |
 | tailwind-merge | ^3 | Tailwind 类名冲突合并 |
