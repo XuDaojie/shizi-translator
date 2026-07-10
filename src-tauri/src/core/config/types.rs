@@ -160,11 +160,6 @@ fn default_shortcuts() -> HashMap<String, String> {
             env::var("SHIZI_SHORTCUT_WORD_LOOKUP").unwrap_or_else(|_| "".to_string()),
         ),
         (
-            "show-window".to_string(),
-            env::var("SHIZI_SHORTCUT_SHOW_WINDOW")
-                .unwrap_or_else(|_| "Ctrl+Shift+Space".to_string()),
-        ),
-        (
             "open-settings".to_string(),
             env::var("SHIZI_SHORTCUT_OPEN_SETTINGS").unwrap_or_else(|_| "Ctrl+,".to_string()),
         ),
@@ -640,10 +635,7 @@ mod tests {
         assert_eq!(
             config.shortcuts.get("word-lookup").map(String::as_str), Some("")
         );
-        assert_eq!(
-            config.shortcuts.get("show-window").map(String::as_str),
-            Some("Ctrl+Shift+Space")
-        );
+        assert!(!config.shortcuts.contains_key("show-window"));
         assert_eq!(
             config.shortcuts.get("open-settings").map(String::as_str), Some("Ctrl+,")
         );

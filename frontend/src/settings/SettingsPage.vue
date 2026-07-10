@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import SettingsLayout from './SettingsLayout.vue'
 import GeneralPanel from './panels/GeneralPanel.vue'
 import TranslatePanel from './panels/TranslatePanel.vue'
@@ -8,6 +8,8 @@ import ServicesPanel from './panels/ServicesPanel.vue'
 import AdvancedPanel from './panels/AdvancedPanel.vue'
 import HistoryPanel from './panels/HistoryPanel.vue'
 import { useSettings } from './stores/settings'
+import { matchShortcutKeys } from '@/lib/matchShortcut'
+import { invokeOpenSettings } from '@/lib/tauri'
 
 interface Props {
   initialCategory?: string
@@ -35,8 +37,27 @@ const onUpdateActive = (value: string): void => {
 }
 
 const settings = useSettings()
+
+const openSettingsKeys = computed(
+  () => settings.state.shortcut.bindings.find((b) => b.id === 'open-settings')?.keys ?? 'Ctrl+,',
+)
+
+const onAppShortcutKeydown = (e: KeyboardEvent): void => {
+  // ShortcutRecorder 录入时会 capture + stopPropagation，此处不会收到
+  if (!matchShortcutKeys(openSettingsKeys.value, e)) return
+  e.preventDefault()
+  void invokeOpenSettings().catch(() => {
+    // best-effort：设置窗已打开时再触发仅聚焦
+  })
+}
+
 onMounted(() => {
   void settings.syncFromBackend()
+  window.addEventListener('keydown', onAppShortcutKeydown)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onAppShortcutKeydown)
 })
 </script>
 

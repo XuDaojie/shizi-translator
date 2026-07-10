@@ -1,13 +1,13 @@
 use std::{thread, time::Duration};
 
 use serde::Serialize;
-use tauri::{Manager, State};
+use tauri::{Manager, State, WebviewWindow, WindowEvent};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 use crate::{
     app::{
         state::AppState,
-        window::{show_settings_window, show_window},
+        window::{show_settings_window, SETTINGS_LABEL},
     },
     core::{
         config::AppConfig,
@@ -20,6 +20,7 @@ use crate::{
     },
 };
 
+/// 仅全局作用域的快捷键参与 all-or-nothing 注册；程序快捷键在窗口聚焦时另行挂载。
 pub fn register_global_shortcuts(
     app: &tauri::AppHandle,
     config: &AppConfig,
@@ -30,11 +31,17 @@ pub fn register_global_shortcuts(
         .unregister_all()
         .map_err(|error| ShortcutBindingError::global(format!("无法清理旧快捷键: {error}")))?;
 
-    for entry in entries.into_iter().filter(|entry| entry.action.is_some()) {
+    for entry in entries
+        .into_iter()
+        .filter(|entry| entry.kind == ShortcutKind::Global && entry.action.is_some())
+    {
         app.global_shortcut()
             .register(entry.keys.as_str())
             .map_err(|error| ShortcutBindingError::new(entry.id, friendly_register_error(error)))?;
     }
+
+    // unregister_all 清掉了程序快捷键，若当前有窗口聚焦则重新挂上
+    sync_app_local_shortcuts(app, config);
 
     Ok(())
 }
@@ -63,7 +70,10 @@ pub fn register_global_shortcuts_at_startup(
         return conflicts;
     }
 
-    for entry in entries.into_iter().filter(|entry| entry.action.is_some()) {
+    for entry in entries
+        .into_iter()
+        .filter(|entry| entry.kind == ShortcutKind::Global && entry.action.is_some())
+    {
         if let Err(error) = app.global_shortcut().register(entry.keys.as_str()) {
             conflicts.push(ShortcutBindingError::new(
                 entry.id,
@@ -71,6 +81,9 @@ pub fn register_global_shortcuts_at_startup(
             ));
         }
     }
+
+    // 启动时主窗口可能尚未聚焦；聚焦后由 focus listener 再挂程序快捷键
+    sync_app_local_shortcuts(app, config);
 
     conflicts
 }
@@ -87,13 +100,86 @@ pub fn replace_global_shortcuts(
     Ok(())
 }
 
+/// 主窗 / 设置窗获得或失去焦点时调用：有任一窗口聚焦则注册程序快捷键，否则卸下。
+/// 使用 OS 级热键（聚焦期间有效），避免 WebView 吞掉 `Ctrl+,` 等组合键。
+pub fn sync_app_local_shortcuts(app: &tauri::AppHandle, config: &AppConfig) {
+    let Ok(entries) = configured_shortcuts(config) else {
+        return;
+    };
+    let app_locals: Vec<_> = entries
+        .into_iter()
+        .filter(|entry| entry.kind == ShortcutKind::AppLocal && entry.action.is_some())
+        .collect();
+
+    for entry in &app_locals {
+        let _ = app.global_shortcut().unregister(entry.keys.as_str());
+    }
+
+    if !any_app_window_focused(app) {
+        return;
+    }
+
+    for entry in &app_locals {
+        if let Err(error) = app.global_shortcut().register(entry.keys.as_str()) {
+            log::warn!(
+                "程序快捷键「{}」注册失败: {}",
+                entry.id,
+                friendly_register_error(error)
+            );
+        }
+    }
+}
+
+pub fn sync_app_local_shortcuts_from_state(app: &tauri::AppHandle) {
+    let state: State<'_, AppState> = app.state();
+    let Ok(config) = state.config_store.get() else {
+        return;
+    };
+    sync_app_local_shortcuts(app, &config);
+}
+
+/// 监听窗口聚焦变化，延迟一拍再同步，避免主窗↔设置窗切换时短暂「双 blur」卸键。
+pub fn attach_app_shortcut_focus_listener(window: &WebviewWindow, app: &tauri::AppHandle) {
+    let app_handle = app.clone();
+    window.on_window_event(move |event| {
+        if !matches!(event, WindowEvent::Focused(_)) {
+            return;
+        }
+        let app2 = app_handle.clone();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(40)).await;
+            sync_app_local_shortcuts_from_state(&app2);
+        });
+    });
+}
+
+fn any_app_window_focused(app: &tauri::AppHandle) -> bool {
+    for label in ["main", SETTINGS_LABEL] {
+        if let Some(window) = app.get_webview_window(label) {
+            if window.is_focused().unwrap_or(false) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ShortcutKind {
+    /// 系统级全局，应用未聚焦也生效
+    Global,
+    /// 仅本应用任一窗口聚焦时挂载
+    AppLocal,
+    /// 仅保存配置、不注册
+    Unimplemented,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ShortcutAction {
     ClipboardTranslate,
     OcrTranslate,
-    OpenSettings,
     SelectionTranslate,
-    ShowWindow,
+    OpenSettings,
 }
 
 #[derive(Debug, Clone, Serialize, thiserror::Error)]
@@ -122,7 +208,18 @@ struct ConfiguredShortcut {
     id: String,
     keys: String,
     shortcut: Shortcut,
+    kind: ShortcutKind,
     action: Option<ShortcutAction>,
+}
+
+fn kind_for_id(id: &str) -> ShortcutKind {
+    match id {
+        "translate-selection" | "translate-clipboard" | "translate-screenshot" => {
+            ShortcutKind::Global
+        }
+        "open-settings" => ShortcutKind::AppLocal,
+        _ => ShortcutKind::Unimplemented,
+    }
 }
 
 fn action_for_id(id: &str) -> Option<ShortcutAction> {
@@ -130,9 +227,8 @@ fn action_for_id(id: &str) -> Option<ShortcutAction> {
         "translate-selection" => Some(ShortcutAction::SelectionTranslate),
         "translate-clipboard" => Some(ShortcutAction::ClipboardTranslate),
         "translate-screenshot" => Some(ShortcutAction::OcrTranslate),
-        "show-window" => Some(ShortcutAction::ShowWindow),
         "open-settings" => Some(ShortcutAction::OpenSettings),
-        "word-lookup" => None,
+        // word-lookup：保留配置用于去重与 UI，本阶段不触发
         _ => None,
     }
 }
@@ -143,7 +239,6 @@ fn label_for_id(id: &str) -> &'static str {
         "translate-clipboard" => "剪贴板翻译",
         "translate-screenshot" => "截图翻译",
         "word-lookup" => "取词翻译",
-        "show-window" => "显示主窗口",
         "open-settings" => "打开设置",
         _ => "未知动作",
     }
@@ -178,6 +273,7 @@ fn configured_shortcuts(
             id: id.clone(),
             keys: keys.to_string(),
             shortcut,
+            kind: kind_for_id(id),
             action: action_for_id(id),
         });
     }
@@ -243,9 +339,11 @@ pub fn handle_global_shortcut(
                 start_translation_from_ocr(app_handle, state).await;
             });
         }
-        Some(ShortcutAction::ShowWindow) => show_window(app),
         Some(ShortcutAction::OpenSettings) => {
-            let _ = show_settings_window(app);
+            // 程序快捷键：仅在窗口聚焦期间注册，此处直接打开设置
+            if let Err(error) = show_settings_window(app) {
+                log::warn!("打开设置失败: {error}");
+            }
         }
         None => {}
     }
@@ -388,6 +486,24 @@ mod tests {
             .expect("应保留取词绑定用于保存和去重");
 
         assert_eq!(word_lookup.action, None);
+        assert_eq!(word_lookup.kind, ShortcutKind::Unimplemented);
+    }
+
+    #[test]
+    fn open_settings_is_app_local_not_global() {
+        let config = config_with(&[("open-settings", "Ctrl+,")]);
+        let entries = configured_shortcuts(&config).expect("配置应可解析");
+        let open = entries
+            .iter()
+            .find(|entry| entry.id == "open-settings")
+            .expect("应包含打开设置");
+
+        assert_eq!(open.kind, ShortcutKind::AppLocal);
+        assert_eq!(open.action, Some(ShortcutAction::OpenSettings));
+        assert_eq!(
+            classify_shortcut(&open.shortcut, &config),
+            Some(ShortcutAction::OpenSettings)
+        );
     }
 
     #[test]

@@ -1,5 +1,7 @@
 use tauri::{Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
+use crate::app::shortcuts::attach_app_shortcut_focus_listener;
+
 pub const SETTINGS_LABEL: &str = "settings";
 pub const SETTINGS_URL: &str = "settings.html";
 pub const SETTINGS_INITIAL_VISIBLE: bool = false;
@@ -39,6 +41,7 @@ pub fn ensure_settings_window(app: &tauri::AppHandle) -> Result<WebviewWindow, S
             .build()
             .map_err(|error| format!("创建设置窗口失败: {error}"))?;
     close_to_hide(&window);
+    attach_app_shortcut_focus_listener(&window, app);
     Ok(window)
 }
 
@@ -52,6 +55,7 @@ pub fn show_settings_window(app: &tauri::AppHandle) -> Result<(), String> {
 pub fn setup_close_to_hide(app: &tauri::App) {
     if let Some(window) = app.get_webview_window("main") {
         close_to_hide(&window);
+        attach_app_shortcut_focus_listener(&window, app.handle());
     }
 }
 

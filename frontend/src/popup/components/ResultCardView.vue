@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import ServiceIcon from '@/settings/components/ServiceIcon.vue'
+
 type CardStatus = 'success' | 'loading' | 'error' | 'aborted' | 'pending'
 
 interface Props {
   engineName: string
-  /** 内嵌 SVG 片段（不含 <svg> 标签），viewBox="0 0 20 20" */
-  engineIconHtml: string
+  /** 服务渠道 type（如 openai / deepseek），与设置页服务列表共用 ServiceIcon */
+  serviceType?: string
   modelName?: string
   /** 已完成译文；流式态由默认 slot 提供 */
   text?: string
@@ -24,6 +26,7 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
+  serviceType: '',
   modelName: '',
   text: '',
   status: 'success',
@@ -72,7 +75,16 @@ const showDotFinal = (): boolean => props.loading || props.status === 'loading'
     }"
   >
     <div class="result-card-header" @click="onHeaderClick">
-      <svg class="result-engine-icon" viewBox="0 0 20 20" v-html="engineIconHtml" />
+      <span class="result-engine-icon" aria-hidden="true">
+        <ServiceIcon
+          v-if="serviceType"
+          :service-id="serviceType"
+          class-name="result-engine-icon-glyph"
+        />
+        <span v-else class="result-engine-icon-letter">
+          {{ (engineName || '?').trim().charAt(0).toUpperCase() || '?' }}
+        </span>
+      </span>
       <span class="result-engine-name">{{ engineName }}</span>
       <span class="result-header-status" :hidden="!showDotFinal()">
         <span :class="dotClass()" />

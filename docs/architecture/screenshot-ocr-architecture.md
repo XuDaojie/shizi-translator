@@ -314,7 +314,7 @@ pub enum OcrError {
 
 ## 快捷键与 Tauri 权限
 
-现有全局快捷键统一由 `src-tauri/src/app/shortcuts.rs` 注册、解析和分发。启动时从 `AppConfig.shortcuts` 读取配置；设置页保存配置时先重注册快捷键，成功后再写入 `ConfigStore`，因此划词翻译、截图 OCR 翻译、剪贴板翻译、显示主窗口和打开设置无需重启即可生效。`word-lookup` 绑定会保存，但本阶段不注册触发。
+现有全局快捷键统一由 `src-tauri/src/app/shortcuts.rs` 注册、解析和分发。启动时从 `AppConfig.shortcuts` 读取配置；设置页保存配置时先重注册快捷键，成功后再写入 `ConfigStore`，因此划词翻译、截图 OCR 翻译、剪贴板翻译无需重启即可生效。`open-settings` 为程序快捷键（前端窗口聚焦时处理，不注册全局）；`word-lookup` 绑定会保存，但本阶段不注册触发。
 
 Tauri 官方文档说明 global shortcut 插件默认不启用危险能力，需要通过 capabilities 显式授权。当前项目已有 `src-tauri/capabilities/default.json`，新增快捷键或前端 command 时需要同步检查权限配置。
 

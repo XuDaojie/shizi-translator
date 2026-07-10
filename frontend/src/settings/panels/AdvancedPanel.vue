@@ -17,10 +17,10 @@ const props = defineProps<{
 const { reset } = useSettings()
 
 const logLevelOptions = [
-  { label: '错误', value: 'error' },
-  { label: '警告', value: 'warn' },
-  { label: '信息', value: 'info' },
-  { label: '调试', value: 'debug' },
+  { label: 'Error', value: 'error' },
+  { label: 'Warn', value: 'warn' },
+  { label: 'Info', value: 'info' },
+  { label: 'Debug', value: 'debug' },
 ]
 
 const resetOpen = ref(false)

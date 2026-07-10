@@ -320,12 +320,6 @@ const onDragEnd = (): void => {
           文字识别
           <span class="text-[10px] text-muted-foreground">1</span>
           <span
-            class="rounded bg-amber-100 px-1 py-0.5 text-[9px] font-normal text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
-            title="后续版本开放"
-          >
-            开发中
-          </span>
-          <span
             v-if="tab === 'ocr'"
             class="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-primary"
           />
@@ -496,15 +490,8 @@ const onDragEnd = (): void => {
                   <ScanText class="h-3.5 w-3.5" />
                 </span>
                 <span class="flex-1 min-w-0">
-                  <span class="flex items-center gap-1.5">
-                    <span class="truncate text-[13px] font-medium text-foreground">
-                      Windows 媒体 OCR
-                    </span>
-                    <span
-                      class="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
-                    >
-                      内置
-                    </span>
+                  <span class="truncate text-[13px] font-medium text-foreground">
+                    Windows 媒体 OCR
                   </span>
                   <span class="mt-0.5 block truncate text-[11px] text-muted-foreground">
                     Windows.Media.Ocr · 系统自带,始终可用
@@ -546,19 +533,6 @@ const onDragEnd = (): void => {
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2 flex-wrap">
             <h2 class="text-base font-semibold text-foreground">Windows 媒体 OCR</h2>
-            <span
-              class="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
-              title="随 Windows 10+ 系统预装,无需单独安装"
-            >
-              内置
-            </span>
-            <span
-              class="inline-flex items-center gap-0.5 text-[10px] font-normal text-muted-foreground/50"
-              title="大语言模型翻译,支持自定义推理深度"
-            >
-              <Sparkles class="h-2.5 w-2.5" />
-              AI
-            </span>
           </div>
           <p class="mt-1 text-xs text-muted-foreground leading-snug">
             Windows 10+ 系统自带的 OCR 引擎,通过 Windows.Media.Ocr API 提供。无需安装即可使用。

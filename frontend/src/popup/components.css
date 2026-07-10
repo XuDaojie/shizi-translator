@@ -122,7 +122,35 @@
   background: var(--popup-bg-soft);
 }
 .result-card-header:hover { background: var(--popup-bg-soft-2); }
-.result-engine-icon { width: 18px; height: 18px; border-radius: 3px; flex-shrink: 0; }
+/* 18×18 容器：尺寸对齐旧字母图标；配色对齐设置页「已启用」服务图标（primary soft + primary 图标） */
+.result-engine-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--popup-accent-soft);
+  color: var(--popup-accent);
+}
+.result-engine-icon-glyph {
+  width: 12px !important;
+  height: 12px !important;
+}
+.result-engine-icon-letter {
+  width: 100%;
+  height: 100%;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  color: var(--popup-accent);
+}
 .result-engine-name { font-size: 0.75rem; font-weight: 600; color: var(--popup-fg-2); flex: 1; }
 .result-collapse-btn {
   width: 20px; height: 20px;

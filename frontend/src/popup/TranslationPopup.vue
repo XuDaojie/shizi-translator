@@ -15,6 +15,7 @@ import {
 } from './composables/mainWindowReady'
 import { getTauriApis } from './composables/utils'
 import { toast } from '@/lib/toast'
+import { matchShortcutKeys } from '@/lib/matchShortcut'
 import { LANGUAGES } from './data/languages'
 import type { AppConfig } from '@/types/config'
 
@@ -36,6 +37,8 @@ const statusInfo = ref<{ text: string; loading: boolean; action: { label: string
   text: '就绪', loading: false, action: null,
 })
 const pendingConfigRefresh = ref<AppConfig | null>(null)
+/** 程序快捷键「打开设置」；默认 Ctrl+,，随 app-config 同步。 */
+const openSettingsKeys = ref('Ctrl+,')
 
 const popupHeight = usePopupHeight(popupRef)
 
@@ -125,14 +128,28 @@ const events = useTranslationEvents({
   onDetectedLang,
   onConfigChanged: (cfg) => {
     if (cfg.logLevel) logger.setLevel(cfg.logLevel)
+    if (cfg.shortcuts?.['open-settings'] !== undefined) {
+      openSettingsKeys.value = cfg.shortcuts['open-settings']
+    }
     refreshCardsFromConfig(cfg)
   },
   logger,
 })
 
+const onAppShortcutKeydown = (e: KeyboardEvent): void => {
+  if (!matchShortcutKeys(openSettingsKeys.value, e)) return
+  e.preventDefault()
+  const apis = getTauriApis()
+  if (!apis) return
+  void apis.invoke('open_settings').catch((err: unknown) => {
+    toast.error('打开设置失败', String(err))
+  })
+}
+
 onBeforeUnmount(() => {
   events.unlisten()
   readyGate.dispose()
+  window.removeEventListener('keydown', onAppShortcutKeydown)
 })
 
 /* === 卡片配置同步（复刻旧 refreshCardsFromConfig + syncServiceCards） === */
@@ -311,6 +328,9 @@ const initCards = async (): Promise<void> => {
       apis.invoke<{ sourceLang: string; targetLang: string }>('get_session_languages'),
     ])
     if (config?.logLevel) logger.setLevel(config.logLevel)
+    if (config?.shortcuts?.['open-settings'] !== undefined) {
+      openSettingsKeys.value = config.shortcuts['open-settings']
+    }
     sessionSourceLang.value = langs?.sourceLang ?? 'auto'
     sessionTargetLang.value = langs?.targetLang ?? 'zh-CN'
     refreshCardsFromConfig(config)
@@ -341,6 +361,7 @@ onMounted(() => {
   window.addEventListener('focus', () => {
     void applyPendingSourceText()
   })
+  window.addEventListener('keydown', onAppShortcutKeydown)
 })
 </script>
 

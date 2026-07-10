@@ -291,11 +291,12 @@ const speak = (text: string): void => {
 
 const triggerIcon = (t: HistoryTrigger): typeof Camera => TRIGGER_META[t]?.icon ?? Camera
 
-const serviceIconSvg = (r: HistoryResult): string => {
-  const name = r.serviceName.replace(/翻译|Translate|Translation/gi, '').trim()
-  const color = '#94918A'
-  const letter = (name[0] ?? '?').toUpperCase()
-  return `<rect width="20" height="20" rx="5" fill="${color}"/><text x="10" y="14.5" text-anchor="middle" font-size="11" font-weight="700" fill="#fff" font-family="Segoe UI, system-ui, sans-serif">${letter}</text>`
+/** 解析结果对应的服务 type，供 ServiceIcon 与设置页服务列表统一。 */
+const serviceTypeOf = (r: HistoryResult): string => {
+  const inst = props.state.services.find((s) => s.id === r.serviceInstanceId)
+  if (inst?.type) return inst.type
+  // mock / 旧数据可能把 type 写在 serviceInstanceId
+  return r.serviceInstanceId
 }
 
 const cardStatus = (r: HistoryResult): 'success' | 'loading' | 'pending' | 'error' | 'aborted' => r.status
@@ -455,7 +456,7 @@ onBeforeUnmount(() => {
                   <li v-for="r in activeSession.results" :key="r.serviceInstanceId + r.modelName" class="relative">
                     <ResultCardView
                       :engine-name="r.serviceName"
-                      :engine-icon-html="serviceIconSvg(r)"
+                      :service-type="serviceTypeOf(r)"
                       :model-name="r.modelName"
                       :status="cardStatus(r)"
                       :text="r.translation"

@@ -129,12 +129,6 @@ const buildDefaults = (): AppSettings => {
           keys: '',
         },
         {
-          id: 'show-window',
-          label: '显示/隐藏主窗口',
-          description: '快速唤起或隐藏本应用的主窗口。',
-          keys: 'Ctrl+Shift+Space',
-        },
-        {
           id: 'open-settings',
           label: '打开设置',
           description: '直接打开设置页面。',
@@ -336,11 +330,11 @@ const loadFromStorage = (): AppSettings => {
         ...parsed.translation,
       },
       shortcut: {
-        bindings:
-          parsed.shortcut?.bindings?.map((b) => {
-            const def = defaults.shortcut.bindings.find((d) => d.id === b.id)
-            return { ...def, ...b }
-          }) ?? defaults.shortcut.bindings,
+        // 以 defaults 为事实来源，丢弃已移除的绑定（如旧版 show-window）
+        bindings: defaults.shortcut.bindings.map((def) => {
+          const saved = parsed.shortcut?.bindings?.find((b) => b.id === def.id)
+          return saved ? { ...def, ...saved, id: def.id, label: def.label, description: def.description } : def
+        }),
       },
       services,
       customServiceTypes: parsed.customServiceTypes ?? [],

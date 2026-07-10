@@ -15,21 +15,6 @@ const emit = defineEmits<{ (e: 'toggle-expand', card: CardState): void }>()
 
 const textRef = ref<HTMLElement | null>(null)
 
-/* 引擎图标：与旧 translate.js engineIcon 一致（圆角矩形 + 首字母）。 */
-const ENGINE_META: Record<string, { color: string; letter: string }> = {
-  openai: { color: '#10A37F', letter: 'O' },
-  deepseek: { color: '#4D6BFE', letter: 'D' },
-  zhipu: { color: '#3B5BFE', letter: 'Z' },
-  claude: { color: '#D97757', letter: 'C' },
-  mock: { color: '#94918A', letter: 'M' },
-}
-const engineIconHtml = computed(() => {
-  const meta = ENGINE_META[props.card.serviceType]
-  const color = meta ? meta.color : '#94918A'
-  const letter = meta ? meta.letter : ((props.card.serviceName || '?').trim().charAt(0).toUpperCase() || '?')
-  return `<rect width="20" height="20" rx="5" fill="${color}"/><text x="10" y="14.5" text-anchor="middle" font-size="12" font-weight="700" fill="#fff" font-family="Segoe UI, system-ui, sans-serif">${letter}</text>`
-})
-
 /* ResultCardView 的 status 映射：CardState.status -> 展示态。 */
 const viewStatus = computed<'success' | 'loading' | 'pending' | 'error' | 'aborted'>(() => {
   switch (props.card.status) {
@@ -121,7 +106,7 @@ const onRefresh = async (): Promise<void> => {
 <template>
   <ResultCardView
     :engine-name="card.serviceName"
-    :engine-icon-html="engineIconHtml"
+    :service-type="card.serviceType"
     :model-name="card.modelName"
     :status="viewStatus"
     :loading="isLoading"
