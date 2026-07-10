@@ -34,12 +34,13 @@ export function validateConfig(config: AppConfig): string | null {
 }
 
 export function projectToAppConfig(state: AppSettings): AppConfig {
+  const historyLimit = Number(state.translation.historyLimit)
   return {
     targetLang: state.translation.defaultTargetLang,
     defaultSourceLang: state.translation.defaultSourceLang,
     autoCopy: state.translation.autoCopy,
     restoreClipboard: state.translation.restoreClipboard,
-    historyLimit: Math.max(1, Number(state.translation.historyLimit) || 500),
+    historyLimit: Number.isFinite(historyLimit) ? Math.max(1, Math.trunc(historyLimit)) : 500,
     services: state.services.map((service) => ({
       id: service.id,
       serviceType: service.type,

@@ -99,6 +99,15 @@ describe('projectToAppConfig', () => {
     });
   });
 
+  it('投影 historyLimit 时向下取整且保持至少为 1', () => {
+    const state = makeState([]);
+    state.translation.historyLimit = 1.5;
+
+    const config = projectToAppConfig(state);
+
+    expect(config.historyLimit).toBe(1);
+  });
+
   it('投影翻译行为与提示词字段到后端配置', () => {
     const state = makeState([
       makeInstance({
