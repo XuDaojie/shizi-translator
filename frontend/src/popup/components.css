@@ -255,6 +255,55 @@
 }
 @keyframes blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
 
+/* === 语言工具栏（源/目标 + swap） === */
+.lang-toolbar {
+  background: var(--popup-bg-card);
+  border-radius: var(--popup-radius-md);
+  border: 0.5px solid var(--popup-border);
+  box-shadow: var(--popup-shadow-card);
+  display: flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 2px;
+  position: relative;
+}
+.lang-side {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 10px;
+  background: transparent;
+  border: none;
+  font-family: var(--popup-font-family);
+  font-size: 0.75rem;
+  color: var(--popup-fg);
+  cursor: pointer;
+  user-select: none;
+  transition: background .15s, color .15s;
+  min-width: 0;
+  height: 28px;
+  border-radius: 6px;
+}
+.lang-side:hover { background: var(--popup-bg-soft); }
+.lang-side:focus-visible { outline: 2px solid var(--popup-accent); outline-offset: -2px; }
+.lang-side .lang-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lang-side .lang-chevron { width: 10px; height: 10px; color: var(--popup-fg-2); flex-shrink: 0; }
+.lang-swap {
+  width: 28px; height: 28px;
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; border: none;
+  color: var(--popup-fg-2);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background .15s, color .15s;
+}
+.lang-swap:hover { background: var(--popup-bg-soft); color: var(--popup-accent); }
+.lang-swap:focus-visible { outline: 2px solid var(--popup-accent); outline-offset: -2px; }
+.lang-swap svg { width: 12px; height: 12px; }
+
 /* === 语言选择器（inline 搜索式 combobox） === */
 .lang-picker {
   background: var(--popup-bg-card);
