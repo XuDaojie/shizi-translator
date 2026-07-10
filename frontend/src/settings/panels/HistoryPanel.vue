@@ -60,29 +60,103 @@ const activeFilter = ref<'all' | HistoryTrigger>('all')
 const activeId = ref<string>('')
 const showClearConfirm = ref(false)
 
-/** OcrHistoryEntry -> 伪 HistorySession（spec 7.1）。OCR 记录单结果，trigger 恒为 screenshot。 */
-const adaptedSessions = computed<HistorySession[]>(() =>
-  props.state.ocrHistory.map((e: OcrHistoryEntry) => {
-    const svc = e.serviceInstanceId ? props.state.services.find((s) => s.id === e.serviceInstanceId) : undefined
-    return {
-      id: e.id,
-      timestamp: e.timestamp,
+/** DEV ONLY：历史面板空数据时的 mock 演示数据，覆盖四桶/4 种 trigger/success+error/多渠道多语言。
+ *  真实 OCR 历史写入后自动隐藏；点「清空全部」也会隐藏（mockDismissed）。
+ *  后续接后端多渠道历史后整体删除。 */
+const MOCK_SESSIONS: HistorySession[] = (() => {
+  const now = Date.now()
+  const min = 60 * 1000
+  const hour = 60 * min
+  const day = 24 * hour
+  return [
+    {
+      id: 'mock-1',
+      timestamp: new Date(now - 2 * hour).toISOString(),
       trigger: 'screenshot',
-      sourceLang: e.sourceLang,
-      targetLang: e.targetLang,
-      source: e.source,
-      results: [{
-        serviceInstanceId: e.serviceInstanceId ?? 'unknown',
-        serviceName: svc?.name ?? '(已删除)',
-        modelName: '',
-        translation: e.translation,
-        status: (e.translation ? 'success' : 'error') as 'success' | 'error',
-        inputTokens: 0,
-        outputTokens: 0,
-      }],
-    }
-  }),
-)
+      sourceLang: 'en',
+      targetLang: 'zh-CN',
+      source: 'Please select your preferred language from the list below to continue.',
+      results: [{ serviceInstanceId: 'openai', serviceName: 'OpenAI', modelName: 'gpt-4o', translation: '请从下方列表中选择您偏好的语言以继续。', status: 'success', inputTokens: 142, outputTokens: 86 }],
+    },
+    {
+      id: 'mock-2',
+      timestamp: new Date(now - 45 * min).toISOString(),
+      trigger: 'selection',
+      sourceLang: 'en',
+      targetLang: 'zh-CN',
+      source: 'The quick brown fox jumps over the lazy dog.',
+      results: [{ serviceInstanceId: 'claude', serviceName: 'Claude', modelName: 'claude-sonnet-4', translation: '敏捷的棕色狐狸跳过了懒狗。', status: 'success', inputTokens: 98, outputTokens: 64 }],
+    },
+    {
+      id: 'mock-3',
+      timestamp: new Date(now - 26 * hour).toISOString(),
+      trigger: 'manual',
+      sourceLang: 'ja',
+      targetLang: 'zh-CN',
+      source: '設定を変更するには、このボタンをクリックしてください。',
+      results: [{ serviceInstanceId: 'deepseek', serviceName: 'DeepSeek', modelName: 'deepseek-chat', translation: '要更改设置，请点击此按钮。', status: 'success', inputTokens: 156, outputTokens: 92 }],
+    },
+    {
+      id: 'mock-4',
+      timestamp: new Date(now - 3 * day).toISOString(),
+      trigger: 'screenshot',
+      sourceLang: 'ko',
+      targetLang: 'zh-CN',
+      source: '계속하려면 아래 버튼을 클릭하세요. 도움이 필요하시면 고객센터로 문의해 주세요.',
+      results: [{ serviceInstanceId: 'openai', serviceName: 'OpenAI', modelName: 'gpt-4o', translation: '请点击下方按钮继续。如需帮助，请联系客服中心。', status: 'success', inputTokens: 204, outputTokens: 118 }],
+    },
+    {
+      id: 'mock-5',
+      timestamp: new Date(now - 5 * day).toISOString(),
+      trigger: 'clipboard',
+      sourceLang: 'en',
+      targetLang: 'zh-CN',
+      source: 'Error: Unable to connect to the server. Please check your network connection and try again later.',
+      results: [{ serviceInstanceId: 'claude', serviceName: 'Claude', modelName: 'claude-sonnet-4', translation: '', status: 'error', inputTokens: 0, outputTokens: 0 }],
+    },
+    {
+      id: 'mock-6',
+      timestamp: new Date(now - 12 * day).toISOString(),
+      trigger: 'screenshot',
+      sourceLang: 'en',
+      targetLang: 'zh-CN',
+      source: 'Welcome to our application. We hope you enjoy your experience and find it useful.',
+      results: [{ serviceInstanceId: 'deepseek', serviceName: 'DeepSeek', modelName: 'deepseek-chat', translation: '欢迎使用我们的应用程序。希望您使用愉快并觉得它有用。', status: 'success', inputTokens: 132, outputTokens: 78 }],
+    },
+  ]
+})()
+
+/** 点「清空全部」后隐藏 mock 演示数据（dev only）。 */
+const mockDismissed = ref(false)
+
+/** OcrHistoryEntry -> 伪 HistorySession（spec 7.1）。OCR 记录单结果，trigger 恒为 screenshot。
+ *  无真实数据时回落到 MOCK_SESSIONS（dev only），让历史面板有演示效果。 */
+const adaptedSessions = computed<HistorySession[]>(() => {
+  if (props.state.ocrHistory.length > 0) {
+    return props.state.ocrHistory.map((e: OcrHistoryEntry) => {
+      const svc = e.serviceInstanceId ? props.state.services.find((s) => s.id === e.serviceInstanceId) : undefined
+      return {
+        id: e.id,
+        timestamp: e.timestamp,
+        trigger: 'screenshot',
+        sourceLang: e.sourceLang,
+        targetLang: e.targetLang,
+        source: e.source,
+        results: [{
+          serviceInstanceId: e.serviceInstanceId ?? 'unknown',
+          serviceName: svc?.name ?? '(已删除)',
+          modelName: '',
+          translation: e.translation,
+          status: (e.translation ? 'success' : 'error') as 'success' | 'error',
+          inputTokens: 0,
+          outputTokens: 0,
+        }],
+      }
+    })
+  }
+  // DEV ONLY：无真实 OCR 历史时回落 mock 演示数据
+  return mockDismissed.value ? [] : MOCK_SESSIONS
+})
 
 const isEmpty = computed(() => adaptedSessions.value.length === 0)
 const activeSession = computed<HistorySession | null>(() =>
@@ -182,6 +256,7 @@ const copy = async (text: string, isSource = false): Promise<void> => {
 
 const clearAll = (): void => {
   props.state.ocrHistory = []
+  mockDismissed.value = true  // DEV ONLY：同时隐藏 mock 演示数据
   showClearConfirm.value = false
   activeId.value = ''
   toast.success('已清空翻译历史')
