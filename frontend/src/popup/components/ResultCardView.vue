@@ -67,7 +67,8 @@ const showDotFinal = (): boolean => props.loading || props.status === 'loading' 
       'collapsed': collapsed,
       'has-overflow': hasOverflow,
       'expanded': expanded,
-      'is-error': status === 'error' || status === 'aborted',
+      'failed': status === 'error',
+      'cancelled': status === 'aborted',
     }"
   >
     <div class="result-card-header" @click="onHeaderClick">
