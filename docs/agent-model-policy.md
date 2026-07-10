@@ -8,10 +8,10 @@
 
 ## 模型映射
 
-| 编码代理 | 弱模型 | 中模型（默认主力） | 强模型 | 旗舰模型 |
-|---|---|---|---|---|
-| Claude Code | `haiku` | `sonnet` | `opus` | `fable5` |
-| Codex | `GPT-5.4-mini` | `GPT-5.4` | `GPT-5.5` | 无 |
+| 编码代理 | 弱模型 | 中模型（默认主力） | 强模型       | 旗舰模型                |
+|---|---|---|-----------|---------------------|
+| Claude Code | `haiku` | `sonnet` | `opus`    | `fable5`            |
+| Codex | `gpt-5.4-mini` | `gpt-5.4` | `gpt-5.5` | gpt-5.6-sol(当前不支持)\gpt-5.6 |
 
 ## Grok Build 例外
 
