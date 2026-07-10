@@ -209,6 +209,9 @@ const serviceTypeOf = (r: HistoryResult): string => {
 const cardStatus = (r: HistoryResult): 'success' | 'loading' | 'pending' | 'error' | 'aborted' =>
   resultCardStatus(r)
 
+const resultText = (r: HistoryResult): string =>
+  r.status === 'error' ? (r.errorMessage || r.translation) : r.translation
+
 /* === 滚动布局测高（复刻原型 updateScrollMetrics） === */
 const rootRef = ref<HTMLElement>()
 const headerRef = ref<HTMLElement>()
@@ -376,16 +379,16 @@ onBeforeUnmount(() => {
                       :service-type="serviceTypeOf(r)"
                       :model-name="r.modelName"
                       :status="cardStatus(r)"
-                      :text="r.status === 'error' ? r.errorMessage : r.translation"
+                      :text="resultText(r)"
                       :collapsed="isCollapsed(activeSession.id, r)"
                       :show-tokens="false"
                       :input-tokens="r.inputTokens ?? undefined"
                       :output-tokens="r.outputTokens ?? undefined"
                       :show-actions="r.status !== 'pending'"
                       :show-refresh="false"
-                      @copy="copy(r.status === 'error' ? r.errorMessage : r.translation)"
+                      @copy="copy(resultText(r))"
                       @refresh="retryResult(r)"
-                      @speak="speak(r.status === 'error' ? r.errorMessage : r.translation)"
+                      @speak="speak(resultText(r))"
                       @toggle-collapse="toggleCollapse(activeSession.id, r)"
                     />
                   </li>
