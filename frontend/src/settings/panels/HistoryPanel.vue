@@ -73,12 +73,12 @@ const refreshHistory = async (): Promise<void> => {
   }
 }
 
-const isEmpty = computed(() => isEmptyHistory(sessions.value))
 const filteredSessions = computed<HistorySession[]>(() =>
   activeFilter.value === 'all'
     ? sessions.value
     : sessions.value.filter((s) => s.trigger === activeFilter.value),
 )
+const isEmpty = computed(() => isEmptyHistory(filteredSessions.value))
 const activeSession = computed<HistorySession | null>(() =>
   activeId.value ? filteredSessions.value.find((s) => s.id === activeId.value) ?? null : null,
 )
@@ -290,7 +290,7 @@ onBeforeUnmount(() => {
 <template>
   <div ref="rootRef" class="flex flex-col gap-3">
     <div class="flex items-center justify-end">
-      <Button variant="ghost" size="sm" :disabled="isEmpty || loading" class="text-muted-foreground hover:text-destructive" @click="showClearConfirm = true">
+      <Button variant="ghost" size="sm" :disabled="isEmpty || loading || clearing" class="text-muted-foreground hover:text-destructive" @click="showClearConfirm = true">
         <Trash2 class="h-3.5 w-3.5" />
         清空全部
       </Button>
@@ -430,7 +430,7 @@ onBeforeUnmount(() => {
     <!-- 清空确认 -->
     <Dialog v-model:open="showClearConfirm" title="清空全部翻译历史?" description="此操作不可撤销，所有翻译历史都会被永久删除。" width="420px">
       <div class="flex justify-end gap-2 pt-2">
-        <Button variant="ghost" size="sm" @click="showClearConfirm = false">取消</Button>
+        <Button variant="ghost" size="sm" :disabled="clearing" @click="showClearConfirm = false">取消</Button>
         <Button variant="destructive" size="sm" :disabled="clearing" @click="clearAll">
           <Trash2 class="h-3.5 w-3.5" />
           确认清空
