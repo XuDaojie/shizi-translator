@@ -33,7 +33,10 @@ const statusInfo = ref<{ text: string; loading: boolean; action: { label: string
 })
 const pendingConfigRefresh = ref<AppConfig | null>(null)
 
-usePopupHeight(popupRef)
+const popupHeight = usePopupHeight(popupRef)
+// 任务 7 使用 popupHeight.whenFirstSized / popupHeight.adjustNow
+void popupHeight
+
 
 const setStatus = (text: string, loading: boolean, action: { label: string; onClick: () => void } | null): void => {
   statusInfo.value = { text, loading, action }
