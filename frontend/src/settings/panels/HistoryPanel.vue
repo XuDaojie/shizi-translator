@@ -1,107 +1,170 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { Copy, History as HistoryIcon, Trash2, Camera } from '@lucide/vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watchEffect } from 'vue'
+import { History as HistoryIcon, Trash2, Camera, ScanText, MousePointerSquareDashed, ClipboardList, PencilLine, Layers } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import Dialog from '@/components/ui/dialog/Dialog.vue'
 import { toast } from '@/lib/toast'
+import { speakText } from '@/popup/composables/utils'
 import { LANGUAGES } from '../tokens'
+import SourceCardView from '@/popup/components/SourceCardView.vue'
+import ResultCardView from '@/popup/components/ResultCardView.vue'
+import LanguageToolbar from '@/popup/components/LanguageToolbar.vue'
 import type { AppSettings, OcrHistoryEntry } from '../types'
+
+/** 本地适配类型（不污染 types.ts，未来接后端多渠道后整体删除）。 */
+type HistoryTrigger = 'selection' | 'clipboard' | 'manual' | 'screenshot'
+interface HistoryResult {
+  serviceInstanceId: string
+  serviceName: string
+  modelName: string
+  translation: string
+  status: 'success' | 'loading' | 'pending' | 'error' | 'aborted'
+  inputTokens: number
+  outputTokens: number
+}
+interface HistorySession {
+  id: string
+  timestamp: string
+  trigger: HistoryTrigger
+  sourceLang: string
+  targetLang: string
+  source: string
+  results: HistoryResult[]
+}
 
 interface Props {
   state: AppSettings
 }
 const props = defineProps<Props>()
 
-/** 全局快捷键面板里"截图翻译"那个 binding,用于空状态提示。 */
-const ocrShortcut = computed(
-  () =>
-    props.state.shortcut.bindings.find((b) => b.id === 'translate-screenshot')?.keys ??
-    'Ctrl+Shift+S',
-)
-
-/** ISO 码 → 显示名(找不到时回退到原码,避免 UI 出现 raw code)。 */
 const LANG_MAP = new Map(LANGUAGES.map((l) => [l.value, l.label]))
-const langLabel = (code: string): string =>
-  LANG_MAP.get(code) ?? code
+const LANG_SHORT_MAP = new Map(LANGUAGES.map((l) => [l.value.split('-')[0], l.label]))
+const langLabel = (code: string): string => LANG_MAP.get(code) ?? LANG_SHORT_MAP.get(code) ?? code
 
+const TRIGGER_META: Record<HistoryTrigger, { label: string; icon: typeof Camera }> = {
+  selection: { label: '划词翻译', icon: MousePointerSquareDashed },
+  clipboard: { label: '剪贴板', icon: ClipboardList },
+  manual: { label: '手动输入', icon: PencilLine },
+  screenshot: { label: '截图翻译', icon: ScanText },
+}
+
+const FILTERS = [
+  { id: 'all' as const, label: '全部', icon: Layers },
+  { id: 'screenshot' as const, label: '截图翻译', icon: ScanText },
+  { id: 'selection' as const, label: '划词翻译', icon: MousePointerSquareDashed },
+  { id: 'manual' as const, label: '手动输入', icon: PencilLine },
+  { id: 'clipboard' as const, label: '剪贴板', icon: ClipboardList },
+]
+
+const activeFilter = ref<'all' | HistoryTrigger>('all')
+const activeId = ref<string>('')
 const showClearConfirm = ref(false)
 
-/** 时间格式化:今天 HH:MM,昨天"昨天 HH:MM",本周"X 天前",更早"MM-DD HH:MM"。 */
+/** OcrHistoryEntry -> 伪 HistorySession（spec 7.1）。OCR 记录单结果，trigger 恒为 screenshot。 */
+const adaptedSessions = computed<HistorySession[]>(() =>
+  props.state.ocrHistory.map((e: OcrHistoryEntry) => {
+    const svc = e.serviceInstanceId ? props.state.services.find((s) => s.id === e.serviceInstanceId) : undefined
+    return {
+      id: e.id,
+      timestamp: e.timestamp,
+      trigger: 'screenshot',
+      sourceLang: e.sourceLang,
+      targetLang: e.targetLang,
+      source: e.source,
+      results: [{
+        serviceInstanceId: e.serviceInstanceId ?? 'unknown',
+        serviceName: svc?.name ?? '(已删除)',
+        modelName: '',
+        translation: e.translation,
+        status: (e.translation ? 'success' : 'error') as 'success' | 'error',
+        inputTokens: 0,
+        outputTokens: 0,
+      }],
+    }
+  }),
+)
+
+const isEmpty = computed(() => adaptedSessions.value.length === 0)
+const activeSession = computed<HistorySession | null>(() =>
+  activeId.value ? adaptedSessions.value.find((s) => s.id === activeId.value) ?? null : null,
+)
+
+/* 首条默认选中 */
+watchEffect(() => {
+  if (!activeId.value && adaptedSessions.value.length > 0) {
+    activeId.value = adaptedSessions.value[0].id
+  }
+  if (activeId.value && !adaptedSessions.value.some((s) => s.id === activeId.value)) {
+    activeId.value = adaptedSessions.value[0]?.id ?? ''
+  }
+})
+
+const formatDetailTime = (iso: string): string => {
+  const d = new Date(iso)
+  const Y = d.getFullYear()
+  const MO = String(d.getMonth() + 1).padStart(2, '0')
+  const DD = String(d.getDate()).padStart(2, '0')
+  const HH = String(d.getHours()).padStart(2, '0')
+  const MM = String(d.getMinutes()).padStart(2, '0')
+  const SS = String(d.getSeconds()).padStart(2, '0')
+  return `${Y}-${MO}-${DD} ${HH}:${MM}:${SS}`
+}
+
 const formatTime = (iso: string): string => {
   const d = new Date(iso)
   const now = new Date()
   const sameDay = (a: Date, b: Date): boolean =>
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-
+    a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
   const HH = String(d.getHours()).padStart(2, '0')
   const MM = String(d.getMinutes()).padStart(2, '0')
   if (sameDay(d, now)) return `${HH}:${MM}`
-
-  const yesterday = new Date(now)
-  yesterday.setDate(now.getDate() - 1)
-  if (sameDay(d, yesterday)) return `昨天 ${HH}:${MM}`
-
-  const diffDays = Math.floor((now.getTime() - d.getTime()) / (24 * 60 * 60 * 1000))
-  if (diffDays < 7) return `${diffDays} 天前`
-
+  const y = new Date(now); y.setDate(now.getDate() - 1)
+  if (sameDay(d, y)) return `昨天 ${HH}:${MM}`
+  const diff = Math.floor((now.getTime() - d.getTime()) / 86400000)
+  if (diff < 7) return `${diff} 天前`
   const MO = String(d.getMonth() + 1).padStart(2, '0')
   const DD = String(d.getDate()).padStart(2, '0')
   return `${MO}-${DD} ${HH}:${MM}`
 }
 
-/** 按日期分桶,只展示今天/昨天/本周/更早四档,每桶内部按时间倒序。 */
-type Bucket = { label: string; entries: OcrHistoryEntry[] }
-
+type Bucket = { label: string; entries: HistorySession[] }
 const grouped = computed<Bucket[]>(() => {
   const now = new Date()
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
-  const startOfYesterday = startOfToday - 24 * 60 * 60 * 1000
-  const startOfWeek = startOfToday - 7 * 24 * 60 * 60 * 1000
-
-  const today: OcrHistoryEntry[] = []
-  const yesterday: OcrHistoryEntry[] = []
-  const week: OcrHistoryEntry[] = []
-  const older: OcrHistoryEntry[] = []
-
-  for (const e of props.state.ocrHistory) {
-    const t = new Date(e.timestamp).getTime()
-    if (t >= startOfToday) today.push(e)
-    else if (t >= startOfYesterday) yesterday.push(e)
-    else if (t >= startOfWeek) week.push(e)
-    else older.push(e)
+  const startOfYesterday = startOfToday - 86400000
+  const startOfWeek = startOfToday - 7 * 86400000
+  const today: HistorySession[] = []
+  const yesterday: HistorySession[] = []
+  const week: HistorySession[] = []
+  const older: HistorySession[] = []
+  for (const s of adaptedSessions.value) {
+    const t = new Date(s.timestamp).getTime()
+    if (t >= startOfToday) today.push(s)
+    else if (t >= startOfYesterday) yesterday.push(s)
+    else if (t >= startOfWeek) week.push(s)
+    else older.push(s)
   }
-
-  const result: Bucket[] = []
-  if (today.length) result.push({ label: '今天', entries: today })
-  if (yesterday.length) result.push({ label: '昨天', entries: yesterday })
-  if (week.length) result.push({ label: '本周', entries: week })
-  if (older.length) result.push({ label: '更早', entries: older })
-  return result
+  const out: Bucket[] = []
+  if (today.length) out.push({ label: '今天', entries: today })
+  if (yesterday.length) out.push({ label: '昨天', entries: yesterday })
+  if (week.length) out.push({ label: '本周', entries: week })
+  if (older.length) out.push({ label: '更早', entries: older })
+  return out
 })
 
-const isEmpty = computed(() => props.state.ocrHistory.length === 0)
+const filteredGrouped = computed<Bucket[]>(() => {
+  if (activeFilter.value === 'all') return grouped.value
+  return grouped.value
+    .map((b) => ({ ...b, entries: b.entries.filter((s) => s.trigger === activeFilter.value) }))
+    .filter((b) => b.entries.length > 0)
+})
 
-/** 找某条记录所属的 service 实例(用于显示"由 X 翻译"),已删除时降级为 null。 */
-const serviceName = (entry: OcrHistoryEntry): string | null => {
-  if (!entry.serviceInstanceId) return null
-  const inst = props.state.services.find((s) => s.id === entry.serviceInstanceId)
-  return inst?.name ?? null
-}
-
-const copy = async (entry: OcrHistoryEntry): Promise<void> => {
-  const text = entry.translation || entry.source
-  if (!text) {
-    toast.error('复制失败', '该记录没有可复制的文本')
-    return
-  }
+const copy = async (text: string): Promise<void> => {
+  if (!text) { toast.error('复制失败', '该记录没有可复制的文本'); return }
   try {
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(text)
     } else {
-      // 后备方案:走 textarea + execCommand
       const ta = document.createElement('textarea')
       ta.value = text
       ta.style.position = 'fixed'
@@ -117,167 +180,235 @@ const copy = async (entry: OcrHistoryEntry): Promise<void> => {
   }
 }
 
-const remove = (entry: OcrHistoryEntry): void => {
-  props.state.ocrHistory.splice(
-    props.state.ocrHistory.findIndex((e) => e.id === entry.id),
-    1,
-  )
-  toast.info('已删除', entry.translation.slice(0, 30) || entry.source.slice(0, 30))
-}
-
 const clearAll = (): void => {
   props.state.ocrHistory = []
   showClearConfirm.value = false
+  activeId.value = ''
   toast.success('已清空翻译历史')
 }
+
+const retryResult = (r: HistoryResult): void => {
+  toast.info('已请求重新翻译', `${r.serviceName} · ${r.modelName || '默认模型'}`)
+}
+
+/* 卡片折叠态：按 sessionId + serviceInstanceId 记录。 */
+const collapsedMap = reactive<Record<string, boolean>>({})
+const cardKey = (sessionId: string, r: HistoryResult): string => `${sessionId}:${r.serviceInstanceId}`
+const isCollapsed = (sessionId: string, r: HistoryResult): boolean => collapsedMap[cardKey(sessionId, r)] ?? false
+const toggleCollapse = (sessionId: string, r: HistoryResult): void => {
+  const k = cardKey(sessionId, r)
+  collapsedMap[k] = !collapsedMap[k]
+}
+
+const speakSource = (): void => {
+  const text = activeSession.value?.source
+  if (!text) { toast.error('朗读失败', '该记录没有原文可朗读'); return }
+  const lang = activeSession.value?.sourceLang && activeSession.value.sourceLang !== 'auto'
+    ? activeSession.value.sourceLang
+    : 'en-US'
+  speakText(text, lang)
+}
+
+const speak = (text: string): void => {
+  if (!text) { toast.error('朗读失败', '该记录没有可朗读的译文'); return }
+  speakText(text, activeSession.value?.targetLang || 'zh-CN')
+}
+
+const triggerIcon = (t: HistoryTrigger): typeof Camera => TRIGGER_META[t]?.icon ?? Camera
+
+const serviceIconSvg = (r: HistoryResult): string => {
+  const name = r.serviceName.replace(/翻译|Translate|Translation/gi, '').trim()
+  const color = '#94918A'
+  const letter = (name[0] ?? '?').toUpperCase()
+  return `<rect width="20" height="20" rx="5" fill="${color}"/><text x="10" y="14.5" text-anchor="middle" font-size="11" font-weight="700" fill="#fff" font-family="Segoe UI, system-ui, sans-serif">${letter}</text>`
+}
+
+const cardStatus = (r: HistoryResult): 'success' | 'loading' | 'pending' | 'error' | 'aborted' => r.status
+
+/* === 滚动布局测高（复刻原型 updateScrollMetrics） === */
+const rootRef = ref<HTMLElement>()
+const headerRef = ref<HTMLElement>()
+let metricsObserver: ResizeObserver | null = null
+
+const findScroller = (el: HTMLElement | null): HTMLElement | null => {
+  let node = el
+  while (node) {
+    const oy = getComputedStyle(node).overflowY
+    if (oy === 'auto' || oy === 'scroll') return node
+    node = node.parentElement
+  }
+  return null
+}
+
+const updateScrollMetrics = (): void => {
+  const root = rootRef.value
+  const header = headerRef.value
+  if (!root || !header) return
+  const scroller = findScroller(root.parentElement)
+  if (!scroller) return
+  const clientH = scroller.clientHeight
+  const padTop = parseFloat(getComputedStyle(scroller).paddingTop) || 0
+  const padBottom = parseFloat(getComputedStyle(scroller).paddingBottom) || 0
+  const contentH = clientH - padTop - padBottom
+  const headerH = header.offsetHeight
+  const GAP = 12
+  const asideTop = headerH + GAP
+  root.style.setProperty('--history-header-h', `${headerH}px`)
+  root.style.setProperty('--history-aside-top', `${asideTop}px`)
+  root.style.setProperty('--history-aside-h', `${Math.max(contentH - asideTop - 8, 0)}px`)
+}
+
+onMounted(() => {
+  updateScrollMetrics()
+  metricsObserver = new ResizeObserver(updateScrollMetrics)
+  const scroller = findScroller(rootRef.value?.parentElement ?? null)
+  if (scroller) metricsObserver.observe(scroller)
+  if (headerRef.value) metricsObserver.observe(headerRef.value)
+})
+
+onBeforeUnmount(() => {
+  metricsObserver?.disconnect()
+  metricsObserver = null
+})
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
+  <div ref="rootRef" class="flex flex-col gap-3">
     <!-- 顶部说明 + 清空全部 -->
-    <div
-      class="flex items-center justify-between gap-4 rounded-md border border-amber-200/70 bg-amber-50/40 px-3 py-2 dark:border-amber-900/40 dark:bg-amber-900/10"
-    >
+    <div class="flex items-center justify-between gap-4 rounded-md border border-amber-200/70 bg-amber-50/40 px-3 py-2 dark:border-amber-900/40 dark:bg-amber-900/10">
       <div class="flex items-start gap-2 text-[12px] leading-relaxed text-amber-900/80 dark:text-amber-200/80">
         <span class="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
-        <span>
-          此功能正在开发中 · 仅记录截图翻译(OCR)结果,划词/取词/输入框翻译不计入
-        </span>
+        <span>此功能正在开发中 · 仅记录截图翻译(OCR)结果,划词/取词/输入框翻译不计入</span>
       </div>
-      <Button
-        variant="ghost"
-        size="sm"
-        :disabled="isEmpty"
-        class="text-muted-foreground hover:text-destructive"
-        @click="showClearConfirm = true"
-      >
+      <Button variant="ghost" size="sm" :disabled="isEmpty" class="text-muted-foreground hover:text-destructive" @click="showClearConfirm = true">
         <Trash2 class="h-3.5 w-3.5" />
         清空全部
       </Button>
     </div>
 
     <!-- 空状态 -->
-    <div
-      v-if="isEmpty"
-      class="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border py-16 text-center"
-    >
-      <div
-        class="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground"
-      >
+    <div v-if="isEmpty" class="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border py-16 text-center">
+      <div class="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
         <HistoryIcon class="h-5 w-5" />
       </div>
       <div class="flex flex-col gap-1">
         <p class="text-sm font-medium text-foreground">暂无截图翻译记录</p>
-        <p class="text-[12px] text-muted-foreground">
-          使用快捷键 <kbd class="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[11px]">{{ ocrShortcut }}</kbd>
-          截取屏幕区域,识别与翻译结果会自动保存在这里。
-        </p>
+        <p class="text-[12px] text-muted-foreground">使用快捷键截图翻译后,识别与翻译结果会自动保存在这里。</p>
       </div>
     </div>
 
-    <!-- 分组列表 -->
     <template v-else>
-      <section v-for="bucket in grouped" :key="bucket.label" class="flex flex-col gap-2">
-        <header class="flex items-center gap-2 px-1">
-          <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            {{ bucket.label }}
-          </h3>
-          <span class="text-[10px] text-muted-foreground/60">
-            {{ bucket.entries.length }} 条
-          </span>
-          <div class="h-px flex-1 bg-border" />
-        </header>
-
-        <ul class="flex flex-col gap-2">
-          <li
-            v-for="entry in bucket.entries"
-            :key="entry.id"
-            class="group flex flex-col gap-2 rounded-md border border-border bg-card px-4 py-3 transition-colors hover:border-muted-foreground/30 hover:bg-accent/30"
+      <!-- 触发方式筛选（sticky 冻结顶部） -->
+      <div ref="headerRef" class="sticky top-0 z-30 shrink-0 bg-background pb-4">
+        <div class="-mt-[10px] h-[10px] bg-background" aria-hidden="true" />
+        <div class="flex items-center gap-1 rounded-md border border-border bg-card p-1 text-[12px]">
+          <button
+            v-for="f in FILTERS"
+            :key="f.id"
+            :title="f.label"
+            class="flex h-7 items-center gap-1.5 rounded px-2.5 transition-colors"
+            :class="activeFilter === f.id ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'"
+            @click="activeFilter = f.id"
           >
-            <!-- 顶部:时间 + 语种 + 操作 -->
-            <div class="flex items-center justify-between gap-3">
-              <div class="flex min-w-0 items-center gap-2 text-[11px] text-muted-foreground">
-                <span class="font-mono">{{ formatTime(entry.timestamp) }}</span>
-                <span class="text-muted-foreground/40">·</span>
-                <span class="flex items-center gap-1">
-                  <Badge variant="outline" class="h-4 px-1.5 text-[10px] font-normal">
-                    {{ langLabel(entry.sourceLang) }}
-                  </Badge>
-                  <span class="text-muted-foreground/50">→</span>
-                  <Badge variant="outline" class="h-4 px-1.5 text-[10px] font-normal">
-                    {{ langLabel(entry.targetLang) }}
-                  </Badge>
-                </span>
-                <template v-if="serviceName(entry)">
-                  <span class="text-muted-foreground/40">·</span>
-                  <span class="truncate">由 {{ serviceName(entry) }} 翻译</span>
-                </template>
-              </div>
-              <div class="flex shrink-0 items-center gap-0.5 opacity-60 transition-opacity group-hover:opacity-100">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  class="h-7 px-2 text-[11px] text-muted-foreground hover:text-foreground"
-                  :title="`复制译文:${entry.translation.slice(0, 20)}${entry.translation.length > 20 ? '…' : ''}`"
-                  @click="copy(entry)"
-                >
-                  <Copy class="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  class="h-7 px-2 text-[11px] text-muted-foreground hover:text-destructive"
-                  title="删除此条"
-                  @click="remove(entry)"
-                >
-                  <Trash2 class="h-3.5 w-3.5" />
-                </Button>
-              </div>
+            <component :is="f.icon" class="h-3.5 w-3.5" />
+            <span class="whitespace-nowrap">{{ f.label }}</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 左右布局 -->
+      <div class="flex gap-4">
+        <!-- 左:列表（独立滚动） -->
+        <aside class="w-[240px] shrink-0 self-start sticky top-[var(--history-aside-top)] max-h-[var(--history-aside-h)] flex min-h-0 flex-col gap-3 overflow-y-auto scrollbar-thin">
+          <template v-for="bucket in filteredGrouped" :key="bucket.label">
+            <header class="flex items-center gap-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <span>{{ bucket.label }}</span>
+              <span class="text-[10px] opacity-60">{{ bucket.entries.length }} 条</span>
+              <div class="h-px flex-1 bg-border" />
+            </header>
+            <ul class="flex flex-col gap-1">
+              <li
+                v-for="s in bucket.entries"
+                :key="s.id"
+                class="flex cursor-pointer flex-col gap-1.5 rounded-md border border-transparent p-2 transition-colors hover:bg-accent/40"
+                :class="activeId === s.id ? 'border-primary/40 bg-accent' : ''"
+                @click="activeId = s.id"
+              >
+                <div class="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                  <span class="font-mono">{{ formatTime(s.timestamp) }}</span>
+                  <span class="flex items-center rounded border border-border bg-background/60 px-1 py-0.5" :title="TRIGGER_META[s.trigger]?.label">
+                    <component :is="triggerIcon(s.trigger)" class="h-3 w-3" />
+                  </span>
+                  <span class="inline-flex items-center gap-0.5 rounded border border-border bg-background/60 px-1 py-0.5 font-mono tabular-nums" :title="`${s.results.length} 个翻译渠道`">
+                    <Layers class="h-2.5 w-2.5" />
+                    {{ s.results.length }}
+                  </span>
+                  <template v-if="s.results.some((r) => r.status !== 'success')">
+                    <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-destructive" :title="`${s.results.filter((r) => r.status !== 'success').length} 个翻译结果异常`" />
+                  </template>
+                </div>
+                <div class="line-clamp-2 text-[12px] leading-snug text-foreground">{{ s.source }}</div>
+              </li>
+            </ul>
+          </template>
+        </aside>
+
+        <!-- 右:详情 -->
+        <section class="flex min-w-0 flex-1 flex-col">
+          <div v-if="!activeSession" class="flex flex-1 flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border py-16 text-center text-muted-foreground">
+            <HistoryIcon class="h-6 w-6" />
+            <p class="text-sm">从左侧选一条会话查看详情</p>
+          </div>
+
+          <template v-else>
+            <header class="flex shrink-0 items-center gap-2 pb-3">
+              <component :is="triggerIcon(activeSession.trigger)" class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              <h2 class="text-sm leading-none text-foreground">{{ TRIGGER_META[activeSession.trigger]?.label }}</h2>
+              <span class="ml-auto text-[11px] leading-none font-mono tabular-nums text-muted-foreground/50">{{ formatDetailTime(activeSession.timestamp) }}</span>
+            </header>
+
+            <div class="flex flex-col gap-1.5">
+              <SourceCardView
+                :text="activeSession.source"
+                :lang-label="langLabel(activeSession.sourceLang)"
+                @copy="copy(activeSession.source)"
+                @speak="speakSource"
+              />
+              <LanguageToolbar :source="activeSession.sourceLang" :target="activeSession.targetLang" readonly />
+              <section>
+                <ul class="results flex flex-col gap-2">
+                  <li v-for="r in activeSession.results" :key="r.serviceInstanceId + r.modelName" class="relative">
+                    <ResultCardView
+                      :engine-name="r.serviceName"
+                      :engine-icon-html="serviceIconSvg(r)"
+                      :model-name="r.modelName"
+                      :status="cardStatus(r)"
+                      :text="r.translation"
+                      :collapsed="isCollapsed(activeSession.id, r)"
+                      :show-tokens="true"
+                      :input-tokens="r.inputTokens"
+                      :output-tokens="r.outputTokens"
+                      :show-actions="r.status !== 'pending'"
+                      :show-refresh="true"
+                      @copy="copy(r.translation)"
+                      @refresh="retryResult(r)"
+                      @speak="speak(r.translation)"
+                      @toggle-collapse="toggleCollapse(activeSession.id, r)"
+                    />
+                  </li>
+                </ul>
+              </section>
             </div>
-
-            <!-- 原文(mono,浅色,2 行截断) -->
-            <p
-              v-if="entry.source"
-              class="font-mono text-[12px] leading-relaxed text-muted-foreground line-clamp-2"
-            >
-              {{ entry.source }}
-            </p>
-
-            <!-- 译文(主色) -->
-            <p
-              v-if="entry.translation"
-              class="text-sm leading-relaxed text-foreground"
-            >
-              {{ entry.translation }}
-            </p>
-
-            <!-- 完全空(识别失败) -->
-            <p
-              v-if="!entry.source && !entry.translation"
-              class="flex items-center gap-1.5 text-[12px] italic text-muted-foreground/70"
-            >
-              <Camera class="h-3 w-3" />
-              此条记录没有可用文本
-            </p>
-          </li>
-        </ul>
-      </section>
+          </template>
+        </section>
+      </div>
     </template>
 
-    <!-- 清空确认(通过 v-model:open 编程式打开,无 trigger) -->
-    <Dialog
-      v-model:open="showClearConfirm"
-      title="清空全部翻译历史?"
-      description="此操作不可撤销,所有截图翻译记录都将被永久删除。"
-      width="420px"
-    >
+    <!-- 清空确认 -->
+    <Dialog v-model:open="showClearConfirm" title="清空全部翻译历史?" description="此操作不可撤销,所有截图翻译记录都将被永久删除。" width="420px">
       <div class="flex justify-end gap-2 pt-2">
         <Button variant="ghost" size="sm" @click="showClearConfirm = false">取消</Button>
-        <Button
-          variant="destructive"
-          size="sm"
-          @click="clearAll"
-        >
+        <Button variant="destructive" size="sm" @click="clearAll">
           <Trash2 class="h-3.5 w-3.5" />
           确认清空
         </Button>
