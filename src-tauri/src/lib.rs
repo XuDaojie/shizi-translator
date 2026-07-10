@@ -112,11 +112,6 @@ pub fn run() {
             let _ = ensure_settings_window(app.handle());
             let _ = ensure_overlay(app.handle());
 
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
-
             Ok(())
         })
         .run(tauri::generate_context!())

@@ -24,12 +24,13 @@
         "url": "translate.html",
         "title": "Shizi - 翻译助手",
         "width": 420,
-        "height": 480,
+        "height": 360,
         "resizable": false,
         "decorations": false,
         "transparent": true,
         "skipTaskbar": true,
-        "center": true
+        "center": true,
+        "visible": false
       }
     ]
   }
