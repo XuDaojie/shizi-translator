@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { LANGUAGES } from '../data/languages'
 import LanguagePicker from './LanguagePicker.vue'
 
@@ -49,7 +49,7 @@ const swap = (): void => {
 const onDocClick = (e: MouseEvent): void => {
   if (!openType.value) return
   const target = e.target as HTMLElement
-  if (target.closest('.lang-toolbar')) return
+  if (target.closest('.lang-toolbar') || target.closest('.lang-picker')) return
   openType.value = null
 }
 
@@ -59,6 +59,10 @@ watch(openType, (val) => {
   } else {
     document.removeEventListener('click', onDocClick)
   }
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', onDocClick)
 })
 </script>
 
@@ -82,7 +86,6 @@ watch(openType, (val) => {
     :model-value="source"
     type="source"
     placeholder="搜索源语言…"
-    @update:model-value="(v) => emit('update:source', v)"
     @pick="(v) => onPick('source', v)"
   />
   <LanguagePicker
@@ -91,7 +94,6 @@ watch(openType, (val) => {
     :model-value="target"
     type="target"
     placeholder="搜索目标语言…"
-    @update:model-value="(v) => emit('update:target', v)"
     @pick="(v) => onPick('target', v)"
   />
 </template>
