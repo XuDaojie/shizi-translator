@@ -71,7 +71,10 @@ nextTick(() => {
   }
 })
 
-const onToggleCollapse = (): void => { props.card.collapsed = !props.card.collapsed }
+const onToggleCollapse = (): void => {
+  props.card.collapsed = !props.card.collapsed
+  props.card.collapseUserOverride = true
+}
 
 const onToggleExpand = (): void => {
   props.card.expanded = !props.card.expanded

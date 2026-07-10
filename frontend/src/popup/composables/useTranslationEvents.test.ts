@@ -259,4 +259,49 @@ describe('useTranslationEvents.collapsed 状态机', () => {
     expect(h.cards.get('svc-a')!.text).toBe('')
     expect(h.cards.get('svc-a')!.collapsed).toBe(true)
   })
+
+  it('用户 override 后首 delta 不自动展开', () => {
+    const h = makeHarness()
+    h.dispatch({
+      type: 'started',
+      sessionId: 'batch-1:svc-a',
+      serviceInstanceId: 'svc-a',
+      serviceName: 'A',
+      serviceType: 'openai',
+    })
+    const card = h.cards.get('svc-a')!
+    card.collapseUserOverride = true
+    card.collapsed = true
+    h.dispatch({
+      type: 'delta',
+      sessionId: 'batch-1:svc-a',
+      serviceInstanceId: 'svc-a',
+      text: 'Hello',
+    })
+    expect(card.collapsed).toBe(true)
+    expect(card.text).toBe('Hello')
+  })
+
+  it('新 batch 清除 override 并恢复默认收缩', () => {
+    const h = makeHarness()
+    h.dispatch({
+      type: 'started',
+      sessionId: 'batch-1:svc-a',
+      serviceInstanceId: 'svc-a',
+      serviceName: 'A',
+      serviceType: 'openai',
+    })
+    const card = h.cards.get('svc-a')!
+    card.collapseUserOverride = true
+    card.collapsed = true
+    h.dispatch({
+      type: 'started',
+      sessionId: 'batch-2:svc-a',
+      serviceInstanceId: 'svc-a',
+      serviceName: 'A',
+      serviceType: 'openai',
+    })
+    expect(card.collapseUserOverride).toBe(false)
+    expect(card.collapsed).toBe(true)
+  })
 })

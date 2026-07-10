@@ -150,7 +150,7 @@ const refreshCardsFromConfig = (config: AppConfig): void => {
         modelName: '',
         text: '',
         status: 'pending',
-        collapsed: !sourceText.value.trim(),
+        collapsed: true, // 空闲默认收缩
         collapseUserOverride: false,
         expanded: false,
         hasOverflow: false,
@@ -245,7 +245,10 @@ const persistSessionLanguages = async (): Promise<void> => {
 const onSourceInput = (): void => {
   charCount.value = sourceText.value.length
   if (!sourceText.value.trim()) {
-    cards.forEach((c) => { c.collapsed = true })
+    cards.forEach((c) => {
+      c.collapsed = true
+      c.collapseUserOverride = false
+    })
   }
 }
 
