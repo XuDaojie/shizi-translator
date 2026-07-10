@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { Toaster } from '@/components/ui/toast'
 import { createLogger } from '@public/logger.js'
 import PopupToolbar from './components/PopupToolbar.vue'
@@ -9,6 +9,10 @@ import ResultCard from './components/ResultCard.vue'
 import StatusBar from './components/StatusBar.vue'
 import { useTranslationEvents, type CardState, type TranslationEventPayload } from './composables/useTranslationEvents'
 import { usePopupHeight } from './composables/usePopupHeight'
+import {
+  createMainWindowReadyGate,
+  doubleRaf,
+} from './composables/mainWindowReady'
 import { getTauriApis } from './composables/utils'
 import { toast } from '@/lib/toast'
 import { LANGUAGES } from './data/languages'
@@ -34,9 +38,20 @@ const statusInfo = ref<{ text: string; loading: boolean; action: { label: string
 const pendingConfigRefresh = ref<AppConfig | null>(null)
 
 const popupHeight = usePopupHeight(popupRef)
-// 任务 7 使用 popupHeight.whenFirstSized / popupHeight.adjustNow
-void popupHeight
 
+const showMainWindow = async (): Promise<void> => {
+  const apis = getTauriApis()
+  if (!apis) return
+  const win = apis.getCurrentWindow()
+  await win.show()
+  await win.setFocus()
+}
+
+const readyGate = createMainWindowReadyGate({
+  timeoutMs: 2000,
+  show: showMainWindow,
+  onTimeoutWarn: (msg) => logger.warn(msg),
+})
 
 const setStatus = (text: string, loading: boolean, action: { label: string; onClick: () => void } | null): void => {
   statusInfo.value = { text, loading, action }
@@ -117,6 +132,7 @@ const events = useTranslationEvents({
 
 onBeforeUnmount(() => {
   events.unlisten()
+  readyGate.dispose()
 })
 
 /* === 卡片配置同步（复刻旧 refreshCardsFromConfig + syncServiceCards） === */
@@ -303,12 +319,28 @@ const initCards = async (): Promise<void> => {
   }
 }
 
+const runColdStartReady = async (): Promise<void> => {
+  try {
+    await initCards()
+    await nextTick()
+    await popupHeight.adjustNow()
+    await popupHeight.whenFirstSized
+    await doubleRaf()
+  } catch (e) {
+    logger.warn('冷启动 ready 流水线异常，仍尝试 show', String(e))
+  } finally {
+    await readyGate.notifyReady()
+  }
+}
+
 onMounted(() => {
   charCount.value = sourceText.value.length
-  void initCards()
+  void runColdStartReady()
   void collectEdgeTranslateEnv()
   void applyPendingSourceText()
-  window.addEventListener('focus', () => { void applyPendingSourceText() })
+  window.addEventListener('focus', () => {
+    void applyPendingSourceText()
+  })
 })
 </script>
 
