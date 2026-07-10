@@ -48,33 +48,48 @@ const showClearConfirm = ref(false)
 const sessions = ref<HistorySession[]>([])
 const loading = ref(false)
 const loadError = ref('')
+const clearing = ref(false)
+let isMounted = false
+let refreshRequestId = 0
 
 const refreshHistory = async (): Promise<void> => {
-  loading.value = true
-  loadError.value = ''
+  const requestId = ++refreshRequestId
+  if (isMounted) {
+    loading.value = true
+    loadError.value = ''
+  }
   try {
-    sessions.value = await loadHistory(props.state.translation.historyLimit)
+    const nextSessions = await loadHistory(props.state.translation.historyLimit)
+    if (!isMounted || requestId !== refreshRequestId) return
+    sessions.value = nextSessions
   } catch (err) {
+    if (!isMounted || requestId !== refreshRequestId) return
     sessions.value = []
     loadError.value = err instanceof Error ? err.message : String(err)
     toast.error('读取翻译历史失败', loadError.value)
   } finally {
+    if (!isMounted || requestId !== refreshRequestId) return
     loading.value = false
   }
 }
 
 const isEmpty = computed(() => isEmptyHistory(sessions.value))
+const filteredSessions = computed<HistorySession[]>(() =>
+  activeFilter.value === 'all'
+    ? sessions.value
+    : sessions.value.filter((s) => s.trigger === activeFilter.value),
+)
 const activeSession = computed<HistorySession | null>(() =>
-  activeId.value ? sessions.value.find((s) => s.id === activeId.value) ?? null : null,
+  activeId.value ? filteredSessions.value.find((s) => s.id === activeId.value) ?? null : null,
 )
 
 /* 首条默认选中 */
 watchEffect(() => {
-  if (!activeId.value && sessions.value.length > 0) {
-    activeId.value = sessions.value[0].id
+  if (!activeId.value && filteredSessions.value.length > 0) {
+    activeId.value = filteredSessions.value[0].id
   }
-  if (activeId.value && !sessions.value.some((s) => s.id === activeId.value)) {
-    activeId.value = sessions.value[0]?.id ?? ''
+  if (activeId.value && !filteredSessions.value.some((s) => s.id === activeId.value)) {
+    activeId.value = filteredSessions.value[0]?.id ?? ''
   }
 })
 
@@ -160,13 +175,23 @@ const copy = async (text: string, isSource = false): Promise<void> => {
 }
 
 const clearAll = async (): Promise<void> => {
+  if (clearing.value) return
+  clearing.value = true
   try {
-    sessions.value = await clearHistoryAndReload()
+    const nextSessions = await clearHistoryAndReload()
+    if (!isMounted) return
+    refreshRequestId += 1
+    sessions.value = nextSessions
+    loadError.value = ''
+    loading.value = false
     showClearConfirm.value = false
     activeId.value = ''
     toast.success('已清空翻译历史')
   } catch (err) {
+    if (!isMounted) return
     toast.error('清空翻译历史失败', err instanceof Error ? err.message : String(err))
+  } finally {
+    if (isMounted) clearing.value = false
   }
 }
 
@@ -246,6 +271,7 @@ const updateScrollMetrics = (): void => {
 }
 
 onMounted(() => {
+  isMounted = true
   void refreshHistory()
   updateScrollMetrics()
   metricsObserver = new ResizeObserver(updateScrollMetrics)
@@ -255,6 +281,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  isMounted = false
   metricsObserver?.disconnect()
   metricsObserver = null
 })
@@ -404,7 +431,7 @@ onBeforeUnmount(() => {
     <Dialog v-model:open="showClearConfirm" title="清空全部翻译历史?" description="此操作不可撤销，所有翻译历史都会被永久删除。" width="420px">
       <div class="flex justify-end gap-2 pt-2">
         <Button variant="ghost" size="sm" @click="showClearConfirm = false">取消</Button>
-        <Button variant="destructive" size="sm" @click="clearAll">
+        <Button variant="destructive" size="sm" :disabled="clearing" @click="clearAll">
           <Trash2 class="h-3.5 w-3.5" />
           确认清空
         </Button>
