@@ -107,7 +107,13 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     iconifyId: 'simple-icons:google',
     category: 'llm',
     keyRequired: true,
-    protocols: [],
+    // Google OpenAI 兼容端点：{base}/chat/completions
+    protocols: [
+      OPENAI_CHAT(
+        'https://generativelanguage.googleapis.com/v1beta/openai',
+        'gemini-1.5-flash',
+      ),
+    ],
   },
   {
     id: 'deepl',
@@ -206,7 +212,7 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     iconifyId: 'simple-icons:moonshotai',
     category: 'llm',
     keyRequired: true,
-    protocols: [],
+    protocols: [OPENAI_CHAT('https://api.moonshot.cn/v1', 'moonshot-v1-128k')],
   },
   {
     id: 'siliconflow',
@@ -226,7 +232,7 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     hasModelApi: true,
     category: 'llm',
     keyRequired: true,
-    protocols: [],
+    protocols: [OPENAI_CHAT('https://api.siliconflow.cn/v1', 'Qwen/Qwen2.5-7B-Instruct')],
   },
   {
     id: 'custom',

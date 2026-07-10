@@ -72,7 +72,7 @@
 - 翻译弹窗打开时即展示所有启用服务的占位卡片，翻译开始后原地刷新内容，无需等待首个结果返回。
 - 设置页保存服务启用 / 关闭后，通过 `app-config:changed` 通知已打开的翻译弹窗同步结果卡片；非翻译中即时新增、删除、排序，翻译进行中保留正在输出的卡片，不新增未参与当前批次的服务卡片。
 - 翻译弹窗输入为空或暂无翻译内容时，结果卡片默认收缩；开始翻译后对应卡片自动展开显示流式内容。
-- 未对接渠道（gemini/deepl/google/baidu/youdao/tencent/volcengine/iflytek/moonshot/siliconflow）在添加 Dialog 标"开发中"badge、服务列表启用开关置灰、详情页顶部横幅提示。
+- 未对接渠道（deepl/google/baidu/youdao/tencent/volcengine/iflytek 等机器翻译）在添加 Dialog 标"开发中"badge、服务列表启用开关置灰、详情页顶部横幅提示。大模型渠道（OpenAI/DeepSeek/Claude/智谱/Gemini/Moonshot/硅基流动/自定义 OpenAI 兼容）均已挂可用协议。
 
 > overlay 仍为纯静态 HTML/JS/CSS（`frontend/public/`），永久不迁；translate.html 已迁移为 Vue 3 入口（`frontend/src/popup/`），与设置页共享工程。
 

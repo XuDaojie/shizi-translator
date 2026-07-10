@@ -42,7 +42,7 @@ const defaultInstanceFor = (type: ServiceId, name: string, enabled = false): Ser
     type,
     name,
     enabled,
-    // protocols 为空的渠道（gemini/deepl 等）走 'openai_chat' 占位；
+    // protocols 为空的渠道（deepl 等 ML）走 'openai_chat' 占位；
     // 这类渠道在 ServicesPanel 启用开关被置灰，不会进入翻译批次，protocol 值不影响运行。
     protocol: protocol?.id ?? 'openai_chat',
     apiKey: '',
