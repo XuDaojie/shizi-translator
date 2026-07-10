@@ -159,7 +159,7 @@ const filteredGrouped = computed<Bucket[]>(() => {
     .filter((b) => b.entries.length > 0)
 })
 
-const copy = async (text: string): Promise<void> => {
+const copy = async (text: string, isSource = false): Promise<void> => {
   if (!text) { toast.error('复制失败', '该记录没有可复制的文本'); return }
   try {
     if (navigator.clipboard?.writeText) {
@@ -174,7 +174,7 @@ const copy = async (text: string): Promise<void> => {
       document.execCommand('copy')
       document.body.removeChild(ta)
     }
-    toast.success('已复制译文', text.length > 30 ? `${text.slice(0, 30)}…` : text)
+    toast.success(isSource ? '已复制原文' : '已复制译文', text.length > 30 ? `${text.slice(0, 30)}…` : text)
   } catch (err) {
     toast.error('复制失败', err instanceof Error ? err.message : '请检查浏览器权限')
   }
@@ -371,7 +371,7 @@ onBeforeUnmount(() => {
               <SourceCardView
                 :text="activeSession.source"
                 :lang-label="langLabel(activeSession.sourceLang)"
-                @copy="copy(activeSession.source)"
+                @copy="copy(activeSession.source, true)"
                 @speak="speakSource"
               />
               <LanguageToolbar :source="activeSession.sourceLang" :target="activeSession.targetLang" readonly />
@@ -385,11 +385,11 @@ onBeforeUnmount(() => {
                       :status="cardStatus(r)"
                       :text="r.translation"
                       :collapsed="isCollapsed(activeSession.id, r)"
-                      :show-tokens="true"
+                      :show-tokens="false"
                       :input-tokens="r.inputTokens"
                       :output-tokens="r.outputTokens"
                       :show-actions="r.status !== 'pending'"
-                      :show-refresh="true"
+                      :show-refresh="false"
                       @copy="copy(r.translation)"
                       @refresh="retryResult(r)"
                       @speak="speak(r.translation)"
