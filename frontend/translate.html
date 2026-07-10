@@ -4,9 +4,27 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Shizi - 翻译</title>
+  <!-- 冷启动静态壳：须内联，模块 CSS 要等 JS 才生效；Vue mount 后整树替换 -->
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: transparent;
+      overflow: hidden;
+    }
+    .popup-boot-shell {
+      width: 420px;
+      min-height: 360px;
+      box-sizing: border-box;
+      background: #F5F2EC; /* --popup-bg-popup */
+      border-radius: 0;
+    }
+  </style>
 </head>
 <body>
-  <div id="app"></div>
+  <div id="app">
+    <div class="popup-boot-shell" aria-hidden="true"></div>
+  </div>
   <script type="module" src="/src/popup/main.ts"></script>
 </body>
 </html>
