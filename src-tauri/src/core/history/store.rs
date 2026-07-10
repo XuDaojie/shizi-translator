@@ -1,9 +1,11 @@
 use std::{
+    error::Error,
+    io,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
 
-use rusqlite::{params, Connection};
+use rusqlite::{params, types::Type, Connection};
 use tauri::Manager;
 
 use crate::core::{
@@ -90,7 +92,7 @@ impl HistoryStore {
             CREATE TABLE IF NOT EXISTS translation_sessions (
                 id TEXT PRIMARY KEY,
                 batch_id TEXT NOT NULL UNIQUE,
-                trigger TEXT NOT NULL,
+                trigger TEXT NOT NULL CHECK (trigger IN ('manual', 'selection', 'screenshot')),
                 source_lang TEXT NOT NULL,
                 target_lang TEXT NOT NULL,
                 source_text TEXT NOT NULL,
@@ -103,7 +105,7 @@ impl HistoryStore {
                 service_type TEXT NOT NULL,
                 protocol TEXT NOT NULL,
                 model_name TEXT NOT NULL,
-                status TEXT NOT NULL,
+                status TEXT NOT NULL CHECK (status IN ('pending', 'success', 'error', 'cancelled')),
                 translated_text TEXT NOT NULL DEFAULT '',
                 error_message TEXT NOT NULL DEFAULT '',
                 input_tokens INTEGER,
@@ -152,7 +154,12 @@ impl HistoryStore {
                     service_type = excluded.service_type,
                     protocol = excluded.protocol,
                     model_name = excluded.model_name,
-                    status = 'pending'
+                    status = 'pending',
+                    translated_text = '',
+                    error_message = '',
+                    input_tokens = NULL,
+                    output_tokens = NULL,
+                    finished_at = NULL
                 ",
                 params![
                     result.session_id,
@@ -261,7 +268,7 @@ impl HistoryStore {
                     HistorySessionDto {
                         id,
                         timestamp: row.get(1)?,
-                        trigger: trigger_from_str(row.get::<_, String>(2)?.as_str()),
+                        trigger: trigger_from_str(row.get::<_, String>(2)?.as_str())?,
                         source_lang: row.get(3)?,
                         target_lang: row.get(4)?,
                         source: row.get(5)?,
@@ -326,7 +333,7 @@ fn results_for_conn(
             model_name: row.get(4)?,
             translation: row.get(5)?,
             error_message: row.get(6)?,
-            status: status_from_str(row.get::<_, String>(7)?.as_str()),
+            status: status_from_str(row.get::<_, String>(7)?.as_str())?,
             input_tokens: input_tokens.map(|value| value as u64),
             output_tokens: output_tokens.map(|value| value as u64),
         })
@@ -346,21 +353,31 @@ fn trigger_to_str(trigger: HistoryTrigger) -> &'static str {
     }
 }
 
-fn trigger_from_str(value: &str) -> HistoryTrigger {
+fn trigger_from_str(value: &str) -> rusqlite::Result<HistoryTrigger> {
     match value {
-        "selection" => HistoryTrigger::Selection,
-        "screenshot" => HistoryTrigger::Screenshot,
-        _ => HistoryTrigger::Manual,
+        "manual" => Ok(HistoryTrigger::Manual),
+        "selection" => Ok(HistoryTrigger::Selection),
+        "screenshot" => Ok(HistoryTrigger::Screenshot),
+        _ => Err(invalid_history_value(value)),
     }
 }
 
-fn status_from_str(value: &str) -> HistoryResultStatus {
+fn status_from_str(value: &str) -> rusqlite::Result<HistoryResultStatus> {
     match value {
-        "success" => HistoryResultStatus::Success,
-        "error" => HistoryResultStatus::Error,
-        "cancelled" => HistoryResultStatus::Cancelled,
-        _ => HistoryResultStatus::Pending,
+        "pending" => Ok(HistoryResultStatus::Pending),
+        "success" => Ok(HistoryResultStatus::Success),
+        "error" => Ok(HistoryResultStatus::Error),
+        "cancelled" => Ok(HistoryResultStatus::Cancelled),
+        _ => Err(invalid_history_value(value)),
     }
+}
+
+fn invalid_history_value(value: &str) -> rusqlite::Error {
+    let err: Box<dyn Error + Send + Sync + 'static> = Box::new(io::Error::new(
+        io::ErrorKind::InvalidData,
+        format!("非法历史枚举值：{value}"),
+    ));
+    rusqlite::Error::FromSqlConversionFailure(0, Type::Text, err)
 }
 
 #[cfg(test)]
@@ -462,6 +479,68 @@ mod tests {
             sessions[0].results[0].status,
             HistoryResultStatus::Cancelled
         );
+    }
+
+    #[test]
+    fn upsert_pending_result_resets_previous_output_fields() {
+        let store = HistoryStore::in_memory_for_test().unwrap();
+        store
+            .create_session(&session("s1", "batch-1", "2026-01-01T00:00:00Z"))
+            .unwrap();
+        let result = result("s1", "a");
+        store.upsert_pending_result(&result).unwrap();
+        store
+            .mark_success(
+                "s1",
+                "a",
+                "旧译文",
+                Some(&TokenUsage {
+                    input_tokens: 1,
+                    output_tokens: 2,
+                }),
+            )
+            .unwrap();
+
+        store.upsert_pending_result(&result).unwrap();
+
+        let result = &store.list_recent(10).unwrap()[0].results[0];
+        assert_eq!(result.status, HistoryResultStatus::Pending);
+        assert_eq!(result.translation, "");
+        assert_eq!(result.error_message, "");
+        assert_eq!(result.input_tokens, None);
+        assert_eq!(result.output_tokens, None);
+    }
+
+    #[test]
+    fn schema_rejects_invalid_trigger_and_status() {
+        let store = HistoryStore::in_memory_for_test().unwrap();
+
+        let invalid_trigger = store.with_conn(|conn| {
+            conn.execute(
+                "
+                INSERT INTO translation_sessions
+                    (id, batch_id, trigger, source_lang, target_lang, source_text, created_at)
+                VALUES ('bad-trigger', 'batch-bad-trigger', 'unknown', 'auto', 'zh-CN', 'x', '2026-01-01T00:00:00Z')
+                ",
+                [],
+            )
+        });
+        assert!(invalid_trigger.is_err());
+
+        store
+            .create_session(&session("s1", "batch-1", "2026-01-01T00:00:00Z"))
+            .unwrap();
+        let invalid_status = store.with_conn(|conn| {
+            conn.execute(
+                "
+                INSERT INTO translation_results
+                    (session_id, service_instance_id, service_name, service_type, protocol, model_name, status)
+                VALUES ('s1', 'bad-status', 'svc', 'llm', 'mock', 'model', 'unknown')
+                ",
+                [],
+            )
+        });
+        assert!(invalid_status.is_err());
     }
 
     #[test]
