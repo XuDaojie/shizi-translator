@@ -159,6 +159,7 @@ describe('projectToAppConfig', () => {
 
 describe('validateConfig', () => {
   const base: AppConfig = {
+    interfaceLanguage: 'auto',
     targetLang: '中文',
     defaultSourceLang: 'auto',
     autoCopy: true,

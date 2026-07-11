@@ -13,8 +13,13 @@ const TRANSLATION_LANGS: &[&str] = &[
 
 /// 首次安装默认目标语言：读 OS locale 并映射到翻译语言 code，不在列表回退 zh-CN。
 fn default_target_lang_from_os() -> String {
-    let os = sys_locale::get_locale().unwrap_or_else(|| "en-US".to_string());
-    map_os_lang_to_translation(&os)
+    target_lang_from_locale(sys_locale::get_locale())
+}
+
+fn target_lang_from_locale(locale: Option<String>) -> String {
+    locale
+        .map(|value| map_os_lang_to_translation(&value))
+        .unwrap_or_else(|| FALLBACK_TARGET_LANG.to_string())
 }
 
 const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
@@ -52,11 +57,12 @@ fn default_history_limit() -> usize {
 /// 把 OS locale（如 `zh-CN`、`zh-Hans`、`en-GB`）映射到翻译语言 code。
 /// 中文区分简繁体，其他语言按主语言映射，都不匹配回退 `zh-CN`。
 fn map_os_lang_to_translation(os: &str) -> String {
-    let lower = os.to_lowercase();
-    let main = lower.split('-').next().unwrap_or("");
+    let normalized = os.to_lowercase().replace('_', "-");
+    let mut segments = normalized.split('-');
+    let main = segments.next().unwrap_or("");
     let mapped = match main {
         "zh" => {
-            if lower.contains("hant") || lower.contains("tw") || lower.contains("hk") {
+            if segments.any(|segment| matches!(segment, "hant" | "tw" | "hk" | "mo")) {
                 "zh-TW"
             } else {
                 "zh-CN"
@@ -339,7 +345,17 @@ mod tests {
         config.target_lang = "ja-JP".into();
         let normalized = config.normalized();
         assert_eq!(normalized.default_source_lang, "auto");
-        assert_ne!(normalized.target_lang, "ja-JP");
+        assert_eq!(normalized.target_lang, "zh-CN");
+    }
+
+    #[test]
+    fn normalized_keeps_valid_translation_codes() {
+        let mut config = AppConfig::from_env();
+        config.default_source_lang = "en".into();
+        config.target_lang = "ja".into();
+        let normalized = config.normalized();
+        assert_eq!(normalized.default_source_lang, "en");
+        assert_eq!(normalized.target_lang, "ja");
     }
 
     #[test]
@@ -348,6 +364,12 @@ mod tests {
         assert_eq!(map_os_lang_to_translation("pt-BR"), "pt");
         assert_eq!(map_os_lang_to_translation("zh-Hant-HK"), "zh-TW");
         assert_eq!(map_os_lang_to_translation("xx-YY"), "zh-CN");
+        assert_eq!(map_os_lang_to_translation("ZH_mO"), "zh-TW");
+    }
+
+    #[test]
+    fn missing_os_locale_uses_target_fallback() {
+        assert_eq!(target_lang_from_locale(None), "zh-CN");
     }
 
     #[test]

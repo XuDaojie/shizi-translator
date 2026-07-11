@@ -241,6 +241,7 @@ describe('syncFromBackend', () => {
   it('后端 services 为空时推前端配置覆盖后端', async () => {
     vi.mocked(isTauriReady).mockReturnValue(true);
     vi.mocked(invokeGetAppConfig).mockResolvedValue({
+      interfaceLanguage: 'auto',
       targetLang: '中文',
       defaultSourceLang: 'auto',
       autoCopy: true,
@@ -348,6 +349,7 @@ describe('syncFromBackend', () => {
     const before = settings.state.shortcut.bindings.find((b) => b.id === 'translate-selection')!;
 
     vi.mocked(invokeGetAppConfig).mockResolvedValue({
+      interfaceLanguage: 'auto',
       targetLang: '中文',
       defaultSourceLang: 'auto',
       autoCopy: true,
@@ -391,6 +393,7 @@ describe('syncFromBackend', () => {
     const localId = settings.state.services[0].id;
 
     vi.mocked(invokeGetAppConfig).mockResolvedValue({
+      interfaceLanguage: 'auto',
       targetLang: '中文',
       defaultSourceLang: 'auto',
       autoCopy: true,
@@ -435,6 +438,7 @@ describe('syncFromBackend', () => {
       const localId = settings.state.services[0].id;
 
       vi.mocked(invokeGetAppConfig).mockResolvedValue({
+        interfaceLanguage: 'auto',
         targetLang: '中文',
         defaultSourceLang: 'auto',
         autoCopy: true,
@@ -482,6 +486,7 @@ describe('syncFromBackend', () => {
     const localId = settings.state.services[0].id;
 
     vi.mocked(invokeGetAppConfig).mockResolvedValue({
+      interfaceLanguage: 'auto',
       targetLang: '中文',
       defaultSourceLang: 'auto',
       autoCopy: true,
@@ -520,6 +525,7 @@ describe('syncFromBackend', () => {
       const localId = settings.state.services[0].id;
 
       vi.mocked(invokeGetAppConfig).mockResolvedValue({
+        interfaceLanguage: 'auto',
         targetLang: '中文',
         defaultSourceLang: 'auto',
         autoCopy: true,
@@ -613,6 +619,7 @@ describe('defaultTargetLang', () => {
   it('syncFromBackend 回读 targetLang 到 defaultTargetLang', async () => {
     vi.mocked(isTauriReady).mockReturnValue(true);
     vi.mocked(invokeGetAppConfig).mockResolvedValue({
+      interfaceLanguage: 'auto',
       targetLang: 'en-US',
       defaultSourceLang: 'auto',
       autoCopy: true,
