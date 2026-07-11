@@ -18,6 +18,7 @@ src-tauri/         Rust 后端 + Tauri 配置
   src/main.rs      薄入口，调用 shizi_lib::run()
   src/app/         应用编排：托盘、全局快捷键、窗口控制、AppState（含 capture/translation 锁）
   src/core/config/ 本地配置模型与 JSON 存储
+  src/core/history/ SQLite 翻译历史：session/result 两表，HistoryStore 聚合查询与裁剪
   src/core/llm/    LLM provider（mock、OpenAI-compatible、Claude 流式）；通用 provider 抽象已迁至 core/translation/provider.rs
   src/core/selection/ 划词复制：剪贴板文本读取、Ctrl+C 模拟
   src/core/translation/ 翻译请求、事件、TranslationService、通用 provider 抽象（provider.rs）、auto 解析（auto_lang.rs）、协议分发（protocol.rs）
@@ -74,6 +75,7 @@ cd src-tauri && cargo clean           # 清理 Rust 编译缓存
 - **全局快捷键**：`Alt+D` 划词复制并自动翻译；`Alt+E` 触发截图 OCR 翻译（DXGI 抓光标所在显示器整屏帧 → 自建 overlay 区域框选 → crop → Windows.Media.Ocr → 复用翻译链路）。由 `tauri-plugin-global-shortcut` 注册，逻辑集中在 `src-tauri/src/app/shortcuts.rs`。启动注册为 best-effort：单条快捷键被其他应用占用只记录到 `AppState.shortcut_conflicts`，不阻止启动；冲突列表经 `get_shortcut_conflicts` command 供设置页快捷键模块展示（保存路径仍为 all-or-nothing，失败回滚旧配置）。新增快捷键时需在 `capabilities/default.json` 同步授权。
 - **前后端通信**：当前已有 Tauri commands：`start_translation`、`take_pending_source_text`、`get_app_config`、`save_app_config`、`get_shortcut_conflicts`，以及截图 overlay 四命令 `get_capture_frame_meta` / `get_capture_frame_bytes` / `submit_capture_region` / `cancel_capture`，日志两命令 `write_frontend_log` / `export_logs`，Edge UA 采集一命令 `save_edge_translate_env`（前端采集 UA/Accept-Language 存 AppState 进程级内存）。后端通过 `translation:event` 向前端推送 `Started` / `Delta` / `Finished` / `Failed`（`Finished` 含 `detectedSourceLang: Option<String>`，由 provider 事件 `TranslationStreamEvent::DetectedSourceLang` 回传，LLM 首行解析或 ML 响应 `detectedLanguage` 填充）。
 - **配置存储**：当前设置面板将 provider 配置保存到 Tauri app config dir 下的 `config.json`，含 `logLevel` 字段（error/warn/info/debug，默认 info）。支持 OpenAI-compatible 和 Claude 两种 provider。API Key 在 MVP 阶段明文保存，后续产品化需迁移到系统 SecretStore。
+- **翻译历史**：历史数据由后端 `core/history::HistoryStore` 写入 `app_config_dir()/history.sqlite3`，`AppState` 与 `ConfigStore` 同级持有 store。`web_popup.rs` 仅在统一翻译入口触发 session/result 写入，不包含 SQL；设置页通过 `list_translation_history` / `clear_translation_history` 查询和清空，不再保存 `ocrHistory` 到前端 localStorage。
 - **日志系统**：前后端各一套日志，物理分开保存到 `app_config_dir()/logs/`。后端 `Shizi.log` 由 `tauri-plugin-log` 写（注册时内部 level Debug 不挡，全局 `log::set_max_level` 控制；5MB `KeepAll` 轮转，轮转文件 `Shizi_<timestamp>.log`；文件名按 `productName` 固定为 `Shizi.log`，不支持自定义）。前端 `frontend.log` 由 `write_frontend_log` command 直接 `std::fs::append` 写、不走 log facade（5MB 轮转 `frontend.log.1`/`.2`）。运行时等级切换：`save_app_config` 保存 `logLevel` 后调 `log::set_max_level` 即时生效，前端 `logger.setLevel` 订阅 `app-config:changed`。脱敏：API Key 前 4+后 4（`redact_api_key`），翻译正文 info 记摘要（长度+前 20 字）、debug 记全文（`redact_text`）。启动清理 7 天旧日志（`cleanup_old_logs`）。`export_logs` 打包 zip 含日志 + `config-snapshot.json`（apiKey 脱敏）+ `system-info.txt`。日志系统任何环节失败 best-effort，不影响翻译主流程。
 
 ## 开发说明

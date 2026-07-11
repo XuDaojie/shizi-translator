@@ -1746,7 +1746,7 @@ git commit -m "refactor(history): 删除旧 OCR 历史适配层"
 - 修改：`CLAUDE.md`
 - 修改：`docs/superpowers/plans/2026-07-11-translation-history.md`
 
-- [ ] **步骤 1：运行后端验证**
+- [x] **步骤 1：运行后端验证**
 
 运行：
 
@@ -1757,7 +1757,7 @@ cd src-tauri && cargo build
 
 预期：测试全部 PASS，构建成功。
 
-- [ ] **步骤 2：运行前端验证**
+- [x] **步骤 2：运行前端验证**
 
 运行：
 
@@ -1788,7 +1788,7 @@ npm run tauri dev
 7. 清空历史按钮调用后端清空，刷新后显示“暂无翻译历史”。
 8. `translation.historyLimit` 改小后执行多次翻译，旧 session 被裁剪。
 
-- [ ] **步骤 4：同步 README**
+- [x] **步骤 4：同步 README**
 
 在 `README.md` 当前能力列表增加：
 
@@ -1804,7 +1804,7 @@ npm run tauri dev
 
 在限制中删除“历史实现中”相关描述，只保留不属于本轮的限制。
 
-- [ ] **步骤 5：同步 AGENTS.md 与 CLAUDE.md**
+- [x] **步骤 5：同步 AGENTS.md 与 CLAUDE.md**
 
 在两个文件的项目结构中 `src-tauri/src/core/` 区域增加：
 
@@ -1820,11 +1820,11 @@ npm run tauri dev
 
 保持 `AGENTS.md` 与 `CLAUDE.md` 内容同步。
 
-- [ ] **步骤 6：回填本计划复选框**
+- [x] **步骤 6：回填本计划复选框**
 
 在 `docs/superpowers/plans/2026-07-11-translation-history.md` 中把已完成步骤由 `- [ ]` 改为 `- [x]`。
 
-- [ ] **步骤 7：Commit**
+- [x] **步骤 7：Commit**
 
 ```bash
 git add README.md AGENTS.md CLAUDE.md docs/superpowers/plans/2026-07-11-translation-history.md
