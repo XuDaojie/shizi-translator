@@ -3,7 +3,7 @@ import { reactive } from 'vue'
 import { useTranslationEvents, type CardState, type TranslationEventPayload } from './useTranslationEvents'
 
 /** 构造最小可用 opts，记录回调调用。 */
-function makeHarness() {
+function makeHarness(listenOverride?: ReturnType<typeof vi.fn>) {
   const cards = reactive<Map<string, CardState>>(new Map())
   const state = { isTranslating: false, batchId: null as string | null }
   const calls = {
@@ -13,14 +13,14 @@ function makeHarness() {
     config: [] as Array<unknown>,
   }
   const logger = { info: vi.fn(), warn: vi.fn() }
-  const listen = vi.fn(async (_evt: string, handler: (e: { payload: unknown }) => void) => {
+  const listen = listenOverride ?? vi.fn(async (_evt: string, handler: (e: { payload: unknown }) => void) => {
     ;(listen as unknown as { _handler: typeof handler })._handler = handler
     return () => {}
   })
   vi.stubGlobal('window', {
     __TAURI__: { event: { listen } },
   })
-  const { dispatch } = useTranslationEvents({
+  const events = useTranslationEvents({
     cards,
     getIsTranslating: () => state.isTranslating,
     setIsTranslating: (v) => { state.isTranslating = v },
@@ -32,7 +32,7 @@ function makeHarness() {
     onConfigChanged: (cfg) => { calls.config.push(cfg) },
     logger,
   })
-  return { cards, state, calls, dispatch, listen }
+  return { cards, state, calls, dispatch: events.dispatch, unlisten: events.unlisten, listen }
 }
 
 describe('useTranslationEvents.dispatch', () => {
@@ -71,24 +71,27 @@ describe('useTranslationEvents.dispatch', () => {
     expect(h.calls.detected).toContain('en-US')
   })
 
-  it('failed 设置错误文本与 failed 状态', () => {
+  it('failed 保留原始错误且使用本地化标题 key', () => {
     const h = makeHarness()
     h.dispatch({ type: 'started', sessionId: 'batch-1:svc-a', serviceInstanceId: 'svc-a', serviceName: 'A', serviceType: 'openai' })
     h.dispatch({ type: 'failed', sessionId: 'batch-1:svc-a', serviceInstanceId: 'svc-a', message: '网络错误' })
     const card = h.cards.get('svc-a')!
     expect(card.status).toBe('failed')
-    expect(card.text).toBe('网络错误')
+    expect(card.text).toBe('')
+    expect(card.errorMessage).toBe('网络错误')
+    expect(card.errorTitleKey).toBe('popup.error.translationFailed')
     expect(card.showActions).toBe(false)
   })
 
-  it('cancelled 追加 [已取消] 标记', () => {
+  it('cancelled 保留部分译文且不拼接状态文案', () => {
     const h = makeHarness()
     h.dispatch({ type: 'started', sessionId: 'batch-1:svc-a', serviceInstanceId: 'svc-a', serviceName: 'A', serviceType: 'openai' })
     h.dispatch({ type: 'delta', sessionId: 'batch-1:svc-a', serviceInstanceId: 'svc-a', text: '部分' })
     h.dispatch({ type: 'cancelled', sessionId: 'batch-1:svc-a', serviceInstanceId: 'svc-a' })
     const card = h.cards.get('svc-a')!
     expect(card.status).toBe('cancelled')
-    expect(card.text).toContain('[已取消]')
+    expect(card.text).toBe('部分')
+    expect(card.errorTitleKey).toBe('popup.status.cancelled')
   })
 
   it('batchId 切换时重置所有已有卡片（新 batch）', () => {
@@ -116,6 +119,27 @@ describe('useTranslationEvents.dispatch', () => {
     h.dispatch({ type: 'started', sessionId: 'batch-1:svc-b', serviceInstanceId: 'svc-b', serviceName: 'B', serviceType: 'claude' })
     expect(h.cards.get('svc-a')!.text).toBe('保留')
     expect(h.cards.get('svc-b')!.status).toBe('translating')
+  })
+})
+
+describe('useTranslationEvents 生命周期', () => {
+  it('监听注册晚于 dispose 完成时立即注销', async () => {
+    const unlisten = vi.fn()
+    let resolveListen!: (fn: () => void) => void
+    const pending = new Promise<() => void>((resolve) => { resolveListen = resolve })
+    const listen = vi.fn(() => pending)
+    vi.stubGlobal('window', { __TAURI__: { event: { listen } } })
+    const h = makeHarness(listen)
+    h.unlisten()
+    resolveListen(unlisten)
+    await Promise.resolve()
+    expect(unlisten).toHaveBeenCalledTimes(2)
+  })
+
+  it('缺少服务名时不写入可见硬编码 fallback', () => {
+    const h = makeHarness()
+    h.dispatch({ type: 'started', sessionId: 'batch-1:svc-a', serviceInstanceId: 'svc-a' })
+    expect(h.cards.get('svc-a')!.serviceName).toBe('')
   })
 })
 

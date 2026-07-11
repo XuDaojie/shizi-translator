@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { translationLanguage } from '@/shared/translation-languages'
 import LanguagePicker from './LanguagePicker.vue'
+import { t } from '@/i18n'
 
 interface Props {
   source: string
@@ -68,14 +69,14 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="lang-toolbar">
-    <button class="lang-side" :disabled="readonly" @click="toggle('source')">
+    <button class="lang-side" :disabled="readonly" :aria-label="t('popup.aria.sourceLanguage')" @click="toggle('source')">
       <span class="lang-label">{{ sourceLabel }}</span>
       <svg class="lang-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
     </button>
-    <button class="lang-swap" :disabled="readonly" title="交换语言" @click="swap">
+    <button class="lang-swap" :disabled="readonly" :title="t('popup.tooltip.swapLanguages')" :aria-label="t('popup.tooltip.swapLanguages')" @click="swap">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16l-4-4 4-4" /><path d="M17 8l4 4-4 4" /><line x1="3" y1="12" x2="21" y2="12" /></svg>
     </button>
-    <button class="lang-side" :disabled="readonly" @click="toggle('target')">
+    <button class="lang-side" :disabled="readonly" :aria-label="t('popup.aria.targetLanguage')" @click="toggle('target')">
       <span class="lang-label">{{ targetLabel }}</span>
       <svg class="lang-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
     </button>
@@ -85,7 +86,7 @@ onBeforeUnmount(() => {
     ref="sourcePickerRef"
     :model-value="source"
     type="source"
-    placeholder="搜索源语言…"
+    :placeholder="t('popup.placeholder.searchLanguage')"
     @pick="(v) => onPick('source', v)"
   />
   <LanguagePicker
@@ -93,7 +94,7 @@ onBeforeUnmount(() => {
     ref="targetPickerRef"
     :model-value="target"
     type="target"
-    placeholder="搜索目标语言…"
+    :placeholder="t('popup.placeholder.searchLanguage')"
     @pick="(v) => onPick('target', v)"
   />
 </template>

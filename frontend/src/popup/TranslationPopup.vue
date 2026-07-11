@@ -18,7 +18,7 @@ import { toast } from '@/lib/toast'
 import { matchShortcutKeys } from '@/lib/matchShortcut'
 import { translationLanguage } from '@/shared/translation-languages'
 import type { AppConfig } from '@/types/config'
-import { locale, reloadCurrentLocale, t } from '@/i18n'
+import { locale, reloadCurrentLocale, t, type MessageKey, type MessageParams } from '@/i18n'
 
 const logger = createLogger('translate')
 let disposed = false
@@ -79,8 +79,9 @@ const pinned = ref(false)
 const sourceBadge = ref<'selectedText' | 'ocrText' | null>(null)
 const detectedLangBadge = ref('')
 const charCount = ref(0)
-const statusInfo = ref<{ text: string; loading: boolean; action: { label: string; onClick: () => void } | null }>({
-  text: '就绪', loading: false, action: null,
+type StatusAction = { key: MessageKey; params?: MessageParams; onClick: () => void }
+const statusInfo = ref<{ key: MessageKey; params: MessageParams; loading: boolean; action: StatusAction | null }>({
+  key: 'popup.status.ready', params: {}, loading: false, action: null,
 })
 const pendingConfigRefresh = ref<AppConfig | null>(null)
 /** 程序快捷键「打开设置」；默认 Ctrl+,，随 app-config 同步。 */
@@ -99,18 +100,24 @@ const showMainWindow = async (): Promise<void> => {
 const readyGate = createMainWindowReadyGate({
   timeoutMs: 2000,
   show: showMainWindow,
-  onTimeoutWarn: (msg) => logger.warn(msg),
+  onTimeoutWarn: (key, params) => logger.warn(t(key, params)),
 })
 
-const setStatus = (text: string, loading: boolean, action: { label: string; onClick: () => void } | null): void => {
-  statusInfo.value = { text, loading, action }
+const setStatus = (key: MessageKey, loading: boolean, action: StatusAction | null, params: MessageParams = {}): void => {
+  statusInfo.value = { key, params, loading, action }
 }
 
 /* === 引擎/语言标签 === */
 const sourceLangLabel = computed(() => translationLanguage(sessionSourceLang.value)?.nativeName ?? sessionSourceLang.value)
+const languageLabel = (code: string): string => {
+  const lang = translationLanguage(code)
+  if (!lang) return code
+  const translated = t(lang.nameKey as MessageKey)
+  return translated === lang.nativeName ? lang.nativeName : `${lang.nativeName} (${translated})`
+}
 const detectedOrLabel = computed(() => {
-  if (detectedLangBadge.value) return detectedLangBadge.value
-  if (sessionSourceLang.value === 'auto') return '检测中…'
+  if (detectedLangBadge.value) return languageLabel(detectedLangBadge.value)
+  if (sessionSourceLang.value === 'auto') return t('popup.status.detecting')
   return sourceLangLabel.value
 })
 
@@ -129,22 +136,22 @@ const updateBatchStatus = (): void => {
       const detected = list.find((c) => c.detectedSourceLang)?.detectedSourceLang ?? ''
       detectedLangBadge.value = detected
     }
-    setStatus('翻译完成', false, { label: '重试', onClick: retryTranslation })
+    setStatus('popup.status.completed', false, { key: 'popup.button.retry', onClick: retryTranslation })
     applyPendingConfigRefresh()
   } else if (allFailed) {
     isTranslating.value = false
     currentBatchId.value = null
     detectedLangBadge.value = ''
-    setStatus('翻译失败', false, { label: '重试', onClick: retryTranslation })
+    setStatus('popup.status.failed', false, { key: 'popup.button.retry', onClick: retryTranslation })
     applyPendingConfigRefresh()
   } else if (anyTranslating) {
-    setStatus('翻译中…', true, { label: '取消', onClick: cancelTranslation })
+    setStatus('popup.status.translating', true, { key: 'popup.button.cancel', onClick: cancelTranslation })
   } else {
     isTranslating.value = false
     currentBatchId.value = null
     sourceBadge.value = null
     detectedLangBadge.value = ''
-    setStatus('部分完成', false, { label: '重试', onClick: retryTranslation })
+    setStatus('popup.status.partial', false, { key: 'popup.button.retry', onClick: retryTranslation })
     applyPendingConfigRefresh()
   }
 }
@@ -155,8 +162,8 @@ const onStarted = (payload: TranslationEventPayload, isNewBatch: boolean): void 
     if (payload.sourceText !== undefined) sourceText.value = payload.sourceText
     charCount.value = sourceText.value.length
     sourceBadge.value = payload.sourceType ?? null
-    detectedLangBadge.value = sessionSourceLang.value === 'auto' ? '检测中…' : ''
-    setStatus('翻译中…', true, { label: '取消', onClick: cancelTranslation })
+    detectedLangBadge.value = ''
+    setStatus('popup.status.translating', true, { key: 'popup.button.cancel', onClick: cancelTranslation })
   }
 }
 const onDetectedLang = (lang: string | null): void => {
@@ -188,7 +195,7 @@ const onAppShortcutKeydown = (e: KeyboardEvent): void => {
   const apis = getTauriApis()
   if (!apis) return
   void apis.invoke('open_settings').catch((err: unknown) => {
-    toast.error('打开设置失败', String(err))
+    toast.error(t('popup.error.openSettings'), String(err))
   })
 }
 
@@ -253,6 +260,8 @@ const refreshCardsFromConfig = (config: AppConfig): void => {
         showActions: false,
         usage: null,
         detectedSourceLang: null,
+        errorTitleKey: null,
+        errorMessage: '',
       }
       cards.set(p.serviceInstanceId, card)
     } else {
@@ -275,13 +284,13 @@ const applyPendingConfigRefresh = (): void => {
 const startManualTranslation = async (): Promise<void> => {
   if (isTranslating.value) return
   const text = sourceText.value.trim()
-  if (!text) { toast.info('请输入要翻译的文本'); return }
+  if (!text) { toast.info(t('popup.error.emptySource')); return }
   const apis = getTauriApis()
-  if (!apis) { toast.info('Tauri API 未就绪，请在桌面应用中运行'); return }
+  if (!apis) { toast.info(t('popup.error.tauriUnavailable')); return }
   try {
     await apis.invoke('start_translation', { text })
   } catch (e) {
-    toast.error('翻译失败', String(e))
+    toast.error(t('popup.error.translationFailed'), String(e))
     logger.error('手动翻译失败', String(e))
   }
 }
@@ -292,7 +301,7 @@ async function cancelTranslation(): Promise<void> {
   try {
     await apis.invoke('cancel_translation')
   } catch (e) {
-    toast.error('取消失败', String(e))
+    toast.error(t('popup.error.cancelFailed'), String(e))
     logger.warn('取消翻译失败', String(e))
   }
 }
@@ -300,11 +309,11 @@ async function cancelTranslation(): Promise<void> {
 async function retryTranslation(): Promise<void> {
   if (isTranslating.value) return
   const apis = getTauriApis()
-  if (!apis) { toast.info('Tauri API 未就绪'); return }
+  if (!apis) { toast.info(t('popup.error.tauriUnavailable')); return }
   try {
     await apis.invoke('retry_translation')
   } catch (e) {
-    toast.error('重试失败', String(e))
+    toast.error(t('popup.error.retryFailed'), String(e))
     logger.error('重试失败', String(e))
   }
 }
@@ -312,7 +321,7 @@ async function retryTranslation(): Promise<void> {
 /* === 语言选择（复刻旧 selectLang/swapLangs） === */
 const onSelectSource = async (code: string): Promise<void> => {
   sessionSourceLang.value = code
-  detectedLangBadge.value = code === 'auto' ? '检测中…' : ''
+  detectedLangBadge.value = ''
   await persistSessionLanguages()
 }
 const onSelectTarget = async (code: string): Promise<void> => {
@@ -321,7 +330,7 @@ const onSelectTarget = async (code: string): Promise<void> => {
 }
 const onSwap = async (): Promise<void> => {
   if (sessionSourceLang.value === 'auto' || sessionTargetLang.value === 'auto') {
-    toast.info('自动检测不支持交换')
+    toast.info(t('popup.error.swapAuto'))
     return
   }
   const tmp = sessionSourceLang.value
@@ -335,7 +344,7 @@ const persistSessionLanguages = async (): Promise<void> => {
   try {
     await apis.invoke('set_session_languages', { sourceLang: sessionSourceLang.value, targetLang: sessionTargetLang.value })
   } catch (e) {
-    toast.error('语言设置失败', String(e))
+    toast.error(t('popup.error.languageSaveFailed'), String(e))
   }
 }
 
@@ -361,7 +370,7 @@ const applyPendingSourceText = async (): Promise<void> => {
       charCount.value = text.length
     }
   } catch (e) {
-    toast.error('回填原文失败', String(e))
+    toast.error(t('popup.error.pendingSourceFailed'), String(e))
   }
 }
 
@@ -461,9 +470,9 @@ onMounted(() => {
     </div>
 
     <StatusBar
-      :text="statusInfo.text"
+      :text="t(statusInfo.key, statusInfo.params)"
       :loading="statusInfo.loading"
-      :action="statusInfo.action"
+      :action="statusInfo.action ? { label: t(statusInfo.action.key, statusInfo.action.params), onClick: statusInfo.action.onClick } : null"
       :char-count="charCount"
     />
   </div>

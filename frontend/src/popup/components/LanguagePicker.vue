@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { SOURCE_LANGUAGES, TARGET_LANGUAGES, type TranslationLanguage } from '@/shared/translation-languages'
+import { t, type MessageKey } from '@/i18n'
 
 interface Props {
   modelValue: string
@@ -23,7 +24,7 @@ const filtered = computed<TranslationLanguage[]>(() => {
   const q = search.value.trim().toLowerCase()
   return (props.type === 'source' ? SOURCE_LANGUAGES : TARGET_LANGUAGES).filter((l) => {
     if (!q) return true
-    return l.nativeName.toLowerCase().includes(q) || l.promptName.toLowerCase().includes(q)
+    return l.nativeName.toLowerCase().includes(q) || t(l.nameKey as MessageKey).toLowerCase().includes(q) || l.promptName.toLowerCase().includes(q)
   })
 })
 
@@ -93,7 +94,7 @@ defineExpose({ focus: () => inputRef.value?.focus() })
         @click="select(lang.code)"
       >
         <span class="lang-option-native">{{ lang.nativeName }}</span>
-        <span class="lang-option-english">{{ lang.promptName }}</span>
+        <span class="lang-option-english">{{ t(lang.nameKey as MessageKey) }}</span>
       </li>
     </ul>
   </div>

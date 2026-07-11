@@ -33,7 +33,7 @@ describe('createMainWindowReadyGate', () => {
     })
     await vi.advanceTimersByTimeAsync(2000)
     expect(show).toHaveBeenCalledTimes(1)
-    expect(warn).toHaveBeenCalled()
+    expect(warn).toHaveBeenCalledWith('popup.warning.readyTimeout', { timeout: 2000 })
   })
 
   it('ready 已 show 后超时 no-op', async () => {

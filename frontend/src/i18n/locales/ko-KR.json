@@ -135,6 +135,7 @@
     "settings.aria.renameService": "인스턴스 이름 바꾸기",
     "settings.aria.recordShortcut": "단축키 입력",
     "settings.aria.interfaceLanguage": "인터페이스 언어 선택",
+    "popup.error.translationFailed":"번역 실패","popup.error.cancelFailed":"취소 실패","popup.error.retryFailed":"재시도 실패","popup.error.copyFailed":"복사 실패","popup.error.pinFailed":"고정 실패","popup.error.ocrFailed":"OCR 시작 실패","popup.error.languageSaveFailed":"언어 설정 저장 실패","popup.error.pendingSourceFailed":"원문 불러오기 실패","popup.button.expand":"전체 보기","popup.button.collapse":"접기","popup.tooltip.ocr":"스크린샷 번역","popup.tooltip.collapse":"접기","popup.tooltip.speakResult":"번역문 읽기","popup.tooltip.tokens":"입력 / 출력 토큰","popup.aria.detectedLanguage":"감지된 원문 언어: {language}","popup.toast.copySuccess":"클립보드에 복사됨","popup.toast.pinned":"창 고정됨","popup.toast.unpinned":"창 고정 해제됨","popup.fallback.engine":"번역","popup.warning.readyTimeout":"번역 창이 {timeout}ms 안에 준비되지 않아 강제로 표시합니다",
     "popup.status.ready": "준비",
     "popup.status.detecting": "감지 중…",
     "popup.status.translating": "번역 중…",

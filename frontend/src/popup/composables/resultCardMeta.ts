@@ -27,3 +27,13 @@ export function shouldShowTokens(
   if (isMachineTranslateProtocol(protocol)) return false
   return hasUsage
 }
+import type { MessageKey, MessageParams } from '@/i18n'
+
+type ResultStatus = 'pending' | 'translating' | 'finished' | 'failed' | 'cancelled'
+
+export function resultStatusMeta(status: ResultStatus): { key: MessageKey; params: MessageParams } | null {
+  if (status === 'failed') return { key: 'popup.error.translationFailed', params: {} }
+  if (status === 'cancelled') return { key: 'popup.status.cancelled', params: {} }
+  if (status === 'translating') return { key: 'popup.status.translating', params: {} }
+  return null
+}

@@ -2,9 +2,10 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import ResultCardView from './ResultCardView.vue'
 import type { CardState } from '../composables/useTranslationEvents'
-import { displayModelName, shouldShowTokens } from '../composables/resultCardMeta'
+import { displayModelName, resultStatusMeta, shouldShowTokens } from '../composables/resultCardMeta'
 import { speakText, copyText, getTauriApis } from '../composables/utils'
 import { toast } from '@/lib/toast'
+import { t } from '@/i18n'
 
 interface Props {
   card: CardState
@@ -27,6 +28,7 @@ const viewStatus = computed<'success' | 'loading' | 'pending' | 'error' | 'abort
   }
 })
 const isLoading = computed(() => props.card.status === 'translating')
+const statusMeta = computed(() => resultStatusMeta(props.card.status))
 
 /* 流式渲染：watch card.text，增量 appendChild TextNode / 全量 textContent 替换，
    命令式管理光标 span（复刻旧 setStreamCursor + scrollToBottom）。flush:sync 保证不丢帧。 */
@@ -89,17 +91,17 @@ const onSpeak = (): void => {
 const onCopy = async (): Promise<void> => {
   const text = textRef.value?.textContent ?? props.card.text
   const ok = await copyText(text)
-  if (ok) toast.success('已复制到剪贴板')
-  else toast.error('复制失败')
+  if (ok) toast.success(t('popup.toast.copySuccess'))
+  else toast.error(t('popup.error.copyFailed'))
 }
 
 const onRefresh = async (): Promise<void> => {
   const apis = getTauriApis()
-  if (!apis) { toast.info('Tauri API 未就绪'); return }
+  if (!apis) { toast.info(t('popup.error.tauriUnavailable')); return }
   try {
     await apis.invoke('retry_translation')
   } catch (e) {
-    toast.error('重试失败', String(e))
+    toast.error(t('popup.error.retryFailed'), String(e))
   }
 }
 </script>
@@ -125,6 +127,10 @@ const onRefresh = async (): Promise<void> => {
     @copy="onCopy"
     @refresh="onRefresh"
   >
-    <div ref="textRef" class="result-text" />
+    <div ref="textRef" class="result-text" dir="auto" />
+    <div v-if="statusMeta && card.status !== 'translating'" class="result-text" dir="auto">
+      <strong>{{ t(statusMeta.key, statusMeta.params) }}</strong>
+      <span v-if="card.errorMessage">: {{ card.errorMessage }}</span>
+    </div>
   </ResultCardView>
 </template>

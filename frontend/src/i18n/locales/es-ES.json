@@ -135,6 +135,7 @@
     "settings.aria.renameService": "Cambiar nombre de instancia",
     "settings.aria.recordShortcut": "Registrar atajo de teclado",
     "settings.aria.interfaceLanguage": "Seleccionar idioma de interfaz",
+    "popup.error.translationFailed":"Error de traducción","popup.error.cancelFailed":"No se pudo cancelar","popup.error.retryFailed":"Error al reintentar","popup.error.copyFailed":"Error al copiar","popup.error.pinFailed":"No se pudo fijar la ventana","popup.error.ocrFailed":"No se pudo iniciar OCR","popup.error.languageSaveFailed":"No se pudieron guardar los idiomas","popup.error.pendingSourceFailed":"No se pudo cargar el texto de origen","popup.button.expand":"Mostrar todo","popup.button.collapse":"Contraer","popup.tooltip.ocr":"Traducción de captura","popup.tooltip.collapse":"Contraer","popup.tooltip.speakResult":"Leer traducción","popup.tooltip.tokens":"Tokens de entrada / salida","popup.aria.detectedLanguage":"Idioma de origen detectado: {language}","popup.toast.copySuccess":"Copiado al portapapeles","popup.toast.pinned":"Ventana fijada","popup.toast.unpinned":"Ventana liberada","popup.fallback.engine":"Traducción","popup.warning.readyTimeout":"La ventana de traducción no estuvo lista tras {timeout} ms; se fuerza su visualización",
     "popup.status.ready": "Listo",
     "popup.status.detecting": "Detectando…",
     "popup.status.translating": "Traduciendo…",

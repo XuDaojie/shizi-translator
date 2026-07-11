@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { displayModelName, isMachineTranslateProtocol, shouldShowTokens } from './resultCardMeta'
+import { displayModelName, isMachineTranslateProtocol, resultStatusMeta, shouldShowTokens } from './resultCardMeta'
 
 describe('resultCardMeta', () => {
   it('识别微软 Edge 机器翻译协议', () => {
@@ -24,5 +24,12 @@ describe('resultCardMeta', () => {
     expect(shouldShowTokens('microsoft_edge', false)).toBe(false)
     expect(shouldShowTokens('openai_chat', true)).toBe(true)
     expect(shouldShowTokens('openai_chat', false)).toBe(false)
+  })
+
+  it('状态元数据返回消息 key 而非可见中文', () => {
+    expect(resultStatusMeta('failed')).toEqual({ key: 'popup.error.translationFailed', params: {} })
+    expect(resultStatusMeta('cancelled')).toEqual({ key: 'popup.status.cancelled', params: {} })
+    expect(resultStatusMeta('translating')).toEqual({ key: 'popup.status.translating', params: {} })
+    expect(resultStatusMeta('finished')).toBeNull()
   })
 })

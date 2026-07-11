@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@/i18n'
 interface StatusAction {
   label: string
   onClick: () => void
@@ -21,6 +22,6 @@ withDefaults(defineProps<Props>(), { action: null })
       <span>{{ text }}</span>
       <button v-if="action" class="status-action" @click="action.onClick">{{ action.label }}</button>
     </div>
-    <span>{{ charCount }} 字</span>
+    <span>{{ t('popup.charCount', { count: charCount }) }}</span>
   </div>
 </template>

@@ -135,6 +135,7 @@
     "settings.aria.renameService": "重新命名實例",
     "settings.aria.recordShortcut": "錄製鍵盤快速鍵",
     "settings.aria.interfaceLanguage": "選擇介面語言",
+    "popup.error.translationFailed":"翻譯失敗","popup.error.cancelFailed":"取消失敗","popup.error.retryFailed":"重試失敗","popup.error.copyFailed":"複製失敗","popup.error.pinFailed":"固定失敗","popup.error.ocrFailed":"OCR 觸發失敗","popup.error.languageSaveFailed":"語言設定失敗","popup.error.pendingSourceFailed":"回填原文失敗","popup.button.expand":"展開全文","popup.button.collapse":"收起","popup.tooltip.ocr":"截圖翻譯","popup.tooltip.collapse":"摺疊","popup.tooltip.speakResult":"朗讀譯文","popup.tooltip.tokens":"輸入 / 輸出 Token","popup.aria.detectedLanguage":"偵測到的來源語言：{language}","popup.toast.copySuccess":"已複製到剪貼簿","popup.toast.pinned":"視窗已固定","popup.toast.unpinned":"已取消固定","popup.fallback.engine":"翻譯","popup.warning.readyTimeout":"翻譯彈窗就緒逾時（{timeout}ms），強制顯示",
     "popup.status.ready": "準備好了",
     "popup.status.detecting": "檢測…",
     "popup.status.translating": "翻譯…",

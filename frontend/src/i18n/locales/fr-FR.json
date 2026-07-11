@@ -135,6 +135,7 @@
     "settings.aria.renameService": "Renommer l'instance",
     "settings.aria.recordShortcut": "Enregistrer le raccourci clavier",
     "settings.aria.interfaceLanguage": "Sélectionnez la langue de l'interface",
+    "popup.error.translationFailed":"Échec de la traduction","popup.error.cancelFailed":"Échec de l’annulation","popup.error.retryFailed":"Échec de la nouvelle tentative","popup.error.copyFailed":"Échec de la copie","popup.error.pinFailed":"Échec de l’épinglage","popup.error.ocrFailed":"Impossible de lancer l’OCR","popup.error.languageSaveFailed":"Impossible d’enregistrer les langues","popup.error.pendingSourceFailed":"Impossible de charger le texte source","popup.button.expand":"Tout afficher","popup.button.collapse":"Réduire","popup.tooltip.ocr":"Traduction de capture","popup.tooltip.collapse":"Réduire","popup.tooltip.speakResult":"Lire la traduction","popup.tooltip.tokens":"Jetons d’entrée / sortie","popup.aria.detectedLanguage":"Langue source détectée : {language}","popup.toast.copySuccess":"Copié dans le presse-papiers","popup.toast.pinned":"Fenêtre épinglée","popup.toast.unpinned":"Fenêtre désépinglée","popup.fallback.engine":"Traduction","popup.warning.readyTimeout":"La fenêtre de traduction n’était pas prête après {timeout} ms ; affichage forcé",
     "popup.status.ready": "Prêt",
     "popup.status.detecting": "Détection…",
     "popup.status.translating": "Traduction…",

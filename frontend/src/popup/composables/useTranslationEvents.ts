@@ -1,4 +1,5 @@
 import type { AppConfig } from '@/types/config'
+import type { MessageKey } from '@/i18n'
 import { batchIdFromSession } from './utils'
 
 export type CardStatus = 'pending' | 'translating' | 'finished' | 'failed' | 'cancelled'
@@ -20,6 +21,8 @@ export interface CardState {
   showActions: boolean
   usage: { inputTokens: number; outputTokens: number } | null
   detectedSourceLang: string | null
+  errorTitleKey: MessageKey | null
+  errorMessage: string
 }
 
 export interface TranslationEventPayload {
@@ -62,7 +65,7 @@ function ensureCard(cards: Map<string, CardState>, payload: TranslationEventPayl
   if (!card) {
     card = {
       serviceInstanceId: id,
-      serviceName: payload.serviceName ?? '翻译',
+      serviceName: payload.serviceName ?? '',
       serviceType: payload.serviceType ?? '',
       protocol: payload.protocol ?? '',
       modelName: payload.modelName ?? '',
@@ -75,6 +78,8 @@ function ensureCard(cards: Map<string, CardState>, payload: TranslationEventPayl
       showActions: false,
       usage: null,
       detectedSourceLang: null,
+      errorTitleKey: null,
+      errorMessage: '',
     }
     cards.set(id, card)
   }
@@ -89,6 +94,8 @@ function resetCardForNewBatch(card: CardState): void {
   card.expanded = false
   card.hasOverflow = false
   card.detectedSourceLang = null
+  card.errorTitleKey = null
+  card.errorMessage = ''
   card.collapsed = true
   card.collapseUserOverride = false
 }
@@ -125,6 +132,8 @@ export function useTranslationEvents(opts: UseTranslationEventsOptions): UseTran
         card.expanded = false
         card.hasOverflow = false
         card.detectedSourceLang = null
+        card.errorTitleKey = null
+        card.errorMessage = ''
         if (!card.collapseUserOverride) {
           card.collapsed = true
         }
@@ -162,7 +171,8 @@ export function useTranslationEvents(opts: UseTranslationEventsOptions): UseTran
         opts.logger.warn('翻译失败', { session: payload.sessionId, message: payload.message })
         const card = opts.cards.get(payload.serviceInstanceId ?? 'default')
         if (!card) return
-        card.text = payload.message ?? '翻译失败'
+        card.errorMessage = payload.message ?? ''
+        card.errorTitleKey = 'popup.error.translationFailed'
         card.status = 'failed'
         card.showActions = false
         card.usage = null
@@ -176,7 +186,7 @@ export function useTranslationEvents(opts: UseTranslationEventsOptions): UseTran
         if (batchIdFromSession(payload.sessionId) !== opts.getCurrentBatchId()) return
         const card = opts.cards.get(payload.serviceInstanceId ?? 'default')
         if (!card) return
-        card.text += '\n[已取消]'
+        card.errorTitleKey = 'popup.status.cancelled'
         card.status = 'cancelled'
         opts.onBatchStatusChange()
         break
@@ -191,17 +201,19 @@ export function useTranslationEvents(opts: UseTranslationEventsOptions): UseTran
   const listenFn = t?.event?.listen
   let unlistenTranslation: (() => void) | null = null
   let unlistenConfig: (() => void) | null = null
+  let disposed = false
   if (listenFn) {
-    listenFn('translation:event', (ev) => dispatch(ev.payload)).then((fn) => { unlistenTranslation = fn })
+    listenFn('translation:event', (ev) => dispatch(ev.payload)).then((fn) => { if (disposed) fn(); else unlistenTranslation = fn })
     listenFn('app-config:changed', (ev) => {
       const cfg = ev.payload as unknown as AppConfig
       opts.onConfigChanged(cfg)
-    }).then((fn) => { unlistenConfig = fn })
+    }).then((fn) => { if (disposed) fn(); else unlistenConfig = fn })
   }
 
   return {
     dispatch,
     unlisten: () => {
+      disposed = true
       unlistenTranslation?.()
       unlistenConfig?.()
     },

@@ -1,7 +1,7 @@
 export interface MainWindowReadyOptions {
   timeoutMs: number
   show: () => Promise<void>
-  onTimeoutWarn: (message: string) => void
+  onTimeoutWarn: (key: MessageKey, params: MessageParams) => void
 }
 
 export interface MainWindowReadyGate {
@@ -27,9 +27,7 @@ export function createMainWindowReadyGate(
       timer = null
     }
     if (fromTimeout) {
-      opts.onTimeoutWarn(
-        `翻译弹窗 ready 超时（${opts.timeoutMs}ms），强制 show`,
-      )
+      opts.onTimeoutWarn('popup.warning.readyTimeout', { timeout: opts.timeoutMs })
     }
     try {
       await opts.show()
@@ -66,3 +64,4 @@ export function doubleRaf(): Promise<void> {
     })
   })
 }
+import type { MessageKey, MessageParams } from '@/i18n'

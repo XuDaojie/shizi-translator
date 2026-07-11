@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { speakText, copyText } from '../composables/utils'
+import { t } from '@/i18n'
 
 interface Props {
   modelValue: string
@@ -21,8 +22,8 @@ const copied = ref(false)
 
 const sourceBadgeText = computed(() => {
   switch (props.sourceBadge) {
-    case 'selectedText': return '来自划词'
-    case 'ocrText': return '来自 OCR'
+    case 'selectedText': return t('popup.source.selection')
+    case 'ocrText': return t('popup.source.ocr')
     default: return ''
   }
 })
@@ -81,16 +82,17 @@ defineExpose({ focus: () => textareaRef.value?.focus(), autoResize })
       ref="textareaRef"
       class="source-input"
       :value="modelValue"
-      placeholder="输入要翻译的文本..."
+      dir="auto"
+      :placeholder="t('popup.placeholder.source')"
       rows="3"
       @input="onInput"
       @keydown="onKeydown"
     />
     <div class="source-meta">
-      <button class="meta-btn" title="朗读原文" @click="onSpeak">
+      <button class="meta-btn" :title="t('popup.tooltip.speakSource')" :aria-label="t('popup.tooltip.speakSource')" @click="onSpeak">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><path d="M19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07" /></svg>
       </button>
-      <button class="meta-btn" :class="{ copied }" title="复制原文" @click="onCopy">
+      <button class="meta-btn" :class="{ copied }" :title="t('popup.tooltip.copySource')" :aria-label="t('popup.tooltip.copySource')" @click="onCopy">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg>
       </button>
       <div class="meta-badges">

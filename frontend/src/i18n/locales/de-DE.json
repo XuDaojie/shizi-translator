@@ -135,6 +135,7 @@
     "settings.aria.renameService": "Instanz umbenennen",
     "settings.aria.recordShortcut": "Tastenkürzel aufzeichnen",
     "settings.aria.interfaceLanguage": "Wählen Sie die Sprache der Benutzeroberfläche aus",
+    "popup.error.translationFailed":"Übersetzung fehlgeschlagen","popup.error.cancelFailed":"Abbrechen fehlgeschlagen","popup.error.retryFailed":"Erneuter Versuch fehlgeschlagen","popup.error.copyFailed":"Kopieren fehlgeschlagen","popup.error.pinFailed":"Anheften fehlgeschlagen","popup.error.ocrFailed":"OCR konnte nicht gestartet werden","popup.error.languageSaveFailed":"Sprachen konnten nicht gespeichert werden","popup.error.pendingSourceFailed":"Ausgangstext konnte nicht geladen werden","popup.button.expand":"Alles anzeigen","popup.button.collapse":"Einklappen","popup.tooltip.ocr":"Screenshot übersetzen","popup.tooltip.collapse":"Einklappen","popup.tooltip.speakResult":"Übersetzung vorlesen","popup.tooltip.tokens":"Eingabe- / Ausgabe-Token","popup.aria.detectedLanguage":"Erkannte Ausgangssprache: {language}","popup.toast.copySuccess":"In die Zwischenablage kopiert","popup.toast.pinned":"Fenster angeheftet","popup.toast.unpinned":"Fenster gelöst","popup.fallback.engine":"Übersetzung","popup.warning.readyTimeout":"Übersetzungsfenster war nach {timeout} ms nicht bereit; Anzeige wird erzwungen",
     "popup.status.ready": "Bereit",
     "popup.status.detecting": "Erkennen…",
     "popup.status.translating": "Übersetzen…",
