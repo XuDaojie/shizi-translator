@@ -1,7 +1,9 @@
 import type { AppConfig } from '@/types/config';
 
 // 不引 @tauri-apps/api；三页统一走 window.__TAURI__.core.invoke（withGlobalTauri: true）。
-const tauriGlobal = (window as unknown as { __TAURI__?: { core: { invoke: <T>(cmd: string, args?: Record<string, unknown>) => Promise<T> } } }).__TAURI__;
+const tauriGlobal = typeof window === 'undefined'
+  ? undefined
+  : (window as unknown as { __TAURI__?: { core: { invoke: <T>(cmd: string, args?: Record<string, unknown>) => Promise<T> } } }).__TAURI__;
 
 function requireInvoke() {
   const invoke = tauriGlobal?.core?.invoke;
@@ -100,4 +102,36 @@ export async function invokeListTranslationHistory(limit?: number): Promise<Hist
 
 export async function invokeClearTranslationHistory(): Promise<void> {
   return requireInvoke()<void>('clear_translation_history')
+}
+
+export interface LanguageMeta {
+  locale: string
+  name: string
+  builtin: boolean
+}
+
+export interface LanguagePackError {
+  file: string
+  message: string
+}
+
+export interface InterfaceLanguageSnapshot {
+  configuredLocale: string
+  locale: string
+  revision: number
+  languages: LanguageMeta[]
+  userMessages: Record<string, string>
+  errors: LanguagePackError[]
+}
+
+export async function invokeGetInterfaceLanguageSnapshot(): Promise<InterfaceLanguageSnapshot> {
+  return requireInvoke()<InterfaceLanguageSnapshot>('get_interface_language_snapshot')
+}
+
+export async function invokeRefreshInterfaceLanguages(): Promise<InterfaceLanguageSnapshot> {
+  return requireInvoke()<InterfaceLanguageSnapshot>('refresh_interface_languages')
+}
+
+export async function invokeOpenLanguagePackDirectory(): Promise<void> {
+  return requireInvoke()<void>('open_language_pack_directory')
 }
