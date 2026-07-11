@@ -5,6 +5,7 @@ import { DEFAULT_PROMPTS } from '../tokens';
 import type { ServiceInstanceConfig } from '@/types/config';
 import { invokeGetAppConfig, invokeGetInterfaceLanguageSnapshot, invokeGetShortcutConflicts, invokeRefreshInterfaceLanguages, invokeSaveAppConfig, isTauriReady } from '@/lib/tauri';
 import type { AppSettings, ServiceInstance } from '../types';
+import type { InterfaceLanguageSnapshot } from '@/lib/tauri';
 
 // Mock tauri module so tests don't need window.__TAURI__
 vi.mock('@/lib/tauri', () => ({
@@ -52,7 +53,58 @@ const languageSnapshot = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
+const deferred = <T>() => {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej })
+  return { promise, resolve, reject }
+}
+
 describe('interface languages', () => {
+  it('并发刷新只应用最后发起请求的结果', async () => {
+    const first = deferred<InterfaceLanguageSnapshot>()
+    const second = deferred<InterfaceLanguageSnapshot>()
+    vi.mocked(invokeRefreshInterfaceLanguages)
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise)
+    const settings = useSettings()
+
+    const requestA = settings.refreshInterfaceLanguages()
+    const requestB = settings.refreshInterfaceLanguages()
+    second.resolve(languageSnapshot({
+      languages: [{ locale: 'de-DE', name: 'Deutsch', builtin: true }],
+      errors: [{ file: 'new.json', message: 'new' }],
+    }))
+    await requestB
+    first.resolve(languageSnapshot({
+      languages: [{ locale: 'fr-FR', name: 'Français', builtin: true }],
+      errors: [{ file: 'old.json', message: 'old' }],
+    }))
+    await requestA
+
+    expect(settings.interfaceLanguages.value.map(({ locale }) => locale)).toEqual(['de-DE'])
+    expect(settings.interfaceLanguageErrors.value).toEqual([{ file: 'new.json', message: 'new' }])
+  })
+
+  it('旧刷新先结束时不提前关闭最新请求的 loading', async () => {
+    const first = deferred<InterfaceLanguageSnapshot>()
+    const second = deferred<InterfaceLanguageSnapshot>()
+    vi.mocked(invokeRefreshInterfaceLanguages)
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise)
+    const settings = useSettings()
+
+    const requestA = settings.refreshInterfaceLanguages()
+    const requestB = settings.refreshInterfaceLanguages()
+    first.resolve(languageSnapshot())
+    await requestA
+    expect(settings.interfaceLanguagesRefreshing.value).toBe(true)
+
+    second.resolve(languageSnapshot())
+    await requestB
+    expect(settings.interfaceLanguagesRefreshing.value).toBe(false)
+  })
+
   it('刷新后当前语言已不存在时回写后端解析语言并走自动保存', async () => {
     vi.useFakeTimers();
     vi.mocked(isTauriReady).mockReturnValue(true);
@@ -341,6 +393,57 @@ describe('syncFromBackend', () => {
     const saved = vi.mocked(invokeSaveAppConfig).mock.calls[0][0];
     expect(saved.services.map((s) => s.id)).toEqual(expectedIds);
   });
+
+  it('空 services 的语言回退只保存一次，后续用户修改按新状态自动保存', async () => {
+    vi.useFakeTimers()
+    vi.mocked(isTauriReady).mockReturnValue(true)
+    const settings = useSettings()
+    settings.state.general.language = 'it-IT'
+    vi.mocked(invokeGetAppConfig).mockResolvedValue({
+      interfaceLanguage: 'it-IT', targetLang: 'zh-CN', defaultSourceLang: 'auto',
+      autoCopy: true, restoreClipboard: true, historyLimit: 500, services: [],
+      popupPrecreate: true, overlayPrecreate: true, collectUsage: true, logLevel: 'info', shortcuts: {},
+    })
+    vi.mocked(invokeGetInterfaceLanguageSnapshot).mockResolvedValueOnce(languageSnapshot({
+      configuredLocale: 'zh-CN', locale: 'zh-CN',
+      languages: [{ locale: 'zh-CN', name: '简体中文', builtin: true }],
+    }))
+
+    await settings.syncFromBackend()
+    expect(invokeSaveAppConfig).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(invokeSaveAppConfig).mock.calls[0][0].interfaceLanguage).toBe('zh-CN')
+    await vi.advanceTimersByTimeAsync(350)
+    expect(invokeSaveAppConfig).toHaveBeenCalledTimes(1)
+
+    settings.state.translation.autoCopy = false
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(350)
+    expect(invokeSaveAppConfig).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(invokeSaveAppConfig).mock.calls.map(([config]) => config.autoCopy)).toEqual([true, false])
+  })
+
+  it('空 services 首次推送失败时保留 dirty/error 且不启动自动重试', async () => {
+    vi.useFakeTimers()
+    Object.assign(window, { setTimeout })
+    const settings = useSettings()
+    vi.mocked(isTauriReady).mockReturnValue(false)
+    await settings.save()
+    vi.clearAllMocks()
+    vi.mocked(isTauriReady).mockReturnValue(true)
+    vi.mocked(invokeGetAppConfig).mockResolvedValue({
+      interfaceLanguage: 'auto', targetLang: 'zh-CN', defaultSourceLang: 'auto',
+      autoCopy: true, restoreClipboard: true, historyLimit: 500, services: [],
+      popupPrecreate: true, overlayPrecreate: true, collectUsage: true, logLevel: 'info', shortcuts: {},
+    })
+    vi.mocked(invokeSaveAppConfig).mockRejectedValueOnce(new Error('write failed'))
+
+    await settings.syncFromBackend()
+
+    expect(settings.dirty.value).toBe(true)
+    expect(settings.saveStatus.value).toBe('error')
+    await vi.advanceTimersByTimeAsync(350)
+    expect(invokeSaveAppConfig).toHaveBeenCalledTimes(1)
+  })
 
   it('invokeGetAppConfig 抛错时静默降级', async () => {
     vi.mocked(isTauriReady).mockReturnValue(true);

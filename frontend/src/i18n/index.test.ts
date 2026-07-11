@@ -233,5 +233,6 @@ describe('i18n 运行时', () => {
     expect(i18n.formatDateTime(date, { year: 'numeric' })).toBe(
       new Intl.DateTimeFormat('en-US', { year: 'numeric' }).format(date),
     )
+    expect(i18n.formatDateTime('not-a-date')).toBe('—')
   })
 })

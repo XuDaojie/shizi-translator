@@ -69,7 +69,10 @@ function createRuntime(loader: BuiltinLoader, fetchSnapshot: SnapshotLoader): I1
     userMessages: readonly(users),
     builtinMessages: readonly(builtins),
     t,
-    formatDateTime: (value, options) => new Intl.DateTimeFormat(activeLocale.value, options).format(new Date(value)),
+    formatDateTime: (value, options) => {
+      const date = new Date(value)
+      return Number.isNaN(date.getTime()) ? '—' : new Intl.DateTimeFormat(activeLocale.value, options).format(date)
+    },
     applySnapshot,
     reloadCurrentLocale: async () => applySnapshot(await fetchSnapshot()),
   }

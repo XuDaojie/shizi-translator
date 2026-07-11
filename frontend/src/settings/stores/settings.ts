@@ -365,6 +365,7 @@ const baseline = JSON.parse(JSON.stringify(state)) as AppSettings
 let autoSaveTimer: ReturnType<typeof setTimeout> | undefined
 let saveStatusIdleTimer: ReturnType<typeof setTimeout> | undefined
 let syncingFromBackend = false
+let latestLanguageRefreshRequest = 0
 
 /**
  * 从后端拉取快捷键冲突并写入对应 binding.error。失败静默——冲突信息非关键。
@@ -488,11 +489,15 @@ export const useSettings = () => ({
   interfaceLanguageErrors: readonly(interfaceLanguageErrors),
   interfaceLanguagesRefreshing: readonly(interfaceLanguagesRefreshing),
   async refreshInterfaceLanguages(): Promise<void> {
+    const requestId = ++latestLanguageRefreshRequest
     interfaceLanguagesRefreshing.value = true
     try {
-      applyInterfaceLanguageSnapshot(await invokeRefreshInterfaceLanguages())
+      const snapshot = await invokeRefreshInterfaceLanguages()
+      if (requestId === latestLanguageRefreshRequest) applyInterfaceLanguageSnapshot(snapshot)
+    } catch (error) {
+      if (requestId === latestLanguageRefreshRequest) throw error
     } finally {
-      interfaceLanguagesRefreshing.value = false
+      if (requestId === latestLanguageRefreshRequest) interfaceLanguagesRefreshing.value = false
     }
   },
   openLanguagePackDirectory: invokeOpenLanguagePackDirectory,
@@ -504,56 +509,70 @@ export const useSettings = () => ({
   /** 启动时从后端 config.json 同步：后端空则推前端覆盖，后端非空则按 id 合并。失败静默降级。 */
   async syncFromBackend(): Promise<void> {
     if (!isTauriReady()) return
-    let backend: AppConfig
-    try {
-      backend = await invokeGetAppConfig()
-    } catch {
-      logger.warn('从后端同步配置失败')
-      return
-    }
-    let languageSnapshot: InterfaceLanguageSnapshot | undefined
-    try {
-      languageSnapshot = await invokeGetInterfaceLanguageSnapshot()
-    } catch (error) {
-      logger.warn('读取界面语言列表失败', String(error))
-    }
-    if (!backend.services || backend.services.length === 0) {
-      if (languageSnapshot) applyInterfaceLanguageSnapshot(languageSnapshot)
-      // 后端空（旧格式残留 / 首次启动）→ 前端推后端覆盖
-      try {
-        await invokeSaveAppConfig(projectToAppConfig(state))
-      } catch {
-        logger.warn('推送配置到后端失败')
-        // 忽略：下次启动再试
-      }
-      syncingFromBackend = true
-      await refreshShortcutConflicts()
-      syncingFromBackend = false
-      return
-    }
+    if (autoSaveTimer) clearTimeout(autoSaveTimer)
+    autoSaveTimer = undefined
     syncingFromBackend = true
-    state.services = mergeBackendIntoServices(state.services, backend.services)
-    state.general.language = backend.interfaceLanguage
-    if (languageSnapshot) applyInterfaceLanguageSnapshot(languageSnapshot)
-    state.translation.defaultSourceLang =
-      backend.defaultSourceLang ?? state.translation.defaultSourceLang
-    state.translation.defaultTargetLang =
-      backend.targetLang ?? state.translation.defaultTargetLang
-    state.translation.autoCopy = backend.autoCopy ?? state.translation.autoCopy
-    state.translation.restoreClipboard =
-      backend.restoreClipboard ?? state.translation.restoreClipboard
-    state.translation.historyLimit =
-      backend.historyLimit ?? state.translation.historyLimit
-    state.shortcut.bindings = mergeBackendIntoShortcuts(state.shortcut.bindings, backend.shortcuts ?? {})
-    state.advanced.logLevel = applyBackendLogLevel(
-      state.advanced.logLevel,
-      backend.logLevel,
-    )
-    logger.setLevel(state.advanced.logLevel)
-    await refreshShortcutConflicts()
-    syncingFromBackend = false
-    commitBaseline()
-    saveStatus.value = 'idle'
+    let resumeAutoSave = true
+    let pushFailed = false
+    try {
+      let backend: AppConfig
+      try {
+        backend = await invokeGetAppConfig()
+      } catch {
+        logger.warn('从后端同步配置失败')
+        return
+      }
+      let languageSnapshot: InterfaceLanguageSnapshot | undefined
+      try {
+        languageSnapshot = await invokeGetInterfaceLanguageSnapshot()
+      } catch (error) {
+        logger.warn('读取界面语言列表失败', String(error))
+      }
+      if (!backend.services || backend.services.length === 0) {
+        if (languageSnapshot) applyInterfaceLanguageSnapshot(languageSnapshot)
+        const pushed = cloneSettings(state)
+        try {
+          await invokeSaveAppConfig(projectToAppConfig(pushed))
+          commitBaseline(pushed)
+          saveStatus.value = 'idle'
+        } catch {
+          resumeAutoSave = false
+          pushFailed = true
+          logger.warn('推送配置到后端失败')
+        }
+        await refreshShortcutConflicts()
+        return
+      }
+      state.services = mergeBackendIntoServices(state.services, backend.services)
+      state.general.language = backend.interfaceLanguage
+      if (languageSnapshot) applyInterfaceLanguageSnapshot(languageSnapshot)
+      state.translation.defaultSourceLang =
+        backend.defaultSourceLang ?? state.translation.defaultSourceLang
+      state.translation.defaultTargetLang =
+        backend.targetLang ?? state.translation.defaultTargetLang
+      state.translation.autoCopy = backend.autoCopy ?? state.translation.autoCopy
+      state.translation.restoreClipboard =
+        backend.restoreClipboard ?? state.translation.restoreClipboard
+      state.translation.historyLimit =
+        backend.historyLimit ?? state.translation.historyLimit
+      state.shortcut.bindings = mergeBackendIntoShortcuts(state.shortcut.bindings, backend.shortcuts ?? {})
+      state.advanced.logLevel = applyBackendLogLevel(state.advanced.logLevel, backend.logLevel)
+      logger.setLevel(state.advanced.logLevel)
+      const synced = cloneSettings(state)
+      await refreshShortcutConflicts()
+      commitBaseline(synced)
+      saveStatus.value = 'idle'
+    } finally {
+      syncingFromBackend = false
+      if (pushFailed) {
+        dirty.value = true
+        saveStatus.value = 'error'
+      } else if (resumeAutoSave) markDirty()
+      if (resumeAutoSave && dirty.value) {
+        saveStatus.value = 'saving'
+        autoSaveTimer = setTimeout(() => void persist(), 300)
+      }
+    }
   },
   reset(): void {
     const defaults = buildDefaults()
