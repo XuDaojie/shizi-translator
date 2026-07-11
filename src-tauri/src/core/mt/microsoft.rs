@@ -63,7 +63,7 @@ fn map_target_lang(internal: &str) -> Result<&str, TranslationError> {
     }
 }
 
-/// Edge detectedLanguage.language（如 "en"）反向映射回内部 code（如 "en-US"）。
+/// Edge detectedLanguage.language 反向映射回内部 code。
 fn detected_to_internal(edge: &str) -> String {
     match edge {
         "zh-Hans" => "zh-CN".to_string(),
@@ -367,8 +367,20 @@ mod tests {
 
     #[test]
     fn unknown_languages_are_errors_instead_of_fallbacks() {
-        assert!(map_source_lang("en-US").is_err());
-        assert!(map_target_lang("unknown").is_err());
+        match map_source_lang("en-US") {
+            Err(TranslationError::Api { message, retryable }) => {
+                assert_eq!(message, "不支持的源语言代码: en-US");
+                assert!(!retryable);
+            }
+            result => panic!("预期源语言 Api 错误，实际为 {result:?}"),
+        }
+        match map_target_lang("unknown") {
+            Err(TranslationError::Api { message, retryable }) => {
+                assert_eq!(message, "不支持的目标语言代码: unknown");
+                assert!(!retryable);
+            }
+            result => panic!("预期目标语言 Api 错误，实际为 {result:?}"),
+        }
     }
 
     #[test]
