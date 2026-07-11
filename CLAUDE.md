@@ -1,6 +1,7 @@
-# CLAUDE.md
+## AGENTS.md instructions for C:\Users\xdj\IdeaProjects\LLM\shizi
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+<INSTRUCTIONS>
+所有回答、任务进度说明及 Git 提交信息均须使用中文。
 
 ## 项目介绍
 
