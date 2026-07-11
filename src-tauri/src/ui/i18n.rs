@@ -3,7 +3,12 @@ use crate::{
     core::i18n::{resolve_locale, resolve_messages, scan_language_packs, LanguageSnapshot},
 };
 use serde::Serialize;
-use std::{fs, path::PathBuf, process::Command, sync::Mutex};
+use std::{
+    fs,
+    path::PathBuf,
+    process::Command,
+    sync::{Mutex, MutexGuard},
+};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 // ponytail: 语言切换是低频全局操作；未来出现并发瓶颈时再迁移为 async/per-app 锁。
@@ -12,10 +17,14 @@ static LANGUAGE_APPLY_LOCK: Mutex<()> = Mutex::new(());
 pub(crate) fn with_interface_language_lock<T>(
     f: impl FnOnce() -> Result<T, String>,
 ) -> Result<T, String> {
-    let _guard = LANGUAGE_APPLY_LOCK
-        .lock()
-        .map_err(|_| "界面语言应用锁已损坏".to_string())?;
+    let _guard = lock_interface_language()?;
     f()
+}
+
+pub(crate) fn lock_interface_language() -> Result<MutexGuard<'static, ()>, String> {
+    LANGUAGE_APPLY_LOCK
+        .lock()
+        .map_err(|_| "界面语言应用锁已损坏".to_string())
 }
 
 #[derive(Clone, Serialize)]
