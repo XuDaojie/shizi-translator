@@ -109,7 +109,6 @@ SHIZI_LLM_PROVIDER=mock npm run tauri dev
 
 - Slint 原生高性能翻译弹窗。
 - 取词翻译、快捷键分组 / profile、导入导出仍未实现；word-lookup 绑定当前只保存不触发。
-- 快捷键自定义、深色模式、部分面板操作（语音输入等）——已在设置页 UI 中以「实现中」标签预留。
 - 后端日志文件名为 `Shizi.log`（tauri-plugin-log 按 `productName` 默认，不支持自定义）；API Key 明文保存到 config.json（MVP，后续迁移系统安全存储）。
 
 截图 OCR 已落地，但存在以下 MVP 已知限制：
