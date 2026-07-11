@@ -153,34 +153,6 @@ export type ServiceProtocolMeta = {
   status: 'available' | 'planned'
 }
 
-/**
- * 截图翻译(OCR)产生的历史记录条目。
- *
- * - 仅 OCR 场景,划词/取词/输入框翻译不写入此表
- * - 时间戳 ISO 字符串,按时间倒序展示
- * - `source` / `translation` 允许空字符串(OCR 识别失败时)
- * - 持久化到 `state.ocrHistory`,前端 localStorage 键 `app:settings:v1`
- */
-export interface OcrHistoryEntry {
-  /** 唯一 id,删除/复制定位用。 */
-  id: string
-  /** ISO 时间戳(创建时由 Date.now() 转换)。 */
-  timestamp: string
-  /** 源语种(ISO 639-1,如 `en` / `ja` / `zh-CN`)。 */
-  sourceLang: string
-  /** 目标语种(ISO 639-1)。 */
-  targetLang: string
-  /** OCR 识别出的原文(可能很长,UI 截断 2 行)。 */
-  source: string
-  /** 翻译结果(UI 优先展示)。 */
-  translation: string
-  /**
-   * 触发本次翻译的服务实例 id,可选。用于在历史面板里显示"由 X 翻译"。
-   * 服务被删除时降级为"(已删除)"。
-   */
-  serviceInstanceId?: string
-}
-
 export type AppSettings = {
   general: GeneralSettings
   translation: TranslationSettings
@@ -190,8 +162,6 @@ export type AppSettings = {
   /** 用户在「服务」面板里手动新建的渠道类型(右侧详情区输入"渠道名"时注册)。 */
   customServiceTypes: CustomServiceType[]
   advanced: AdvancedSettings
-  /** 截图翻译历史(时间倒序,前端不计入 dirty,自动持久化)。 */
-  ocrHistory: OcrHistoryEntry[]
 }
 
 export type ServiceMeta = {

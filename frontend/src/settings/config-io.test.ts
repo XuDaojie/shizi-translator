@@ -41,7 +41,6 @@ const baseState: AppSettings = {
     betaVoice: false,
     collectUsage: false,
   },
-  ocrHistory: [],
 }
 
 describe('config-io', () => {

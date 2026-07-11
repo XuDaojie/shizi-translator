@@ -52,7 +52,6 @@ const makeState = (services: ServiceInstance[]): AppSettings => ({
   services,
   customServiceTypes: [],
   advanced: { logLevel: 'info', betaLookup: false, betaVoice: false, collectUsage: true },
-  ocrHistory: [],
 });
 
 describe('projectToAppConfig', () => {

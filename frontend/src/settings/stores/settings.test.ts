@@ -37,12 +37,6 @@ beforeEach(() => {
 });
 
 describe('settings defaults', () => {
-  it('首次启动 OCR 历史为空，不再展示样本数据', () => {
-    const { state } = useSettings();
-
-    expect(state.ocrHistory).toEqual([]);
-  });
-
   it('首启只展示 DeepSeek 和智谱 AI，且默认关闭', () => {
     const { state } = useSettings();
 

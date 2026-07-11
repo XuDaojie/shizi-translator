@@ -3,7 +3,6 @@ import type {
   AppSettings,
   CustomServiceType,
   LogLevel,
-  OcrHistoryEntry,
   ServiceId,
   ServiceInstance,
   ServiceMeta,
@@ -27,9 +26,6 @@ const newInstanceId = (): string => {
   }
   return `inst-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 }
-
-/** 历史记录 id 同理,前缀 `hist-` 方便排查。 */
-const newHistoryId = (): string => `hist-${newInstanceId().slice(5)}`
 
 const firstAvailableProtocol = (meta?: ServiceMeta) =>
   meta?.protocols.find((p) => p.status === 'available')
@@ -65,15 +61,6 @@ const seedInstances = (): ServiceInstance[] =>
     .map((id) => BUILTIN_SERVICES.find((s) => s.id === id))
     .filter((m): m is ServiceMeta => !!m)
     .map((svc) => defaultInstanceFor(svc.id, svc.name, false))
-
-/**
- * 默认 OCR 历史样本,首次启动(无 localStorage)时展示。
- * 覆盖"今天/昨天/本周/更早"四个时间桶,每条都是真实场景里能识别的常见英文/日文/韩文 UI 文案。
- * 时间戳基于当前时刻偏移,刷新后时间仍合理。
- */
-const seedOcrHistory = (): OcrHistoryEntry[] => {
-  return []
-}
 
 const buildDefaults = (): AppSettings => {
   const instances = seedInstances()
@@ -144,7 +131,6 @@ const buildDefaults = (): AppSettings => {
       betaVoice: false,
       collectUsage: true,
     },
-    ocrHistory: seedOcrHistory(),
   }
 }
 
@@ -339,8 +325,6 @@ const loadFromStorage = (): AppSettings => {
       services,
       customServiceTypes: parsed.customServiceTypes ?? [],
       advanced: { ...defaults.advanced, ...parsed.advanced },
-      // 旧版本无 ocrHistory 字段,backfill seed 展示;若已存在(空数组也保留)用本地值
-      ocrHistory: parsed.ocrHistory ?? defaults.ocrHistory,
     }
   } catch {
     return buildDefaults()
@@ -369,14 +353,10 @@ const refreshShortcutConflicts = async (): Promise<void> => {
   }
 }
 
-/**
- * 把状态序列化为 stable 字符串,排除 ocrHistory(它是"持久化数据"而非"待保存设置",
- * 不应触发 footer 的"放弃/保存"按钮)。
- */
+/** 把状态序列化为 stable 字符串,排除运行时字段,避免误触发 footer 的"放弃/保存"按钮。 */
 const serializeForDirty = (s: AppSettings): string =>
   JSON.stringify({
     ...s,
-    ocrHistory: undefined,
     services: s.services.map((service) => ({ ...service, keyStatus: 'idle' })),
     // error 是运行时冲突展示状态，不应触发"未保存"标记
     shortcut: {
@@ -598,27 +578,5 @@ export const useSettings = () => ({
   /** 返回内置 + 用户自定义合并后的 ServiceMeta 列表(只读)。 */
   getMergedServices(): ServiceMeta[] {
     return buildServices(state.customServiceTypes)
-  },
-  /**
-   * 追加一条 OCR 翻译历史。新条目插到数组头部(时间倒序)。
-   * 自动按 `translation.historyLimit` 截断,避免长期使用后数组无限增长。
-   */
-  addHistory(entry: Omit<OcrHistoryEntry, 'id'>): OcrHistoryEntry {
-    const full: OcrHistoryEntry = { id: newHistoryId(), ...entry }
-    state.ocrHistory.unshift(full)
-    const limit = Math.max(1, state.translation.historyLimit || 500)
-    if (state.ocrHistory.length > limit) {
-      state.ocrHistory.length = limit
-    }
-    return full
-  },
-  /** 删除单条历史。无 id 匹配时静默 no-op。 */
-  removeHistory(entryId: string): void {
-    const idx = state.ocrHistory.findIndex((e) => e.id === entryId)
-    if (idx >= 0) state.ocrHistory.splice(idx, 1)
-  },
-  /** 清空全部历史。Confirm 由 UI 弹,这里只负责执行。 */
-  clearHistory(): void {
-    state.ocrHistory = []
   },
 })

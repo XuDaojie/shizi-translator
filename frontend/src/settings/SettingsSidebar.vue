@@ -84,9 +84,8 @@ const categories: SettingsCategory[] = [
   {
     id: 'history',
     label: '翻译历史',
-    description: '仅展示截图翻译记录',
+    description: '查看最近翻译记录',
     icon: HistoryIcon,
-    badge: 'wip',
   },
   {
     id: 'advanced',
