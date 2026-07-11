@@ -1,3 +1,10 @@
+---
+name: my-commit
+description: "根据当前 git 工作区修改自动分析生成 Conventional Commits 格式的提交信息并提交。用户输入 /my-commit 时触发。"
+version: "1.0.0"
+license: MIT
+---
+
 # 自动生成提交信息
 
 根据当前 git 工作区修改自动分析生成 Conventional Commits 格式的提交信息并提交。
