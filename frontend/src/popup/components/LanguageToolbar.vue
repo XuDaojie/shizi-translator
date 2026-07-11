@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { LANGUAGES } from '../data/languages'
+import { translationLanguage } from '@/shared/translation-languages'
 import LanguagePicker from './LanguagePicker.vue'
 
 interface Props {
@@ -17,8 +17,8 @@ const emit = defineEmits<{
   (e: 'swap'): void
 }>()
 
-const sourceLabel = computed(() => LANGUAGES.find((l) => l.value === props.source)?.label ?? '自动检测')
-const targetLabel = computed(() => LANGUAGES.find((l) => l.value === props.target)?.label ?? '简体中文')
+const sourceLabel = computed(() => translationLanguage(props.source)?.nativeName ?? props.source)
+const targetLabel = computed(() => translationLanguage(props.target)?.nativeName ?? props.target)
 
 const openType = ref<'source' | 'target' | null>(null)
 const sourcePickerRef = ref<InstanceType<typeof LanguagePicker> | null>(null)

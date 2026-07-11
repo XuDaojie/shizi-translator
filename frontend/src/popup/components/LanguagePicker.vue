@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { LANGUAGES, type Language } from '../data/languages'
+import { SOURCE_LANGUAGES, TARGET_LANGUAGES, type TranslationLanguage } from '@/shared/translation-languages'
 
 interface Props {
   modelValue: string
@@ -19,12 +19,11 @@ const search = ref('')
 const listRef = ref<HTMLUListElement | null>(null)
 const inputRef = ref<HTMLInputElement | null>(null)
 
-const filtered = computed<Language[]>(() => {
+const filtered = computed<TranslationLanguage[]>(() => {
   const q = search.value.trim().toLowerCase()
-  return LANGUAGES.filter((l) => {
-    if (props.type === 'target' && l.value === 'auto') return false
+  return (props.type === 'source' ? SOURCE_LANGUAGES : TARGET_LANGUAGES).filter((l) => {
     if (!q) return true
-    return l.label.toLowerCase().includes(q) || l.english.toLowerCase().includes(q)
+    return l.nativeName.toLowerCase().includes(q) || l.promptName.toLowerCase().includes(q)
   })
 })
 
@@ -87,14 +86,14 @@ defineExpose({ focus: () => inputRef.value?.focus() })
     <ul ref="listRef" class="lang-picker-list">
       <li
         v-for="lang in filtered"
-        :key="lang.value"
+        :key="lang.code"
         class="lang-option"
-        :class="{ 'is-selected': lang.value === modelValue }"
-        :data-value="lang.value"
-        @click="select(lang.value)"
+        :class="{ 'is-selected': lang.code === modelValue }"
+        :data-value="lang.code"
+        @click="select(lang.code)"
       >
-        <span class="lang-option-native">{{ lang.label }}</span>
-        <span class="lang-option-english">{{ lang.english }}</span>
+        <span class="lang-option-native">{{ lang.nativeName }}</span>
+        <span class="lang-option-english">{{ lang.promptName }}</span>
       </li>
     </ul>
   </div>

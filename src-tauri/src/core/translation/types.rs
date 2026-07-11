@@ -67,16 +67,18 @@ impl TranslationRequest {
 
     pub fn user_prompt(&self) -> String {
         let template = self.prompts.translation_prompt.trim();
+        let source_lang = prompt_language_name(&self.source_lang);
+        let target_lang = prompt_language_name(&self.target_lang);
         let base = if template.is_empty() {
             format!(
                 "请将以下文本完整翻译为{}（保留所有段落、换行与列表项，勿省略任何内容）：\n\n{}",
-                self.target_lang,
+                target_lang,
                 self.source_text()
             )
         } else {
             let rendered = template
-                .replace("{source_lang}", &self.source_lang)
-                .replace("{target_lang}", &self.target_lang)
+                .replace("{source_lang}", source_lang)
+                .replace("{target_lang}", target_lang)
                 .replace("{text}", self.source_text());
             if template.contains("{text}") {
                 rendered
@@ -99,6 +101,32 @@ impl TranslationRequest {
             self.prompts.chain_of_thought.trim(),
             "short" | "medium" | "long"
         )
+    }
+}
+
+fn prompt_language_name(code: &str) -> &str {
+    match code {
+        "auto" => "Auto Detect",
+        "zh-CN" => "Chinese (Simplified)",
+        "zh-TW" => "Chinese (Traditional)",
+        "en" => "English",
+        "ja" => "Japanese",
+        "ko" => "Korean",
+        "fr" => "French",
+        "de" => "German",
+        "es" => "Spanish",
+        "pt" => "Portuguese",
+        "ru" => "Russian",
+        "it" => "Italian",
+        "nl" => "Dutch",
+        "pl" => "Polish",
+        "tr" => "Turkish",
+        "ar" => "Arabic",
+        "th" => "Thai",
+        "vi" => "Vietnamese",
+        "id" => "Indonesian",
+        "hi" => "Hindi",
+        _ => code,
     }
 }
 
@@ -257,6 +285,63 @@ mod tests {
 
         assert_eq!(request.system_prompt(), "sys");
         assert_eq!(request.user_prompt(), "from English to 中文: hello");
+    }
+
+    #[test]
+    fn prompt_language_names_are_stable_and_unknown_codes_are_preserved() {
+        let languages = [
+            ("auto", "Auto Detect"),
+            ("zh-CN", "Chinese (Simplified)"),
+            ("zh-TW", "Chinese (Traditional)"),
+            ("en", "English"),
+            ("ja", "Japanese"),
+            ("ko", "Korean"),
+            ("fr", "French"),
+            ("de", "German"),
+            ("es", "Spanish"),
+            ("pt", "Portuguese"),
+            ("ru", "Russian"),
+            ("it", "Italian"),
+            ("nl", "Dutch"),
+            ("pl", "Polish"),
+            ("tr", "Turkish"),
+            ("ar", "Arabic"),
+            ("th", "Thai"),
+            ("vi", "Vietnamese"),
+            ("id", "Indonesian"),
+            ("hi", "Hindi"),
+        ];
+        for (code, expected) in languages {
+            assert_eq!(prompt_language_name(code), expected);
+        }
+
+        let request = TranslationRequest {
+            session_id: TranslationSessionId("s1".to_string()),
+            input: TranslationInput::ManualText("hello".to_string()),
+            source_lang: "pt".to_string(),
+            target_lang: "zh-TW".to_string(),
+            service: fake_service(),
+            prompts: TranslationPromptConfig {
+                system_prompt: String::new(),
+                translation_prompt: "from {source_lang} to {target_lang}: {text}".to_string(),
+                chain_of_thought: "off".to_string(),
+            },
+        };
+
+        assert_eq!(
+            request.user_prompt(),
+            "from Portuguese to Chinese (Traditional): hello"
+        );
+        assert_eq!(prompt_language_name("x-custom"), "x-custom");
+    }
+
+    #[test]
+    fn default_prompt_uses_stable_target_language_name() {
+        let mut request = request_with_source_lang("en");
+        request.target_lang = "hi".to_string();
+
+        assert!(request.user_prompt().contains("Hindi"));
+        assert!(!request.user_prompt().contains("翻译为hi"));
     }
 
     #[test]

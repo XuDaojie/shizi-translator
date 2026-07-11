@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import Dialog from '@/components/ui/dialog/Dialog.vue'
 import { toast } from '@/lib/toast'
 import { speakText } from '@/popup/composables/utils'
-import { LANGUAGES } from '../tokens'
+import { translationLanguage } from '@/shared/translation-languages'
 import SourceCardView from '@/popup/components/SourceCardView.vue'
 import ResultCardView from '@/popup/components/ResultCardView.vue'
 import LanguageToolbar from '@/popup/components/LanguageToolbar.vue'
@@ -26,9 +26,7 @@ interface Props {
 }
 const props = defineProps<Props>()
 
-const LANG_MAP = new Map(LANGUAGES.map((l) => [l.value, l.label]))
-const LANG_SHORT_MAP = new Map(LANGUAGES.map((l) => [l.value.split('-')[0], l.label]))
-const langLabel = (code: string): string => LANG_MAP.get(code) ?? LANG_SHORT_MAP.get(code) ?? code
+const langLabel = (code: string): string => translationLanguage(code)?.nativeName ?? code
 
 const TRIGGER_META: Record<HistoryTrigger, { label: string; icon: typeof Camera }> = {
   selection: { label: '划词翻译', icon: MousePointerSquareDashed },
