@@ -1,13 +1,15 @@
-import type { AppConfig, ServiceProtocolId } from '@/types/config';
+import type { AppConfig } from '@/types/config';
 import type { AppSettings } from '@/settings/types';
 
-const AVAILABLE_PROTOCOLS: readonly ServiceProtocolId[] = ['openai_chat', 'claude_messages', 'microsoft_edge'];
+const AVAILABLE_PROTOCOLS = ['openai_chat', 'claude_messages', 'microsoft_edge', 'mock'] as const;
 
 export function validateConfig(config: AppConfig): string | null {
   for (const service of config.services.filter((s) => s.enabled)) {
-    if (!AVAILABLE_PROTOCOLS.includes(service.protocol)) {
+    const protocol: string = service.protocol;
+    if (!AVAILABLE_PROTOCOLS.some((available) => available === protocol)) {
       return `${service.name} 当前协议不可用`;
     }
+    if (protocol === 'mock') continue;
     const isKeyless = service.protocol === 'microsoft_edge';
     if (!isKeyless && !service.apiKey?.trim()) {
       return `${service.name} 请先填写 API Key`;

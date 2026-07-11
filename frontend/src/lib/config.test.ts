@@ -232,4 +232,16 @@ describe('validateConfig', () => {
       }],
     })).toBeNull()
   });
+
+  it('mock 协议跳过 Key、Endpoint 和 Model 校验', () => {
+    expect(validateConfig({
+      ...base,
+      services: [{
+        id: 'mock-1', serviceType: 'mock', name: 'Mock', enabled: true,
+        protocol: 'mock' as AppConfig['services'][number]['protocol'], apiKey: null, endpoint: '', model: '', timeoutSeconds: 60,
+        systemPrompt: '', translationPrompt: '', reflectionPrompt: '',
+        reflectionEnabled: false, chainOfThought: 'off',
+      }],
+    })).toBeNull()
+  });
 });

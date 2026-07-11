@@ -502,6 +502,13 @@ export const useSettings = () => ({
     }
   },
   openLanguagePackDirectory: invokeOpenLanguagePackDirectory,
+  setInterfaceLanguage(value: string): Promise<void> {
+    if (state.general.language === value) return Promise.resolve()
+    state.general.language = value
+    if (autoSaveTimer) clearTimeout(autoSaveTimer)
+    autoSaveTimer = undefined
+    return persist()
+  },
   async save(): Promise<void> {
     if (autoSaveTimer) clearTimeout(autoSaveTimer)
     saveStatus.value = 'saving'

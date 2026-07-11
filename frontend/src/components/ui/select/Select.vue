@@ -15,6 +15,7 @@ import {
 } from 'reka-ui'
 import { Check, ChevronDown } from '@lucide/vue'
 import { cn } from '@/lib/utils'
+import { findSelectedLabel } from './selected-label'
 
 interface Option {
   label: string
@@ -42,6 +43,8 @@ const onUpdate = (value: string): void => {
   emit('update:modelValue', value)
 }
 
+const selectedLabel = computed(() => findSelectedLabel(props.options, props.modelValue))
+
 const triggerClasses = computed(() =>
   cn(
     'flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm',
@@ -62,7 +65,7 @@ const contentClasses = cn(
 <template>
   <SelectRoot :model-value="modelValue" :disabled="disabled" @update:model-value="onUpdate">
     <SelectTrigger :class="triggerClasses">
-      <SelectValue :placeholder="placeholder" />
+      <SelectValue :placeholder="placeholder">{{ selectedLabel }}</SelectValue>
       <SelectIcon class="ml-2 h-4 w-4 opacity-60">
         <ChevronDown />
       </SelectIcon>

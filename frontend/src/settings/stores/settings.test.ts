@@ -63,6 +63,35 @@ const deferred = <T>() => {
 }
 
 describe('interface languages', () => {
+  it('切换界面语言立即保存且不被 debounce 重复保存', async () => {
+    vi.useFakeTimers()
+    vi.mocked(isTauriReady).mockReturnValue(true)
+    const settings = useSettings()
+    vi.mocked(invokeSaveAppConfig).mockImplementation(async (config) => config)
+
+    const saving = settings.setInterfaceLanguage('it-IT')
+
+    expect(settings.state.general.language).toBe('it-IT')
+    expect(invokeSaveAppConfig).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(invokeSaveAppConfig).mock.calls[0][0].interfaceLanguage).toBe('it-IT')
+    await saving
+    await vi.advanceTimersByTimeAsync(300)
+    expect(invokeSaveAppConfig).toHaveBeenCalledTimes(1)
+  })
+
+  it('界面语言立即保存失败时保留选择和未保存状态', async () => {
+    Object.assign(window, { setTimeout })
+    vi.mocked(isTauriReady).mockReturnValue(true)
+    vi.mocked(invokeSaveAppConfig).mockRejectedValue(new Error('save failed'))
+    const settings = useSettings()
+
+    await settings.setInterfaceLanguage('de-DE')
+
+    expect(settings.state.general.language).toBe('de-DE')
+    expect(settings.dirty.value).toBe(true)
+    expect(settings.saveStatus.value).toBe('error')
+  })
+
   it('并发刷新只应用最后发起请求的结果', async () => {
     const first = deferred<InterfaceLanguageSnapshot>()
     const second = deferred<InterfaceLanguageSnapshot>()

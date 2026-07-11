@@ -17,7 +17,7 @@ defineProps<{
   state: AppSettings
 }>()
 
-const { interfaceLanguages, interfaceLanguageErrors, interfaceLanguagesRefreshing, refreshInterfaceLanguages, openLanguagePackDirectory } = useSettings()
+const { interfaceLanguages, interfaceLanguageErrors, interfaceLanguagesRefreshing, refreshInterfaceLanguages, openLanguagePackDirectory, setInterfaceLanguage } = useSettings()
 
 const themeOptions = computed(() => [
   { label: t('settings.option.light'), value: 'light' },
@@ -108,7 +108,7 @@ const openDirectory = async () => {
       <SettingSelect v-model="state.general.theme" :options="themeOptions" />
     </SettingRow>
     <SettingRow :title="t('settings.field.interfaceLanguage')" :description="t('settings.description.interfaceLanguage')">
-      <SettingSelect v-model="state.general.language" :options="languageOptions" />
+      <SettingSelect :model-value="state.general.language" :options="languageOptions" @update:model-value="setInterfaceLanguage" />
       <div class="flex gap-1">
         <Button variant="ghost" size="icon" :title="t('settings.button.openLanguageDirectory')" :aria-label="t('settings.button.openLanguageDirectory')" @click="openDirectory"><FolderOpen class="h-4 w-4" /></Button>
         <Button variant="ghost" size="icon" :disabled="interfaceLanguagesRefreshing" :title="t('settings.button.refreshLanguages')" :aria-label="t('settings.button.refreshLanguages')" @click="refreshLanguages"><RefreshCw :class="['h-4 w-4', interfaceLanguagesRefreshing && 'animate-spin']" /></Button>
