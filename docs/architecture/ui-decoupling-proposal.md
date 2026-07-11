@@ -417,6 +417,22 @@ Web 设置页
 
 当前实现中，翻译弹窗继续保持静态页面，只通过 `get_app_config` 读取运行配置，并把 OCR 历史写回本地设置存储；复杂设置编辑仍由 Vue 设置页负责。
 
+## 国际化数据流与边界
+
+```text
+config.json.interfaceLanguage
+  -> Rust resolve/validate + tray/window
+  -> interface-language:changed { locale, revision }
+  -> WebView command 拉取当前用户覆盖
+  -> user -> builtin locale -> builtin zh-CN
+```
+
+`core` 不返回本地化业务错误；界面文案由前端字典负责，托盘和窗口标题由后端只消费同一字典中的必要 key。前端静态加载 `zh-CN` / `en-US`，其余 6 个内置 locale 使用动态 chunk。用户包位于 `<app_config_dir>/lang/*.json`，只允许覆盖内置 key。
+
+托盘菜单保留固定句柄并原位更新。后端用 revision 和锁提供 locale、用户覆盖及错误列表的一致快照；WebView 忽略旧 revision，同 locale 的新 revision 仍重新拉取覆盖。
+
+源/目标语言共享 19 种翻译语言目录，源语言额外支持 `auto`。LLM prompt 使用稳定英文语言名，不依赖当前界面文案；Edge 使用完整显式映射，未知 code 返回错误。
+
 ## Slint 弹窗状态映射
 
 Slint UI 建议暴露：

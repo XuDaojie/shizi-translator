@@ -447,6 +447,7 @@ translation_total_ms
 - **翻译弹窗 UI 细节打磨**（已完成，2026-07-07）：结果卡片长内容截断（约 4-5 行）+ 渐隐遮罩 + 「展开全文」按钮（展开/收起，transitionend 修正窗口高度时序）；输入原文限高（约 7 行）内部滚动，不再撑高弹窗；focus 态上边框改 outline 修复被 `.content` overflow 裁剪导致的描边粗细不一致。
 - **翻译弹窗语言下拉与语言联动**（已完成，2026-07-09）：语言下拉改为 inline 搜索式 combobox（`.lang-picker`，非浮层，带搜索框、英文名双列、键盘 ↑↓/Enter/Esc 导航，规避 `.content` overflow 裁剪）；源语言选「自动检测」时，`TranslationEvent::Finished` 携带 `detectedSourceLang` 由 `TranslationService` 流式首行解析状态机填充，译文区右下角 `.lang-badge` 动态显示检测结果（翻译中显示「检测中…」）；首次安装默认目标语言读 OS 语言（`sys-locale` + `map_os_lang_to_list`），不在支持列表回退 `FALLBACK_TARGET_LANG = "en-US"`，存量用户已选目标语言不受影响。
 - **服务协议与批量翻译**（已完成，2026-07）：配置从单 provider 改为 `services[]` 数组驱动；服务实例按启用状态和列表顺序驱动翻译批次；翻译弹窗支持多服务结果卡；启动后默认显示翻译弹窗，设置页独立窗口打开；服务启用状态保存后，非翻译中翻译弹窗结果卡片即时同步，翻译进行中保留正在输出的卡片且不新增未参与当前批次的服务卡片；服务协议抽象接入 OpenAI Chat 与 Claude Messages。
+- **应用国际化**（已完成，2026-07）：内置 8 种界面语言，`auto` 跟随操作系统并在未知 locale 时回退简体中文；设置页、翻译弹窗、托盘和窗口标题即时切换且不 reload；源/目标语言共享 19 种翻译语言规范（源语言另含 `auto`）；支持 `<app_config_dir>/lang/*.json` 用户局部覆盖包及设置页打开目录、即时刷新。
 - [x] 服务实例按启用状态和列表顺序驱动翻译批次
 - [x] 翻译弹窗支持多服务结果卡
 - [x] 服务协议抽象接入 OpenAI Chat 与 Claude Messages

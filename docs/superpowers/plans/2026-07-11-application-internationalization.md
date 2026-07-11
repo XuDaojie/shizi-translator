@@ -932,7 +932,7 @@ git commit -m "test(i18n): 完成国际化端到端验收"
 - 修改：`CLAUDE.md`
 - 修改：`docs/superpowers/plans/2026-07-11-application-internationalization.md`
 
-- [ ] **步骤 1：同步 README、roadmap 和架构文档**
+- [x] **步骤 1：同步 README、roadmap 和架构文档**
 
 README 增加：8 种内置界面语言、`auto`、即时全局切换、19 种翻译语言、`<app_config_dir>/lang/*.json` 格式与刷新方式。roadmap 将国际化能力标为完成。架构文档记录：
 
@@ -944,11 +944,11 @@ config.json.interfaceLanguage
   -> user -> builtin locale -> builtin zh-CN
 ```
 
-- [ ] **步骤 2：同步 AGENTS.md 与 CLAUDE.md**
+- [x] **步骤 2：同步 AGENTS.md 与 CLAUDE.md**
 
 在“架构关键点”加入同一段国际化说明，内容必须逐字同步：配置事实来源、语言事件 revision、静态/动态加载、用户包目录、19 种共享翻译语言和 Edge 严格映射。不得修改 `superpowers-zh` 标记区域。
 
-- [ ] **步骤 3：验证文档同步和工作区状态**
+- [x] **步骤 3：验证文档同步和工作区状态**
 
 运行：
 
@@ -958,14 +958,16 @@ git diff --check
 git status --short
 ```
 
-预期：第一条无输出且退出码为 0；第二条无空白错误；第三条只显示本任务预期文档。
+预期：第一条仅显示 `superpowers-zh` 自动维护区内既有的 `.codex/skills/` 与 `.claude/skills/` 平台路径差异；剔除该标记区后两文件完全一致。第二条无空白错误；第三条只显示本任务预期文档。
 
-- [ ] **步骤 4：提交文档**
+- [x] **步骤 4：提交文档**
 
 ```bash
 git add README.md docs/roadmap/progressive-development-plan.md docs/architecture/ui-decoupling-proposal.md AGENTS.md CLAUDE.md docs/superpowers/plans/2026-07-11-application-internationalization.md
 git commit -m "docs(i18n): 同步国际化能力与架构说明"
 ```
+
+文档同步后保留任务 10 的最终验收统计：前端测试 142/142，Rust 测试 250 passed、2 ignored。
 
 - [ ] **步骤 5：进入分支收尾流程**
 

@@ -27,6 +27,8 @@
 - 翻译弹窗语言下拉：inline 搜索式 combobox（带搜索框、英文名双列、键盘 ↑↓/Enter/Esc 导航），非浮层实现不被弹窗 overflow 裁剪。
 - 源语言自动检测：源语言选「自动检测」时，模型回传检测到的原文语言并显示在译文区右下角标签；翻译中显示「检测中…」。
 - 默认目标语言：首次安装读操作系统语言，不在支持列表则回退英语；存量用户已选目标语言不受影响。
+- 应用界面国际化：内置 `zh-CN` / `zh-TW` / `en-US` / `ja-JP` / `ko-KR` / `fr-FR` / `de-DE` / `es-ES` 8 种界面语言；`auto` 跟随操作系统语言，无法识别时回退 `zh-CN`。切换后设置页、翻译弹窗、托盘和窗口标题即时同步，无需 reload。
+- 翻译语言规范：目标语言统一为 `zh-CN`、`zh-TW`、`en`、`ja`、`ko`、`fr`、`de`、`es`、`pt`、`ru`、`it`、`nl`、`pl`、`tr`、`ar`、`th`、`vi`、`id`、`hi` 19 个 code，源语言额外支持 `auto`。LLM prompt 始终使用稳定英文语言名，Edge 翻译使用严格显式映射，未知 code 直接报错。
 
 ## 使用方式
 
@@ -79,6 +81,23 @@
 
 配置会保存到 Tauri 的应用配置目录下的 `config.json`。
 
+### 用户界面语言包
+
+用户语言包位于 `<app_config_dir>/lang/*.json`。设置页「通用」可打开该目录并刷新语言包，无需重启应用。每个文件最大 1 MiB，文件名必须等于 locale（例如 `it-IT.json`），格式为：
+
+```json
+{
+  "schemaVersion": 1,
+  "locale": "it-IT",
+  "name": "Italiano",
+  "messages": {
+    "common.save": "Salva"
+  }
+}
+```
+
+`messages` 是扁平键值表，只允许覆盖内置消息 key，可只提供部分覆盖，不能新增未知 key。文案按「用户包 -> 同 locale 内置包 -> 内置 `zh-CN`」回退。
+
 > 注意：当前 MVP 会将 API Key 明文保存到本机配置文件。后续产品化阶段会迁移到 Windows Credential Manager / macOS Keychain / Linux Secret Service 等系统安全存储。
 
 首次没有本地配置文件时，会从以下环境变量读取默认值：
@@ -110,6 +129,8 @@ SHIZI_LLM_PROVIDER=mock npm run tauri dev
 - Slint 原生高性能翻译弹窗。
 - 取词翻译、快捷键分组 / profile、导入导出仍未实现；word-lookup 绑定当前只保存不触发。
 - 后端日志文件名为 `Shizi.log`（tauri-plugin-log 按 `productName` 默认，不支持自定义）；API Key 明文保存到 config.json（MVP，后续迁移系统安全存储）。
+- 用户语言包不能新增未知消息 key，只能覆盖内置 key。
+- 外部 LLM / Edge 真实网络未在端到端验收中逐语言发送请求；19 种语言的 prompt 与 Edge 映射由契约测试覆盖。
 
 截图 OCR 已落地，但存在以下 MVP 已知限制：
 
