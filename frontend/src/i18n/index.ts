@@ -4,8 +4,10 @@ import {
   type InterfaceLanguageSnapshot,
 } from '@/lib/tauri'
 import { loadBuiltin, ZH_CN_PACKAGE, type LanguagePackage } from './loaders'
+import zhCN from './locales/zh-CN.json'
 
-type Params = Record<string, string | number>
+export type MessageKey = keyof typeof zhCN.messages
+export type MessageParams = Record<string, string | number>
 type BuiltinLoader = (locale: string) => Promise<LanguagePackage>
 type SnapshotLoader = () => Promise<InterfaceLanguageSnapshot>
 const PLACEHOLDER = /\{([A-Za-z][A-Za-z0-9_]*)\}/g
@@ -15,7 +17,7 @@ export interface I18nRuntime {
   revision: Readonly<Ref<number>>
   userMessages: Readonly<Ref<Record<string, string>>>
   builtinMessages: Readonly<Ref<Record<string, string>>>
-  t: (key: string, params?: Params) => string
+  t: (key: MessageKey, params?: MessageParams) => string
   formatDateTime: (value: Date | number | string, options?: Intl.DateTimeFormatOptions) => string
   applySnapshot: (snapshot: InterfaceLanguageSnapshot) => Promise<void>
   reloadCurrentLocale: () => Promise<void>
@@ -27,25 +29,34 @@ function createRuntime(loader: BuiltinLoader, fetchSnapshot: SnapshotLoader): I1
   const users = ref<Record<string, string>>({})
   const builtins = ref<Record<string, string>>(ZH_CN_PACKAGE.messages)
   let highestRequestedRevision = -1
+  let retryableRevision: number | null = null
+  let latestRequestId = 0
 
   const loadSnapshot = async (snapshot: InterfaceLanguageSnapshot): Promise<void> => {
-    if (snapshot.revision <= highestRequestedRevision) return
-    highestRequestedRevision = snapshot.revision
+    const isRetry = snapshot.revision === retryableRevision
+    if (snapshot.revision < highestRequestedRevision || (snapshot.revision === highestRequestedRevision && !isRetry)) return
+    if (snapshot.revision > highestRequestedRevision) highestRequestedRevision = snapshot.revision
+    retryableRevision = null
+    const requestId = ++latestRequestId
     let pkg: LanguagePackage
     try {
       pkg = await loader(snapshot.locale)
     } catch {
-      pkg = ZH_CN_PACKAGE
+      // 初始 refs 已是 zh-CN；不推进 revision，保留当前状态并允许同 revision 重试。
+      if (requestId === latestRequestId) retryableRevision = snapshot.revision
+      return
     }
-    if (snapshot.revision < highestRequestedRevision) return
-    activeLocale.value = pkg.locale
+    if (requestId !== latestRequestId || snapshot.revision < highestRequestedRevision) return
+    const isUserLocale = snapshot.languages.some(({ locale, builtin }) => locale === snapshot.locale && !builtin)
+      || Object.keys(snapshot.userMessages).length > 0
+    activeLocale.value = isUserLocale ? snapshot.locale : pkg.locale
     activeRevision.value = snapshot.revision
     users.value = { ...snapshot.userMessages }
     builtins.value = pkg.messages
   }
   const applySnapshot = (snapshot: InterfaceLanguageSnapshot): Promise<void> => loadSnapshot(snapshot)
 
-  const t = (key: string, params: Params = {}): string => {
+  const t = (key: MessageKey, params: MessageParams = {}): string => {
     const message = users.value[key] ?? builtins.value[key] ?? ZH_CN_PACKAGE.messages[key] ?? key
     return message.replace(PLACEHOLDER, (placeholder, name: string) =>
       Object.prototype.hasOwnProperty.call(params, name) ? String(params[name]) : placeholder,

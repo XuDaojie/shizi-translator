@@ -38,7 +38,7 @@ export async function loadBuiltin(locale: string): Promise<LanguagePackage> {
       locale,
       error: (error instanceof Error ? error.message : String(error)).replace(/[\r\n]+/g, ' ').slice(0, 200),
     })
-    return fallback
+    throw error
   }
 }
 

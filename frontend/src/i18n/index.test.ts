@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { InterfaceLanguageSnapshot } from '@/lib/tauri'
-import { createI18nForTest } from './index'
+import { createI18nForTest, type MessageKey } from './index'
 import { BUILTIN_LOCALES, loadBuiltin, type LanguagePackage } from './loaders'
 import zhCN from './locales/zh-CN.json'
 import zhTW from './locales/zh-TW.json'
@@ -44,6 +44,21 @@ describe('内置语言包', () => {
     for (const locale of BUILTIN_LOCALES) expect((await loadBuiltin(locale)).locale).toBe(locale)
     expect((await loadBuiltin('not-a-locale')).locale).toBe('zh-CN')
   })
+
+  it('品牌标题、退出菜单和快捷键录制使用正确本地化语义', () => {
+    const quit = ['退出', '退出', 'Quit', '終了', '종료', 'Quitter', 'Beenden', 'Salir']
+    const recordShortcut = [
+      '录制快捷键', '錄製鍵盤快速鍵', 'Record keyboard shortcut', 'ショートカットキーを記録',
+      '단축키 입력', 'Enregistrer le raccourci clavier', 'Tastenkürzel aufzeichnen', 'Registrar atajo de teclado',
+    ]
+    for (const [index, pkg] of packages.entries()) {
+      expect(pkg.messages['window.settingsTitle']).toContain('Shizi')
+      expect(pkg.messages['window.popupTitle']).toContain('Shizi')
+      expect(pkg.messages['tray.tooltip']).toContain('Shizi')
+      expect(pkg.messages['tray.quit']).toBe(quit[index])
+      expect(pkg.messages['settings.aria.recordShortcut']).toBe(recordShortcut[index])
+    }
+  })
 })
 
 describe('i18n 运行时', () => {
@@ -58,9 +73,9 @@ describe('i18n 运行时', () => {
     await i18n.applySnapshot(snapshot('en-US', 1, { 'common.save': 'Store' }))
 
     expect(i18n.t('common.save')).toBe('Store')
-    expect(i18n.t('greeting', { name: 'Ada' })).toBe('Hello, Ada / {missing}')
+    expect(i18n.t('greeting' as MessageKey, { name: 'Ada' })).toBe('Hello, Ada / {missing}')
     expect(i18n.t('test.zhOnly')).toBe(zhCN.messages['test.zhOnly'])
-    expect(i18n.t('missing.key')).toBe('missing.key')
+    expect(i18n.t('missing.key' as MessageKey)).toBe('missing.key')
   })
 
   it('同 locale 的新 revision 重新应用用户字典，相同 revision 幂等', async () => {
@@ -124,7 +139,7 @@ describe('i18n 运行时', () => {
 
     expect(i18n.locale.value).toBe('en-US')
     expect(i18n.revision.value).toBe(2)
-    expect(i18n.t('value')).toBe('new')
+    expect(i18n.t('value' as MessageKey)).toBe('new')
   })
 
   it('先发起的高 revision 不会被后发起的低 revision 淘汰', async () => {
@@ -139,14 +154,55 @@ describe('i18n 运行时', () => {
 
     expect(i18n.locale.value).toBe('fr-FR')
     expect(i18n.revision.value).toBe(4)
-    expect(i18n.t('value')).toBe('new')
+    expect(i18n.t('value' as MessageKey)).toBe('new')
   })
 
   it('加载器抛错时保持可用并回退简体中文', async () => {
     const i18n = createI18nForTest(async () => { throw new Error('chunk missing') })
     await expect(i18n.applySnapshot(snapshot('fr-FR', 1))).resolves.toBeUndefined()
     expect(i18n.locale.value).toBe('zh-CN')
+    expect(i18n.revision.value).toBe(-1)
     expect(i18n.t('common.save')).toBe(zhCN.messages['common.save'])
+  })
+
+  it('已有有效状态时加载失败不提交 revision，且同 revision 可重试成功', async () => {
+    let frenchAttempts = 0
+    const i18n = createI18nForTest(async (locale) => {
+      if (locale !== 'fr-FR') return enUS
+      frenchAttempts++
+      if (frenchAttempts === 1) throw new Error('temporary chunk failure')
+      return frFR
+    })
+    await i18n.applySnapshot(snapshot('en-US', 1, { 'common.save': 'Current' }))
+    await i18n.applySnapshot(snapshot('fr-FR', 2, { 'common.save': 'Nouveau' }))
+    expect(i18n.locale.value).toBe('en-US')
+    expect(i18n.revision.value).toBe(1)
+    expect(i18n.t('common.save')).toBe('Current')
+
+    await i18n.applySnapshot(snapshot('fr-FR', 2, { 'common.save': 'Nouveau' }))
+    expect(i18n.locale.value).toBe('fr-FR')
+    expect(i18n.revision.value).toBe(2)
+    expect(i18n.t('common.save')).toBe('Nouveau')
+  })
+
+  it('高 revision 加载失败后仍拒绝更低 revision', async () => {
+    const i18n = createI18nForTest(async (locale) => {
+      if (locale === 'fr-FR') throw new Error('temporary chunk failure')
+      return enUS
+    })
+    await i18n.applySnapshot(snapshot('en-US', 1, { 'common.save': 'Current' }))
+    await i18n.applySnapshot(snapshot('fr-FR', 3, { 'common.save': 'Failed' }))
+    await i18n.applySnapshot(snapshot('en-US', 2, { 'common.save': 'Older' }))
+    expect(i18n.revision.value).toBe(1)
+    expect(i18n.t('common.save')).toBe('Current')
+  })
+
+  it('用户语言包保留快照 locale，并用简体中文补齐缺失键', async () => {
+    const i18n = createI18nForTest(loadBuiltin)
+    await i18n.applySnapshot(snapshot('it-IT', 1, { 'common.save': 'Salva' }))
+    expect(i18n.locale.value).toBe('it-IT')
+    expect(i18n.t('common.save')).toBe('Salva')
+    expect(i18n.t('test.zhOnly')).toBe(zhCN.messages['test.zhOnly'])
   })
 
   it('formatDateTime 使用当前 locale', async () => {
