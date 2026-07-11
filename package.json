@@ -7,7 +7,9 @@
     "build": "vite build --config frontend/vite.config.ts",
     "typecheck": "vue-tsc --noEmit -p frontend/tsconfig.json",
     "test": "vitest run --config frontend/vite.config.ts",
-    "test:watch": "vitest --config frontend/vite.config.ts"
+    "test:watch": "vitest --config frontend/vite.config.ts",
+    "release:bump": "node scripts/bump-version.js",
+    "release:bump:dry": "node scripts/bump-version.js --dry-run"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
