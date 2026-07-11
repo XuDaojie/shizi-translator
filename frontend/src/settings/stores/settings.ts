@@ -364,6 +364,7 @@ const saveStatus = reactive<{ value: 'idle' | 'saved' | 'saving' | 'error' }>({ 
 const baseline = JSON.parse(JSON.stringify(state)) as AppSettings
 let autoSaveTimer: ReturnType<typeof setTimeout> | undefined
 let saveStatusIdleTimer: ReturnType<typeof setTimeout> | undefined
+let persistQueue: Promise<void> = Promise.resolve()
 let syncingFromBackend = false
 let latestLanguageRefreshRequest = 0
 let syncFromBackendPromise: Promise<void> | null = null
@@ -413,35 +414,40 @@ const showSavedBriefly = (): void => {
   }, 2400)
 }
 
-const persist = async (notify = false): Promise<void> => {
+const persist = (notify = false): Promise<void> => {
   const snapshot = cloneSettings(state)
   const config = projectToAppConfig(snapshot)
   const err = validateConfig(config)
-  if (err) {
-    saveStatus.value = 'error'
-    toast.error(t('settings.toast.saveFailed'), err)
-    logger.warn('配置校验失败', err)
-    return
-  }
-  try {
-    if (isTauriReady()) {
-      await invokeSaveAppConfig(config)
-      if (notify) toast.success(t('settings.toast.saved'))
-    } else if (notify) {
-      toast.info(t('settings.toast.saved'), t('settings.status.localPreference'))
+  const run = async (): Promise<void> => {
+    if (err) {
+      saveStatus.value = 'error'
+      toast.error(t('settings.toast.saveFailed'), err)
+      logger.warn('配置校验失败', err)
+      return
     }
-    if (serializeForDirty(state) === serializeForDirty(snapshot)) {
-      commitBaseline(snapshot)
-      showSavedBriefly()
-    } else {
-      markDirty()
-      saveStatus.value = 'saving'
+    try {
+      if (isTauriReady()) {
+        await invokeSaveAppConfig(config)
+        if (notify) toast.success(t('settings.toast.saved'))
+      } else if (notify) {
+        toast.info(t('settings.toast.saved'), t('settings.status.localPreference'))
+      }
+      if (serializeForDirty(state) === serializeForDirty(snapshot)) {
+        commitBaseline(snapshot)
+        showSavedBriefly()
+      } else {
+        markDirty()
+        saveStatus.value = 'saving'
+      }
+    } catch (e) {
+      saveStatus.value = 'error'
+      toast.error(t('settings.toast.saveFailed'), String(e))
+      logger.error('保存配置失败', String(e))
     }
-  } catch (e) {
-    saveStatus.value = 'error'
-    toast.error(t('settings.toast.saveFailed'), String(e))
-    logger.error('保存配置失败', String(e))
   }
+  const queued = persistQueue.then(run, run)
+  persistQueue = queued
+  return queued
 }
 
 watch(

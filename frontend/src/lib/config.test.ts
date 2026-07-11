@@ -238,7 +238,7 @@ describe('validateConfig', () => {
       ...base,
       services: [{
         id: 'mock-1', serviceType: 'mock', name: 'Mock', enabled: true,
-        protocol: 'mock' as AppConfig['services'][number]['protocol'], apiKey: null, endpoint: '', model: '', timeoutSeconds: 60,
+        protocol: 'mock', apiKey: null, endpoint: '', model: '', timeoutSeconds: 60,
         systemPrompt: '', translationPrompt: '', reflectionPrompt: '',
         reflectionEnabled: false, chainOfThought: 'off',
       }],

@@ -72,11 +72,66 @@ describe('interface languages', () => {
     const saving = settings.setInterfaceLanguage('it-IT')
 
     expect(settings.state.general.language).toBe('it-IT')
+    await Promise.resolve()
     expect(invokeSaveAppConfig).toHaveBeenCalledTimes(1)
     expect(vi.mocked(invokeSaveAppConfig).mock.calls[0][0].interfaceLanguage).toBe('it-IT')
     await saving
     await vi.advanceTimersByTimeAsync(300)
     expect(invokeSaveAppConfig).toHaveBeenCalledTimes(1)
+  })
+
+  it('快速切换界面语言时按调用顺序保存并以最新语言收敛', async () => {
+    vi.useFakeTimers()
+    vi.mocked(isTauriReady).mockReturnValue(true)
+    const first = deferred<void>()
+    const second = deferred<void>()
+    vi.mocked(invokeSaveAppConfig)
+      .mockImplementationOnce(async (config) => { await first.promise; return config })
+      .mockImplementationOnce(async (config) => { await second.promise; return config })
+    const settings = useSettings()
+
+    const savingA = settings.setInterfaceLanguage('fr-FR')
+    const savingB = settings.setInterfaceLanguage('de-DE')
+    await Promise.resolve()
+    expect(invokeSaveAppConfig).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(invokeSaveAppConfig).mock.calls[0][0].interfaceLanguage).toBe('fr-FR')
+
+    first.resolve()
+    await savingA
+    await Promise.resolve()
+    expect(invokeSaveAppConfig).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(invokeSaveAppConfig).mock.calls[1][0].interfaceLanguage).toBe('de-DE')
+    second.resolve()
+    await savingB
+
+    expect(settings.dirty.value).toBe(false)
+    expect(settings.saveStatus.value).toBe('saved')
+    await vi.advanceTimersByTimeAsync(300)
+    expect(invokeSaveAppConfig).toHaveBeenCalledTimes(2)
+  })
+
+  it('前一次语言保存失败仍继续保存最新语言', async () => {
+    Object.assign(window, { setTimeout })
+    vi.mocked(isTauriReady).mockReturnValue(true)
+    const first = deferred<void>()
+    vi.mocked(invokeSaveAppConfig)
+      .mockImplementationOnce(async (config) => { await first.promise; return config })
+      .mockImplementationOnce(async (config) => config)
+    const settings = useSettings()
+
+    const savingA = settings.setInterfaceLanguage('ja-JP')
+    const savingB = settings.setInterfaceLanguage('ko-KR')
+    await Promise.resolve()
+    expect(invokeSaveAppConfig).toHaveBeenCalledTimes(1)
+
+    first.reject(new Error('save failed'))
+    await savingA
+    await savingB
+
+    expect(invokeSaveAppConfig).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(invokeSaveAppConfig).mock.calls[1][0].interfaceLanguage).toBe('ko-KR')
+    expect(settings.dirty.value).toBe(false)
+    expect(settings.saveStatus.value).toBe('saved')
   })
 
   it('界面语言立即保存失败时保留选择和未保存状态', async () => {

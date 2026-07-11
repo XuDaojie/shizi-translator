@@ -3,7 +3,7 @@
 // 任何一方增删字段，必须同步本文件与 spec、README 配置说明。
 
 export type LogLevel = 'error' | 'warn' | 'info' | 'debug';
-export type ServiceProtocolId = 'openai_chat' | 'claude_messages' | 'microsoft_edge';
+export type ServiceProtocolId = 'openai_chat' | 'claude_messages' | 'microsoft_edge' | 'mock';
 export type ChainOfThought = 'off' | 'short' | 'medium' | 'long';
 
 export interface ServiceInstanceConfig {
