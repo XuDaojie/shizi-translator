@@ -1,6 +1,7 @@
 pub mod capture;
 pub mod config;
 pub mod history;
+pub mod i18n;
 pub mod llm;
 pub mod mt;
 pub mod ocr;

@@ -1,4 +1,7 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc, Mutex,
+};
 
 use crate::app::shortcuts::ShortcutBindingError;
 use crate::core::capture::CapturedImage;
@@ -40,6 +43,7 @@ pub struct AppState {
     // WebView 初始化采集的浏览器环境信息（UA/Accept-Language），供微软翻译拼装请求头。
     // 进程级内存，不持久化；每次启动由前端 main 窗口重新采集写入。
     edge_translate_env: Arc<Mutex<Option<EdgeTranslateEnv>>>,
+    interface_language_revision: Arc<AtomicU64>,
 }
 
 impl AppState {
@@ -66,6 +70,7 @@ impl AppState {
             session_source_lang: Arc::new(Mutex::new(default_source_lang)),
             session_target_lang: Arc::new(Mutex::new(default_target_lang)),
             edge_translate_env: Arc::new(Mutex::new(None)),
+            interface_language_revision: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -326,6 +331,16 @@ impl AppState {
             .lock()
             .map(|slot| slot.clone())
             .unwrap_or(None)
+    }
+
+    pub fn next_interface_language_revision(&self) -> u64 {
+        self.interface_language_revision
+            .fetch_add(1, Ordering::SeqCst)
+            + 1
+    }
+
+    pub fn interface_language_revision(&self) -> u64 {
+        self.interface_language_revision.load(Ordering::SeqCst)
     }
 }
 
@@ -654,5 +669,15 @@ mod tests {
         let env = state.edge_translate_env().expect("读取 env");
         assert_eq!(env.user_agent, "UA");
         assert_eq!(env.accept_language, "zh-CN");
+    }
+
+    #[test]
+    fn interface_language_revision_is_shared_and_monotonic() {
+        let state = app_state();
+        let cloned = state.clone();
+        assert_eq!(state.interface_language_revision(), 0);
+        assert_eq!(state.next_interface_language_revision(), 1);
+        assert_eq!(cloned.next_interface_language_revision(), 2);
+        assert_eq!(state.interface_language_revision(), 2);
     }
 }
