@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { SettingGroup, SettingRow, ShortcutRecorder } from '../components'
 import type { AppSettings } from '../types'
+import { t, type MessageKey } from '@/i18n'
 
 const props = defineProps<{
   state: AppSettings
@@ -28,18 +29,20 @@ const appBindings = computed(() =>
 const conflictedBindings = computed(() =>
   props.state.shortcut.bindings.filter((b) => b.error && GLOBAL_IDS.has(b.id)),
 )
+const bindingText = (id: string, kind: 'label' | 'description') =>
+  t(`settings.shortcut.${id}.${kind}` as MessageKey)
 </script>
 
 <template>
   <SettingGroup
-    title="全局快捷键"
-    description="点按输入框，按下想要设置的组合键，Esc 取消。全局快捷键在应用未聚焦时也可用。"
+    :title="t('settings.group.globalShortcuts')"
+    :description="t('settings.description.globalShortcuts')"
   >
     <SettingRow
       v-for="binding in globalBindings"
       :key="binding.id"
-      :title="binding.label"
-      :description="binding.description"
+      :title="bindingText(binding.id, 'label')"
+      :description="bindingText(binding.id, 'description')"
     >
       <ShortcutRecorder
         :model-value="binding.keys"
@@ -53,14 +56,14 @@ const conflictedBindings = computed(() =>
   </SettingGroup>
 
   <SettingGroup
-    title="程序快捷键"
-    description="仅在本应用窗口聚焦时生效，不会占用系统全局快捷键。"
+    :title="t('settings.group.appShortcuts')"
+    :description="t('settings.description.appShortcuts')"
   >
     <SettingRow
       v-for="binding in appBindings"
       :key="binding.id"
-      :title="binding.label"
-      :description="binding.description"
+      :title="bindingText(binding.id, 'label')"
+      :description="bindingText(binding.id, 'description')"
     >
       <ShortcutRecorder
         :model-value="binding.keys"
@@ -75,16 +78,16 @@ const conflictedBindings = computed(() =>
 
   <SettingGroup
     v-if="conflictedBindings.length"
-    title="冲突提示"
-    description="以下快捷键已被系统或其他应用占用，请在对应行修改或清空。"
+    :title="t('settings.group.shortcutConflicts')"
+    :description="t('settings.description.shortcutConflicts')"
   >
     <SettingRow
       v-for="binding in conflictedBindings"
       :key="binding.id"
-      :title="binding.label"
+      :title="bindingText(binding.id, 'label')"
       :description="binding.error ?? ''"
     >
-      <span class="text-xs text-destructive">占用</span>
+      <span class="text-xs text-destructive">{{ t('settings.status.occupied') }}</span>
     </SettingRow>
   </SettingGroup>
 </template>

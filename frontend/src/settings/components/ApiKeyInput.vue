@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { Eye, EyeOff, Loader2, ShieldCheck, ShieldAlert } from '@lucide/vue'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
+import { t } from '@/i18n'
 
 type Status = 'idle' | 'validating' | 'valid' | 'invalid'
 
@@ -37,19 +38,19 @@ const isValidating = computed(() => props.status === 'validating')
 
 const buttonTitle = computed(() => {
   switch (props.status) {
-    case 'validating': return '校验中…'
-    case 'valid':      return '已校验'
-    case 'invalid':    return '校验失败 · 点击重新校验'
-    default:           return '校验 Key 是否有效'
+    case 'validating': return t('settings.status.validating')
+    case 'valid':      return t('settings.status.valid')
+    case 'invalid':    return t('settings.tooltip.retryValidation')
+    default:           return t('settings.tooltip.validateApiKey')
   }
 })
 
 const buttonAria = computed(() => {
   switch (props.status) {
-    case 'validating': return '校验中'
-    case 'valid':      return '已校验'
-    case 'invalid':    return '重新校验'
-    default:           return '校验'
+    case 'validating': return t('settings.status.validating')
+    case 'valid':      return t('settings.status.valid')
+    case 'invalid':    return t('common.retry')
+    default:           return t('settings.button.validate')
   }
 })
 </script>
@@ -60,7 +61,7 @@ const buttonAria = computed(() => {
       <Input
         :model-value="modelValue"
         :type="revealed ? 'text' : 'password'"
-        :placeholder="placeholder ?? 'API Key'"
+        :placeholder="placeholder ?? t('settings.placeholder.apiKey')"
         :disabled="disabled"
         :class="cn(
           'rounded-r-none border-r-0 font-mono',
@@ -73,8 +74,8 @@ const buttonAria = computed(() => {
         v-if="allowReveal"
         type="button"
         :disabled="disabled"
-        :title="revealed ? '隐藏' : '显示'"
-        aria-label="切换显示"
+        :title="t('settings.tooltip.revealApiKey')"
+        :aria-label="t('settings.tooltip.revealApiKey')"
         class="pointer-events-auto absolute inset-y-0 right-2 my-auto inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground/70 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
         @click="revealed = !revealed"
         @mousedown.stop
@@ -104,7 +105,7 @@ const buttonAria = computed(() => {
       </template>
       <ShieldCheck v-else-if="status === 'valid'" class="h-4 w-4 text-emerald-500" />
       <ShieldAlert v-else-if="status === 'invalid'" class="h-4 w-4" />
-      <span v-else>校验</span>
+      <span v-else>{{ t('settings.button.validate') }}</span>
     </button>
   </div>
 </template>

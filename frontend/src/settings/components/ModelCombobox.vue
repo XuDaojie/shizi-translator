@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ChevronDown, Loader2 } from '@lucide/vue'
 import { cn } from '@/lib/utils'
+import { t } from '@/i18n'
 
 const props = withDefaults(
   defineProps<{
@@ -14,7 +15,6 @@ const props = withDefaults(
   }>(),
   {
     loading: false,
-    placeholder: '请选择或输入模型名',
     disabled: false,
     className: '',
   },
@@ -266,7 +266,7 @@ onUnmounted(() => {
         ref="inputRef"
         v-model="inputValue"
         type="text"
-        :placeholder="placeholder"
+        :placeholder="placeholder ?? t('settings.placeholder.model')"
         :disabled="disabled"
         :class="
           cn(
@@ -338,7 +338,7 @@ onUnmounted(() => {
           @mousedown="onCustomMouseDown"
         >
           <span class="truncate">
-            使用自定义模型 "<span class="font-medium">{{ inputValue.trim() }}</span>"
+            {{ t('settings.combobox.useCustomModel', { name: inputValue.trim() }) }}
           </span>
         </button>
 
@@ -346,14 +346,14 @@ onUnmounted(() => {
           v-if="showLoadingHint"
           class="px-2.5 py-3 text-center text-xs text-muted-foreground"
         >
-          正在拉取模型列表…
+          {{ t('settings.combobox.loadingModels') }}
         </div>
 
         <div
           v-else-if="showHint"
           class="px-2.5 py-3 text-center text-xs text-muted-foreground"
         >
-          {{ inputValue.trim() ? '没有匹配的模型，可直接使用上方输入' : '请输入或选择模型' }}
+          {{ inputValue.trim() ? t('settings.combobox.noMatchingModel') : t('settings.combobox.chooseModel') }}
         </div>
 
         <div v-if="loading" class="loading-bar" />

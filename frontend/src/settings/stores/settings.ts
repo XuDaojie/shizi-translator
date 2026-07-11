@@ -1,4 +1,4 @@
-import { reactive, watch } from 'vue'
+import { reactive, readonly, ref, watch } from 'vue'
 import type {
   AppSettings,
   CustomServiceType,
@@ -10,7 +10,19 @@ import type {
 import type { AppConfig, ServiceInstanceConfig } from '@/types/config'
 import { BUILTIN_SERVICES, buildServices, DEFAULT_PROMPTS } from '../tokens'
 import { projectToAppConfig, validateConfig } from '@/lib/config'
-import { invokeGetAppConfig, invokeGetShortcutConflicts, invokeSaveAppConfig, isTauriReady, type ShortcutConflict } from '@/lib/tauri'
+import {
+  invokeGetAppConfig,
+  invokeGetInterfaceLanguageSnapshot,
+  invokeGetShortcutConflicts,
+  invokeOpenLanguagePackDirectory,
+  invokeRefreshInterfaceLanguages,
+  invokeSaveAppConfig,
+  isTauriReady,
+  type InterfaceLanguageSnapshot,
+  type LanguageMeta,
+  type LanguagePackError,
+  type ShortcutConflict,
+} from '@/lib/tauri'
 import { toast } from '@/lib/toast'
 import { createLogger } from '@public/logger.js'
 
@@ -332,6 +344,19 @@ const loadFromStorage = (): AppSettings => {
 }
 
 const state = reactive<AppSettings>(loadFromStorage())
+const interfaceLanguages = ref<LanguageMeta[]>([])
+const interfaceLanguageErrors = ref<LanguagePackError[]>([])
+const interfaceLanguagesRefreshing = ref(false)
+
+const applyInterfaceLanguageSnapshot = (snapshot: InterfaceLanguageSnapshot): void => {
+  interfaceLanguages.value = snapshot.languages.filter(({ locale }) => locale !== 'auto')
+  interfaceLanguageErrors.value = snapshot.errors
+  if (state.general.language === 'auto' || interfaceLanguages.value.some(({ locale }) => locale === state.general.language)) return
+  const locales = new Set(interfaceLanguages.value.map(({ locale }) => locale))
+  state.general.language = locales.has(snapshot.configuredLocale)
+    ? snapshot.configuredLocale
+    : locales.has(snapshot.locale) ? snapshot.locale : 'auto'
+}
 
 const dirty = reactive({ value: false })
 const saveStatus = reactive<{ value: 'idle' | 'saved' | 'saving' | 'error' }>({ value: 'idle' })
@@ -458,6 +483,18 @@ export const useSettings = () => ({
   state,
   dirty,
   saveStatus,
+  interfaceLanguages: readonly(interfaceLanguages),
+  interfaceLanguageErrors: readonly(interfaceLanguageErrors),
+  interfaceLanguagesRefreshing: readonly(interfaceLanguagesRefreshing),
+  async refreshInterfaceLanguages(): Promise<void> {
+    interfaceLanguagesRefreshing.value = true
+    try {
+      applyInterfaceLanguageSnapshot(await invokeRefreshInterfaceLanguages())
+    } finally {
+      interfaceLanguagesRefreshing.value = false
+    }
+  },
+  openLanguagePackDirectory: invokeOpenLanguagePackDirectory,
   async save(): Promise<void> {
     if (autoSaveTimer) clearTimeout(autoSaveTimer)
     saveStatus.value = 'saving'
@@ -473,7 +510,14 @@ export const useSettings = () => ({
       logger.warn('从后端同步配置失败')
       return
     }
+    let languageSnapshot: InterfaceLanguageSnapshot | undefined
+    try {
+      languageSnapshot = await invokeGetInterfaceLanguageSnapshot()
+    } catch (error) {
+      logger.warn('读取界面语言列表失败', String(error))
+    }
     if (!backend.services || backend.services.length === 0) {
+      if (languageSnapshot) applyInterfaceLanguageSnapshot(languageSnapshot)
       // 后端空（旧格式残留 / 首次启动）→ 前端推后端覆盖
       try {
         await invokeSaveAppConfig(projectToAppConfig(state))
@@ -489,6 +533,7 @@ export const useSettings = () => ({
     syncingFromBackend = true
     state.services = mergeBackendIntoServices(state.services, backend.services)
     state.general.language = backend.interfaceLanguage
+    if (languageSnapshot) applyInterfaceLanguageSnapshot(languageSnapshot)
     state.translation.defaultSourceLang =
       backend.defaultSourceLang ?? state.translation.defaultSourceLang
     state.translation.defaultTargetLang =

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { applyBackendLogLevel, applyShortcutConflicts, mergeBackendIntoServices, useSettings } from './settings';
 import { DEFAULT_PROMPTS } from '../tokens';
 import type { ServiceInstanceConfig } from '@/types/config';
-import { invokeGetAppConfig, invokeGetShortcutConflicts, invokeSaveAppConfig, isTauriReady } from '@/lib/tauri';
+import { invokeGetAppConfig, invokeGetInterfaceLanguageSnapshot, invokeGetShortcutConflicts, invokeRefreshInterfaceLanguages, invokeSaveAppConfig, isTauriReady } from '@/lib/tauri';
 import type { AppSettings, ServiceInstance } from '../types';
 
 // Mock tauri module so tests don't need window.__TAURI__
@@ -11,6 +11,9 @@ vi.mock('@/lib/tauri', () => ({
   invokeGetAppConfig: vi.fn(),
   invokeSaveAppConfig: vi.fn(),
   invokeGetShortcutConflicts: vi.fn().mockResolvedValue([]),
+  invokeGetInterfaceLanguageSnapshot: vi.fn(),
+  invokeRefreshInterfaceLanguages: vi.fn(),
+  invokeOpenLanguagePackDirectory: vi.fn(),
   isTauriReady: vi.fn(() => false),
 }));
 
@@ -34,6 +37,81 @@ beforeEach(() => {
   fakeLocalStorage.clear();
   useSettings().reset();
   vi.clearAllMocks();
+});
+
+const languageSnapshot = (over: Record<string, unknown> = {}) => ({
+  configuredLocale: 'auto',
+  locale: 'zh-CN',
+  revision: 1,
+  languages: [
+    { locale: 'zh-CN', name: '简体中文', builtin: true },
+    { locale: 'it-IT', name: 'Italiano', builtin: false },
+  ],
+  userMessages: {},
+  errors: [],
+  ...over,
+});
+
+describe('interface languages', () => {
+  it('刷新后当前语言已不存在时回写后端解析语言并走自动保存', async () => {
+    vi.useFakeTimers();
+    vi.mocked(isTauriReady).mockReturnValue(true);
+    const settings = useSettings();
+    settings.state.general.language = 'it-IT';
+    vi.mocked(invokeRefreshInterfaceLanguages).mockResolvedValue(languageSnapshot({
+      configuredLocale: 'zh-CN',
+      languages: [{ locale: 'zh-CN', name: '简体中文', builtin: true }],
+    }));
+
+    await settings.refreshInterfaceLanguages();
+    expect(settings.state.general.language).toBe('zh-CN');
+    await vi.advanceTimersByTimeAsync(350);
+    expect(invokeSaveAppConfig).toHaveBeenCalled();
+  });
+
+  it('刷新后保留仍然有效的当前语言', async () => {
+    const settings = useSettings();
+    settings.state.general.language = 'it-IT';
+    vi.mocked(invokeRefreshInterfaceLanguages).mockResolvedValue(languageSnapshot());
+
+    await settings.refreshInterfaceLanguages();
+
+    expect(settings.state.general.language).toBe('it-IT');
+  });
+
+  it('按后端顺序保留语言 metadata 和语言包错误详情', async () => {
+    const settings = useSettings();
+    vi.mocked(invokeRefreshInterfaceLanguages).mockResolvedValue(languageSnapshot({
+      languages: [
+        { locale: 'auto', name: '忽略', builtin: false },
+        { locale: 'de-DE', name: 'Deutsch', builtin: true },
+        { locale: 'x-team', name: 'Team', builtin: false },
+      ],
+      errors: [{ file: 'broken.json', message: 'JSON 无效' }],
+    }));
+
+    await settings.refreshInterfaceLanguages();
+
+    expect(settings.interfaceLanguages.value).toEqual([
+      { locale: 'de-DE', name: 'Deutsch', builtin: true },
+      { locale: 'x-team', name: 'Team', builtin: false },
+    ]);
+    expect(settings.interfaceLanguageErrors.value).toEqual([
+      { file: 'broken.json', message: 'JSON 无效' },
+    ]);
+  });
+
+  it('刷新失败时保留现有运行时状态并向调用者抛错', async () => {
+    const settings = useSettings();
+    vi.mocked(invokeRefreshInterfaceLanguages)
+      .mockResolvedValueOnce(languageSnapshot())
+      .mockRejectedValueOnce(new Error('refresh failed'));
+    await settings.refreshInterfaceLanguages();
+
+    await expect(settings.refreshInterfaceLanguages()).rejects.toThrow('refresh failed');
+    expect(settings.interfaceLanguages.value).toHaveLength(2);
+    expect(settings.interfaceLanguagesRefreshing.value).toBe(false);
+  });
 });
 
 describe('settings defaults', () => {
@@ -341,6 +419,26 @@ describe('syncFromBackend', () => {
     expect(settings.state.translation.restoreClipboard).toBe(false);
     expect(settings.state.translation.historyLimit).toBe(123);
     expect(invokeSaveAppConfig).not.toHaveBeenCalled();
+  });
+
+  it('后端配置的界面语言已不存在时按语言快照回退', async () => {
+    vi.mocked(isTauriReady).mockReturnValue(true);
+    const settings = useSettings();
+    const localId = settings.state.services[0].id;
+    vi.mocked(invokeGetInterfaceLanguageSnapshot).mockResolvedValue(languageSnapshot({
+      configuredLocale: 'zh-CN',
+      locale: 'zh-CN',
+      languages: [{ locale: 'zh-CN', name: '简体中文', builtin: true }],
+    }));
+    vi.mocked(invokeGetAppConfig).mockResolvedValue({
+      interfaceLanguage: 'it-IT', targetLang: 'zh-CN', services: [makeBackend({ id: localId })],
+      defaultSourceLang: 'auto', autoCopy: true, restoreClipboard: true, historyLimit: 500,
+      popupPrecreate: true, overlayPrecreate: true, collectUsage: true, logLevel: 'info', shortcuts: {},
+    });
+
+    await settings.syncFromBackend();
+
+    expect(settings.state.general.language).toBe('zh-CN');
   });
   it('后端非空时把 shortcuts 合并回本地绑定，只覆盖 keys', async () => {
     vi.mocked(isTauriReady).mockReturnValue(true);

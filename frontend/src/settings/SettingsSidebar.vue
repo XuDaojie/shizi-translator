@@ -16,6 +16,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useSettings } from './stores/settings'
+import { t } from '@/i18n'
 
 export interface SettingsCategory {
   id: string
@@ -37,11 +38,11 @@ const emit = defineEmits<{
 const { dirty, save, saveStatus } = useSettings()
 
 const saveStatusText = computed(() => {
-  if (saveStatus.value === 'idle') return '本机偏好'
-  if (saveStatus.value === 'saving') return '正在自动保存…'
-  if (saveStatus.value === 'error') return '自动保存失败'
-  if (dirty.value) return '有修改待保存'
-  return '已自动保存'
+  if (saveStatus.value === 'idle') return t('settings.status.localPreference')
+  if (saveStatus.value === 'saving') return t('settings.status.saving')
+  if (saveStatus.value === 'error') return t('settings.status.saveFailed')
+  if (dirty.value) return t('settings.status.pendingSave')
+  return t('settings.status.saved')
 })
 const saveStatusTone = computed(() => {
   if (saveStatus.value === 'error') return 'text-destructive'
@@ -50,56 +51,56 @@ const saveStatusTone = computed(() => {
   return 'text-muted-foreground'
 })
 const saveStatusDetail = computed(() => {
-  if (saveStatus.value === 'error') return '请检查本地存储权限'
-  if (saveStatus.value === 'saving') return '正在写入本地设置'
-  if (dirty.value) return '等待写入'
-  return '修改会立即生效并自动保存'
+  if (saveStatus.value === 'error') return t('settings.status.storagePermission')
+  if (saveStatus.value === 'saving') return t('settings.status.writing')
+  if (dirty.value) return t('settings.status.waiting')
+  return t('settings.status.autoSaveDescription')
 })
 
-const categories: SettingsCategory[] = [
+const categories = computed<SettingsCategory[]>(() => [
   {
     id: 'general',
-    label: '通用',
-    description: '启动、托盘与外观',
+    label: t('settings.category.general'),
+    description: t('settings.category.generalDescription'),
     icon: Settings2,
   },
   {
     id: 'translate',
-    label: '翻译',
-    description: '默认语种与翻译行为',
+    label: t('settings.category.translate'),
+    description: t('settings.category.translateDescription'),
     icon: Languages,
   },
   {
     id: 'shortcut',
-    label: '快捷键',
-    description: '划词/截图/取词',
+    label: t('settings.category.shortcut'),
+    description: t('settings.category.shortcutDescription'),
     icon: Keyboard,
   },
   {
     id: 'services',
-    label: '服务',
-    description: '翻译服务与 API Key',
+    label: t('settings.category.services'),
+    description: t('settings.category.servicesDescription'),
     icon: Plug,
   },
   {
     id: 'history',
-    label: '翻译历史',
-    description: '查看最近翻译记录',
+    label: t('settings.category.history'),
+    description: t('settings.category.historyDescription'),
     icon: HistoryIcon,
   },
   {
     id: 'advanced',
-    label: '高级',
-    description: '日志、实验与重置',
+    label: t('settings.category.advanced'),
+    description: t('settings.category.advancedDescription'),
     icon: Sliders,
   },
-]
+])
 
 const select = (id: string): void => emit('update:modelValue', id)
 
 const badgeLabel = (kind: 'wip' | 'new' | undefined): string => {
-  if (kind === 'wip') return '实现中'
-  if (kind === 'new') return '新'
+  if (kind === 'wip') return t('common.developing')
+  if (kind === 'new') return t('settings.status.new')
   return ''
 }
 </script>
@@ -109,8 +110,8 @@ const badgeLabel = (kind: 'wip' | 'new' | undefined): string => {
     class="flex h-full w-[var(--sidebar-width)] shrink-0 flex-col border-r border-border bg-card/40 py-3"
   >
     <div class="px-3 pb-3">
-      <h2 class="text-sm font-semibold text-foreground">设置</h2>
-      <p class="mt-1 text-xs text-muted-foreground">个性化本应用的使用方式</p>
+      <h2 class="text-sm font-semibold text-foreground">{{ t('settings.title') }}</h2>
+      <p class="mt-1 text-xs text-muted-foreground">{{ t('settings.subtitle') }}</p>
     </div>
 
     <nav class="flex-1 overflow-y-auto px-2 scrollbar-thin">
@@ -174,7 +175,7 @@ const badgeLabel = (kind: 'wip' | 'new' | undefined): string => {
         @click="save"
       >
         <RotateCcw class="h-3.5 w-3.5" />
-        重试保存
+        {{ t('settings.button.retrySave') }}
       </Button>
     </div>
   </aside>

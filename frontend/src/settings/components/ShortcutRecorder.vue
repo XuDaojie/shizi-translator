@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref } from 'vue'
 import { AlertCircle, Keyboard, X } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { t } from '@/i18n'
 
 interface Props {
   modelValue: string
@@ -14,7 +15,6 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  placeholder: '点按后按下快捷键',
   disabled: false,
 })
 
@@ -107,15 +107,15 @@ const onClickOutside = (): void => {
       >
         <span v-if="recording" class="flex items-center gap-2 text-primary">
           <Keyboard class="h-3.5 w-3.5 animate-pulse" />
-          <span class="text-xs">按下快捷键 (Esc 取消)</span>
+          <span class="text-xs">{{ t('settings.shortcut.recording') }}</span>
         </span>
         <span v-else-if="modelValue" class="font-mono text-foreground">
           {{ modelValue }}
         </span>
         <span v-else class="text-muted-foreground text-xs">
-          {{ placeholder }}
+          {{ placeholder ?? t('settings.placeholder.shortcut') }}
         </span>
-        <span v-if="recording" class="sr-only">正在录入</span>
+        <span v-if="recording" class="sr-only">{{ t('settings.shortcut.recordingAria') }}</span>
       </button>
 
       <Button
@@ -123,8 +123,8 @@ const onClickOutside = (): void => {
         variant="ghost"
         size="icon"
         :disabled="disabled"
-        :title="disabled ? undefined : '清除快捷键'"
-        aria-label="清除快捷键"
+        :title="disabled ? undefined : t('settings.shortcut.clear')"
+        :aria-label="t('settings.shortcut.clear')"
         @click="clear"
       >
         <X class="h-4 w-4" />

@@ -20,6 +20,7 @@ import {
   type HistoryTrigger,
 } from '../history'
 import { displayModelName, shouldShowTokens } from '@/popup/composables/resultCardMeta'
+import { formatDateTime, t } from '@/i18n'
 
 interface Props {
   state: AppSettings
@@ -28,18 +29,18 @@ const props = defineProps<Props>()
 
 const langLabel = (code: string): string => translationLanguage(code)?.nativeName ?? code
 
-const TRIGGER_META: Record<HistoryTrigger, { label: string; icon: typeof Camera }> = {
-  selection: { label: '划词翻译', icon: MousePointerSquareDashed },
-  manual: { label: '手动输入', icon: PencilLine },
-  screenshot: { label: '截图翻译', icon: ScanText },
-}
+const TRIGGER_META = computed<Record<HistoryTrigger, { label: string; icon: typeof Camera }>>(() => ({
+  selection: { label: t('history.trigger.selection'), icon: MousePointerSquareDashed },
+  manual: { label: t('history.trigger.manual'), icon: PencilLine },
+  screenshot: { label: t('history.trigger.screenshot'), icon: ScanText },
+}))
 
-const FILTERS = [
-  { id: 'all' as const, label: '全部', icon: Layers },
-  { id: 'screenshot' as const, label: '截图翻译', icon: ScanText },
-  { id: 'selection' as const, label: '划词翻译', icon: MousePointerSquareDashed },
-  { id: 'manual' as const, label: '手动输入', icon: PencilLine },
-]
+const FILTERS = computed(() => [
+  { id: 'all' as const, label: t('history.filter.all'), icon: Layers },
+  { id: 'screenshot' as const, label: t('history.trigger.screenshot'), icon: ScanText },
+  { id: 'selection' as const, label: t('history.trigger.selection'), icon: MousePointerSquareDashed },
+  { id: 'manual' as const, label: t('history.trigger.manual'), icon: PencilLine },
+])
 
 const activeFilter = ref<'all' | HistoryTrigger>('all')
 const activeId = ref<string>('')
@@ -65,7 +66,7 @@ const refreshHistory = async (): Promise<void> => {
     if (!isMounted || requestId !== refreshRequestId) return
     sessions.value = []
     loadError.value = err instanceof Error ? err.message : String(err)
-    toast.error('读取翻译历史失败', loadError.value)
+    toast.error(t('history.loadFailed'), loadError.value)
   } finally {
     if (!isMounted || requestId !== refreshRequestId) return
     loading.value = false
@@ -79,7 +80,7 @@ const filteredSessions = computed<HistorySession[]>(() =>
 )
 /* 空态只看全部历史，与原型一致；筛选无命中保留筛选栏并展示筛选空态 */
 const isEmpty = computed(() => isEmptyHistory(sessions.value))
-const activeFilterLabel = computed(() => FILTERS.find((f) => f.id === activeFilter.value)?.label ?? '')
+const activeFilterLabel = computed(() => FILTERS.value.find((f) => f.id === activeFilter.value)?.label ?? '')
 const activeSession = computed<HistorySession | null>(() =>
   activeId.value ? filteredSessions.value.find((s) => s.id === activeId.value) ?? null : null,
 )
@@ -94,33 +95,9 @@ watchEffect(() => {
   }
 })
 
-const formatDetailTime = (iso: string): string => {
-  const d = new Date(iso)
-  const Y = d.getFullYear()
-  const MO = String(d.getMonth() + 1).padStart(2, '0')
-  const DD = String(d.getDate()).padStart(2, '0')
-  const HH = String(d.getHours()).padStart(2, '0')
-  const MM = String(d.getMinutes()).padStart(2, '0')
-  const SS = String(d.getSeconds()).padStart(2, '0')
-  return `${Y}-${MO}-${DD} ${HH}:${MM}:${SS}`
-}
+const formatDetailTime = (iso: string): string => formatDateTime(iso, { dateStyle: 'medium', timeStyle: 'short' })
 
-const formatTime = (iso: string): string => {
-  const d = new Date(iso)
-  const now = new Date()
-  const sameDay = (a: Date, b: Date): boolean =>
-    a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
-  const HH = String(d.getHours()).padStart(2, '0')
-  const MM = String(d.getMinutes()).padStart(2, '0')
-  if (sameDay(d, now)) return `${HH}:${MM}`
-  const y = new Date(now); y.setDate(now.getDate() - 1)
-  if (sameDay(d, y)) return `昨天 ${HH}:${MM}`
-  const diff = Math.floor((now.getTime() - d.getTime()) / 86400000)
-  if (diff < 7) return `${diff} 天前`
-  const MO = String(d.getMonth() + 1).padStart(2, '0')
-  const DD = String(d.getDate()).padStart(2, '0')
-  return `${MO}-${DD} ${HH}:${MM}`
-}
+const formatTime = (iso: string): string => formatDateTime(iso, { dateStyle: 'medium', timeStyle: 'short' })
 
 type Bucket = { label: string; entries: HistorySession[] }
 const grouped = computed<Bucket[]>(() => {
@@ -140,10 +117,10 @@ const grouped = computed<Bucket[]>(() => {
     else older.push(s)
   }
   const out: Bucket[] = []
-  if (today.length) out.push({ label: '今天', entries: today })
-  if (yesterday.length) out.push({ label: '昨天', entries: yesterday })
-  if (week.length) out.push({ label: '本周', entries: week })
-  if (older.length) out.push({ label: '更早', entries: older })
+  if (today.length) out.push({ label: t('history.today'), entries: today })
+  if (yesterday.length) out.push({ label: t('history.yesterday'), entries: yesterday })
+  if (week.length) out.push({ label: t('history.thisWeek'), entries: week })
+  if (older.length) out.push({ label: t('history.older'), entries: older })
   return out
 })
 
@@ -156,7 +133,7 @@ const filteredGrouped = computed<Bucket[]>(() => {
 const isFilterEmpty = computed(() => !isEmpty.value && filteredGrouped.value.length === 0)
 
 const copy = async (text: string, isSource = false): Promise<void> => {
-  if (!text) { toast.error('复制失败', '该记录没有可复制的文本'); return }
+  if (!text) { toast.error(t('history.copyFailed'), t('history.noCopyText')); return }
   try {
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(text)
@@ -170,9 +147,9 @@ const copy = async (text: string, isSource = false): Promise<void> => {
       document.execCommand('copy')
       document.body.removeChild(ta)
     }
-    toast.success(isSource ? '已复制原文' : '已复制译文', text.length > 30 ? `${text.slice(0, 30)}…` : text)
+    toast.success(t(isSource ? 'history.sourceCopied' : 'history.resultCopied'), text.length > 30 ? `${text.slice(0, 30)}…` : text)
   } catch (err) {
-    toast.error('复制失败', err instanceof Error ? err.message : '请检查浏览器权限')
+    toast.error(t('history.copyFailed'), err instanceof Error ? err.message : t('history.clipboardPermission'))
   }
 }
 
@@ -188,17 +165,17 @@ const clearAll = async (): Promise<void> => {
     loading.value = false
     showClearConfirm.value = false
     activeId.value = ''
-    toast.success('已清空翻译历史')
+    toast.success(t('settings.toast.historyCleared'))
   } catch (err) {
     if (!isMounted) return
-    toast.error('清空翻译历史失败', err instanceof Error ? err.message : String(err))
+    toast.error(t('history.clearFailed'), err instanceof Error ? err.message : String(err))
   } finally {
     if (isMounted) clearing.value = false
   }
 }
 
 const retryResult = (r: HistoryResult): void => {
-  toast.info('已请求重新翻译', `${r.serviceName} · ${r.modelName || '默认模型'}`)
+  toast.info(t('history.retranslateRequested'), `${r.serviceName} · ${r.modelName || t('history.defaultModel')}`)
 }
 
 /* 卡片折叠 / 展开全文：按 sessionId + serviceInstanceId 记录（与弹窗结果卡对齐）。 */
@@ -224,7 +201,7 @@ const resultModelName = (r: HistoryResult): string =>
 
 const speakSource = (): void => {
   const text = activeSession.value?.source
-  if (!text) { toast.error('朗读失败', '该记录没有原文可朗读'); return }
+  if (!text) { toast.error(t('history.speakFailed'), t('history.noSourceToSpeak')); return }
   const lang = activeSession.value?.sourceLang && activeSession.value.sourceLang !== 'auto'
     ? activeSession.value.sourceLang
     : 'en-US'
@@ -232,11 +209,11 @@ const speakSource = (): void => {
 }
 
 const speak = (text: string): void => {
-  if (!text) { toast.error('朗读失败', '该记录没有可朗读的译文'); return }
+  if (!text) { toast.error(t('history.speakFailed'), t('history.noResultToSpeak')); return }
   speakText(text, activeSession.value?.targetLang || 'zh-CN')
 }
 
-const triggerIcon = (t: HistoryTrigger): typeof Camera => TRIGGER_META[t]?.icon ?? Camera
+const triggerIcon = (trigger: HistoryTrigger): typeof Camera => TRIGGER_META.value[trigger]?.icon ?? Camera
 
 /** 解析结果对应的服务 type，供 ServiceIcon 与设置页服务列表统一。 */
 const serviceTypeOf = (r: HistoryResult): string => {
@@ -305,16 +282,16 @@ onBeforeUnmount(() => {
   <div ref="rootRef" class="flex flex-col gap-3">
     <div v-if="loading" class="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border py-16 text-center text-muted-foreground">
       <HistoryIcon class="h-5 w-5" />
-      <p class="text-sm">正在加载翻译历史...</p>
+        <p class="text-sm">{{ t('history.loading') }}</p>
     </div>
 
     <div v-else-if="loadError" class="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-destructive/40 py-16 text-center">
       <HistoryIcon class="h-5 w-5 text-destructive" />
       <div class="flex flex-col gap-1">
-        <p class="text-sm font-medium text-foreground">翻译历史加载失败</p>
+        <p class="text-sm font-medium text-foreground">{{ t('history.loadFailed') }}</p>
         <p class="text-[12px] text-muted-foreground">{{ loadError }}</p>
       </div>
-      <Button variant="outline" size="sm" @click="refreshHistory">重试</Button>
+        <Button variant="outline" size="sm" @click="refreshHistory">{{ t('common.retry') }}</Button>
     </div>
 
     <div v-else-if="isEmpty" class="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border py-16 text-center">
@@ -322,8 +299,8 @@ onBeforeUnmount(() => {
         <HistoryIcon class="h-5 w-5" />
       </div>
       <div class="flex flex-col gap-1">
-        <p class="text-sm font-medium text-foreground">暂无翻译历史</p>
-        <p class="text-[12px] text-muted-foreground">手动输入、划词或截图 OCR 翻译后，结果会自动保存在这里。</p>
+        <p class="text-sm font-medium text-foreground">{{ t('history.empty') }}</p>
+        <p class="text-[12px] text-muted-foreground">{{ t('history.emptyDescription') }}</p>
       </div>
     </div>
 
@@ -345,13 +322,13 @@ onBeforeUnmount(() => {
           </button>
           <button
             type="button"
-            title="清空全部"
+          :title="t('settings.button.clearHistory')"
             class="ml-auto flex h-7 items-center gap-1.5 rounded px-2.5 text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
             :disabled="clearing"
             @click="showClearConfirm = true"
           >
             <Trash2 class="h-3.5 w-3.5" />
-            <span class="whitespace-nowrap">清空</span>
+          <span class="whitespace-nowrap">{{ t('settings.button.clearHistory') }}</span>
           </button>
         </div>
       </div>
@@ -365,8 +342,8 @@ onBeforeUnmount(() => {
           <component :is="FILTERS.find((f) => f.id === activeFilter)?.icon ?? HistoryIcon" class="h-5 w-5" />
         </div>
         <div class="flex flex-col gap-1">
-          <p class="text-sm font-medium text-foreground">「{{ activeFilterLabel }}」筛选条件下暂无记录</p>
-          <p class="text-[12px] text-muted-foreground">切换其他触发方式，或选择「全部」查看所有翻译。</p>
+          <p class="text-sm font-medium text-foreground">{{ t('history.filterEmpty', { filter: activeFilterLabel }) }}</p>
+          <p class="text-[12px] text-muted-foreground">{{ t('history.filterEmptyDescription') }}</p>
         </div>
       </div>
 
@@ -377,7 +354,7 @@ onBeforeUnmount(() => {
           <template v-for="bucket in filteredGrouped" :key="bucket.label">
             <header class="flex items-center gap-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               <span>{{ bucket.label }}</span>
-              <span class="text-[10px] opacity-60">{{ bucket.entries.length }} 条</span>
+              <span class="text-[10px] opacity-60">{{ t('history.recordCount', { count: bucket.entries.length }) }}</span>
               <div class="h-px flex-1 bg-border" />
             </header>
             <ul class="flex flex-col gap-1">
@@ -393,18 +370,18 @@ onBeforeUnmount(() => {
                   <span class="flex items-center rounded border border-border bg-background/60 px-1 py-0.5" :title="TRIGGER_META[s.trigger]?.label">
                     <component :is="triggerIcon(s.trigger)" class="h-3 w-3" />
                   </span>
-                  <span class="inline-flex items-center gap-0.5 rounded border border-border bg-background/60 px-1 py-0.5 font-mono tabular-nums" :title="`${s.results.length} 个翻译渠道`">
+                    <span class="inline-flex items-center gap-0.5 rounded border border-border bg-background/60 px-1 py-0.5 font-mono tabular-nums" :title="t('history.resultCount', { count: s.results.length })">
                     <Layers class="h-2.5 w-2.5" />
                     {{ s.results.length }}
                   </span>
                   <span class="ml-auto flex items-center gap-1">
                     <template v-if="s.results.some((r) => r.status === 'pending')">
-                      <span class="inline-flex items-center gap-0.5 rounded border border-accent/40 bg-accent/10 px-1 py-0.5 text-accent" title="仍在翻译中">
+                    <span class="inline-flex items-center gap-0.5 rounded border border-accent/40 bg-accent/10 px-1 py-0.5 text-accent" :title="t('popup.status.translating')">
                         <span class="h-1.5 w-1.5 rounded-full bg-accent" />
                       </span>
                     </template>
                     <template v-if="s.results.some((r) => r.status !== 'success') && !s.results.some((r) => r.status === 'pending')">
-                      <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-destructive" :title="`${s.results.filter((r) => r.status !== 'success').length} 个翻译结果异常`" />
+                    <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-destructive" :title="t('history.errorCount', { count: s.results.filter((r) => r.status !== 'success').length })" />
                     </template>
                   </span>
                 </div>
@@ -418,7 +395,7 @@ onBeforeUnmount(() => {
         <section class="flex min-w-0 flex-1 flex-col">
           <div v-if="!activeSession" class="flex flex-1 flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border py-16 text-center text-muted-foreground">
             <HistoryIcon class="h-6 w-6" />
-            <p class="text-sm">从左侧选一条会话查看详情</p>
+            <p class="text-sm">{{ t('history.selectSession') }}</p>
           </div>
 
           <template v-else>
@@ -468,12 +445,12 @@ onBeforeUnmount(() => {
     </template>
 
     <!-- 清空确认 -->
-    <Dialog v-model:open="showClearConfirm" title="清空全部翻译历史?" description="此操作不可撤销，所有翻译历史都会被永久删除。" width="420px">
+    <Dialog v-model:open="showClearConfirm" :title="t('history.clearTitle')" :description="t('history.clearDescription')" width="420px">
       <div class="flex justify-end gap-2 pt-2">
-        <Button variant="ghost" size="sm" :disabled="clearing" @click="showClearConfirm = false">取消</Button>
+        <Button variant="ghost" size="sm" :disabled="clearing" @click="showClearConfirm = false">{{ t('common.cancel') }}</Button>
         <Button variant="destructive" size="sm" :disabled="clearing" @click="clearAll">
           <Trash2 class="h-3.5 w-3.5" />
-          确认清空
+          {{ t('history.confirmClear') }}
         </Button>
       </div>
     </Dialog>
