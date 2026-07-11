@@ -3,21 +3,19 @@ use crate::{
     core::i18n::{resolve_locale, resolve_messages, scan_language_packs, LanguageSnapshot},
 };
 use serde::Serialize;
-use std::{
-    fs,
-    path::PathBuf,
-    process::Command,
-    sync::{Mutex, MutexGuard},
-};
+use std::{fs, path::PathBuf, process::Command, sync::Mutex};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 // ponytail: 语言切换是低频全局操作；未来出现并发瓶颈时再迁移为 async/per-app 锁。
 static LANGUAGE_APPLY_LOCK: Mutex<()> = Mutex::new(());
 
-fn lock_interface_language() -> Result<MutexGuard<'static, ()>, String> {
-    LANGUAGE_APPLY_LOCK
+pub(crate) fn with_interface_language_lock<T>(
+    f: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    let _guard = LANGUAGE_APPLY_LOCK
         .lock()
-        .map_err(|_| "界面语言应用锁已损坏".to_string())
+        .map_err(|_| "界面语言应用锁已损坏".to_string())?;
+    f()
 }
 
 #[derive(Clone, Serialize)]
@@ -66,7 +64,24 @@ pub fn apply_interface_language(
     increment_revision: bool,
     emit_change: bool,
 ) -> Result<LanguageSnapshot, String> {
-    let _guard = lock_interface_language()?;
+    with_interface_language_lock(|| {
+        apply_interface_language_locked(
+            app,
+            state,
+            configured_locale,
+            increment_revision,
+            emit_change,
+        )
+    })
+}
+
+pub(crate) fn apply_interface_language_locked(
+    app: &AppHandle,
+    state: &AppState,
+    configured_locale: &str,
+    increment_revision: bool,
+    emit_change: bool,
+) -> Result<LanguageSnapshot, String> {
     fs::create_dir_all(language_pack_dir(app)?)
         .map_err(|error| format!("无法创建语言包目录: {error}"))?;
     let mut snapshot =
@@ -135,16 +150,17 @@ pub fn get_interface_language_snapshot(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<LanguageSnapshot, String> {
-    let _guard = lock_interface_language()?;
-    let configured = state
-        .config_store
-        .get()
-        .map_err(|error| error.to_string())?;
-    build_language_snapshot(
-        &app,
-        &configured.interface_language,
-        state.interface_language_revision(),
-    )
+    with_interface_language_lock(|| {
+        let configured = state
+            .config_store
+            .get()
+            .map_err(|error| error.to_string())?;
+        build_language_snapshot(
+            &app,
+            &configured.interface_language,
+            state.interface_language_revision(),
+        )
+    })
 }
 
 #[tauri::command]
@@ -152,11 +168,13 @@ pub fn refresh_interface_languages(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<LanguageSnapshot, String> {
-    let configured = state
-        .config_store
-        .get()
-        .map_err(|error| error.to_string())?;
-    apply_interface_language(&app, &state, &configured.interface_language, true, true)
+    with_interface_language_lock(|| {
+        let configured = state
+            .config_store
+            .get()
+            .map_err(|error| error.to_string())?;
+        apply_interface_language_locked(&app, &state, &configured.interface_language, true, true)
+    })
 }
 
 #[tauri::command]
