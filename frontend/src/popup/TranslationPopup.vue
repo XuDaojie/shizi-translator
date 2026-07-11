@@ -18,8 +18,24 @@ import { toast } from '@/lib/toast'
 import { matchShortcutKeys } from '@/lib/matchShortcut'
 import { translationLanguage } from '@/shared/translation-languages'
 import type { AppConfig } from '@/types/config'
+import { locale, reloadCurrentLocale, t } from '@/i18n'
 
 const logger = createLogger('translate')
+let disposed = false
+let unlistenLanguageChanged: (() => void) | null = null
+
+const applyDocumentLanguageAndTitle = async (): Promise<void> => {
+  document.documentElement.lang = locale.value
+  const apis = getTauriApis()
+  if (!apis) return
+  try {
+    await (apis.getCurrentWindow() as ReturnType<typeof apis.getCurrentWindow> & {
+      setTitle: (title: string) => Promise<void>
+    }).setTitle(t('window.popupTitle'))
+  } catch (error) {
+    logger.warn('更新翻译窗口标题失败', String(error))
+  }
+}
 
 /* === 顶层状态（spec 6.1） === */
 const popupRef = ref<HTMLElement | null>(null)
@@ -147,6 +163,8 @@ const onAppShortcutKeydown = (e: KeyboardEvent): void => {
 }
 
 onBeforeUnmount(() => {
+  disposed = true
+  unlistenLanguageChanged?.()
   events.unlisten()
   readyGate.dispose()
   window.removeEventListener('keydown', onAppShortcutKeydown)
@@ -368,6 +386,18 @@ const runColdStartReady = async (): Promise<void> => {
 }
 
 onMounted(() => {
+  void applyDocumentLanguageAndTitle()
+  const apis = getTauriApis()
+  if (apis) {
+    void apis.listen('interface-language:changed', () => {
+      void reloadCurrentLocale()
+        .then(applyDocumentLanguageAndTitle)
+        .catch((error) => logger.warn('刷新界面语言失败', String(error)))
+    }).then((unlisten) => {
+      if (disposed) unlisten()
+      else unlistenLanguageChanged = unlisten
+    }).catch((error) => logger.warn('监听界面语言变更失败', String(error)))
+  }
   charCount.value = sourceText.value.length
   void runColdStartReady()
   void collectEdgeTranslateEnv()

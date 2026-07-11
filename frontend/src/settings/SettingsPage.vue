@@ -10,6 +10,9 @@ import HistoryPanel from './panels/HistoryPanel.vue'
 import { useSettings } from './stores/settings'
 import { matchShortcutKeys } from '@/lib/matchShortcut'
 import { invokeOpenSettings } from '@/lib/tauri'
+import { locale, reloadCurrentLocale, t } from '@/i18n'
+import { createLogger } from '@public/logger.js'
+import { getTauriApis } from '@/popup/composables/utils'
 
 interface Props {
   initialCategory?: string
@@ -37,6 +40,22 @@ const onUpdateActive = (value: string): void => {
 }
 
 const settings = useSettings()
+const logger = createLogger('settings')
+let disposed = false
+let unlistenLanguageChanged: (() => void) | null = null
+
+const applyDocumentLanguageAndTitle = async (): Promise<void> => {
+  document.documentElement.lang = locale.value
+  const apis = getTauriApis()
+  if (!apis) return
+  try {
+    await (apis.getCurrentWindow() as ReturnType<typeof apis.getCurrentWindow> & {
+      setTitle: (title: string) => Promise<void>
+    }).setTitle(t('window.settingsTitle'))
+  } catch (error) {
+    logger.warn('更新设置窗口标题失败', String(error))
+  }
+}
 
 const openSettingsKeys = computed(
   () => settings.state.shortcut.bindings.find((b) => b.id === 'open-settings')?.keys ?? 'Ctrl+,',
@@ -52,11 +71,25 @@ const onAppShortcutKeydown = (e: KeyboardEvent): void => {
 }
 
 onMounted(() => {
+  void applyDocumentLanguageAndTitle()
+  const apis = getTauriApis()
+  if (apis) {
+    void apis.listen('interface-language:changed', () => {
+      void reloadCurrentLocale()
+        .then(applyDocumentLanguageAndTitle)
+        .catch((error) => logger.warn('刷新界面语言失败', String(error)))
+    }).then((unlisten) => {
+      if (disposed) unlisten()
+      else unlistenLanguageChanged = unlisten
+    }).catch((error) => logger.warn('监听界面语言变更失败', String(error)))
+  }
   void settings.syncFromBackend()
   window.addEventListener('keydown', onAppShortcutKeydown)
 })
 
 onBeforeUnmount(() => {
+  disposed = true
+  unlistenLanguageChanged?.()
   window.removeEventListener('keydown', onAppShortcutKeydown)
 })
 </script>
