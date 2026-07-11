@@ -37,34 +37,29 @@ impl MicrosoftMtProvider {
 
 // ── 语言映射 ──────────────────────────────────────────────
 // 内部 code（与前端 LANGUAGES 同源）↔ Edge code。
-fn map_source_lang(internal: &str) -> Option<&'static str> {
-    match internal {
-        "auto" => None, // 省略 from，自动检测
-        "zh-CN" => Some("zh-Hans"),
-        "zh-TW" => Some("zh-Hant"),
-        "en-US" => Some("en"),
-        "ja-JP" => Some("ja"),
-        "ko-KR" => Some("ko"),
-        "fr-FR" => Some("fr"),
-        "de-DE" => Some("de"),
-        "es-ES" => Some("es"),
-        "ru-RU" => Some("ru"),
-        _ => None, // 未知语言省略 from（交由 Edge 自动检测），不阻断翻译
+fn unsupported_language(kind: &str, code: &str) -> TranslationError {
+    TranslationError::Api {
+        message: format!("不支持的{kind}语言代码: {code}"),
+        retryable: false,
     }
 }
 
-fn map_target_lang(internal: &str) -> &str {
+fn map_source_lang(internal: &str) -> Result<Option<&str>, TranslationError> {
+    if internal == "auto" {
+        return Ok(None);
+    }
+    map_target_lang(internal)
+        .map(Some)
+        .map_err(|_| unsupported_language("源", internal))
+}
+
+fn map_target_lang(internal: &str) -> Result<&str, TranslationError> {
     match internal {
-        "zh-CN" => "zh-Hans",
-        "zh-TW" => "zh-Hant",
-        "en-US" => "en",
-        "ja-JP" => "ja",
-        "ko-KR" => "ko",
-        "fr-FR" => "fr",
-        "de-DE" => "de",
-        "es-ES" => "es",
-        "ru-RU" => "ru",
-        _ => "en", // 未知目标语言兜底英语
+        "zh-CN" => Ok("zh-Hans"),
+        "zh-TW" => Ok("zh-Hant"),
+        "en" | "ja" | "ko" | "fr" | "de" | "es" | "pt" | "ru" | "it" | "nl" | "pl" | "tr"
+        | "ar" | "th" | "vi" | "id" | "hi" => Ok(internal),
+        code => Err(unsupported_language("目标", code)),
     }
 }
 
@@ -73,13 +68,8 @@ fn detected_to_internal(edge: &str) -> String {
     match edge {
         "zh-Hans" => "zh-CN".to_string(),
         "zh-Hant" => "zh-TW".to_string(),
-        "en" => "en-US".to_string(),
-        "ja" => "ja-JP".to_string(),
-        "ko" => "ko-KR".to_string(),
-        "fr" => "fr-FR".to_string(),
-        "de" => "de-DE".to_string(),
-        "es" => "es-ES".to_string(),
-        "ru" => "ru-RU".to_string(),
+        "en" | "ja" | "ko" | "fr" | "de" | "es" | "pt" | "ru" | "it" | "nl" | "pl" | "tr"
+        | "ar" | "th" | "vi" | "id" | "hi" => edge.to_string(),
         other => other.to_string(),
     }
 }
@@ -236,8 +226,8 @@ impl BatchTranslateProvider for MicrosoftMtProvider {
         cancel: &CancellationToken,
     ) -> Result<TranslationResult, TranslationError> {
         let text = request.source_text();
-        let from = map_source_lang(&request.source_lang);
-        let to = map_target_lang(&request.target_lang);
+        let from = map_source_lang(&request.source_lang)?;
+        let to = map_target_lang(&request.target_lang)?;
         let url = build_url(from, to);
         let ua = self.effective_ua().to_string();
         let headers = build_headers(&self.env, &ua);
@@ -342,23 +332,48 @@ mod tests {
 
     #[test]
     fn map_source_lang_auto_is_none() {
-        assert_eq!(map_source_lang("auto"), None);
+        assert_eq!(map_source_lang("auto").unwrap(), None);
     }
+
     #[test]
-    fn map_source_lang_known() {
-        assert_eq!(map_source_lang("zh-CN"), Some("zh-Hans"));
-        assert_eq!(map_source_lang("en-US"), Some("en"));
+    fn all_supported_languages_roundtrip_through_edge_codes() {
+        let cases = [
+            ("zh-CN", "zh-Hans"),
+            ("zh-TW", "zh-Hant"),
+            ("en", "en"),
+            ("ja", "ja"),
+            ("ko", "ko"),
+            ("fr", "fr"),
+            ("de", "de"),
+            ("es", "es"),
+            ("pt", "pt"),
+            ("ru", "ru"),
+            ("it", "it"),
+            ("nl", "nl"),
+            ("pl", "pl"),
+            ("tr", "tr"),
+            ("ar", "ar"),
+            ("th", "th"),
+            ("vi", "vi"),
+            ("id", "id"),
+            ("hi", "hi"),
+        ];
+        for (internal, edge) in cases {
+            assert_eq!(map_source_lang(internal).unwrap(), Some(edge));
+            assert_eq!(map_target_lang(internal).unwrap(), edge);
+            assert_eq!(detected_to_internal(edge), internal);
+        }
     }
+
     #[test]
-    fn map_target_lang_known_and_fallback() {
-        assert_eq!(map_target_lang("ja-JP"), "ja");
-        assert_eq!(map_target_lang("unknown"), "en");
+    fn unknown_languages_are_errors_instead_of_fallbacks() {
+        assert!(map_source_lang("en-US").is_err());
+        assert!(map_target_lang("unknown").is_err());
     }
+
     #[test]
-    fn detected_to_internal_roundtrip() {
-        assert_eq!(detected_to_internal("en"), "en-US");
-        assert_eq!(detected_to_internal("zh-Hans"), "zh-CN");
-        assert_eq!(detected_to_internal("fr"), "fr-FR");
+    fn detected_to_internal_preserves_unknown_codes() {
+        assert_eq!(detected_to_internal("unknown"), "unknown");
     }
     #[test]
     fn build_url_omits_from_for_auto() {
