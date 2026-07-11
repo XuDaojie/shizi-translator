@@ -1,5 +1,10 @@
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fs, path::Path};
+use std::{
+    collections::HashMap,
+    fs::{self, File},
+    io::{ErrorKind, Read},
+    path::Path,
+};
 
 const MAX_PACK_SIZE: u64 = 1_048_576;
 const BUILTINS: [(&str, &str); 8] = [
@@ -108,12 +113,32 @@ pub fn scan_language_packs(dir: &Path, current_locale: Option<&str>) -> Language
         languages: builtin_metadata(),
         ..Default::default()
     };
-    let Ok(entries) = fs::read_dir(dir) else {
-        return scan;
+    let entries = match fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == ErrorKind::NotFound => return scan,
+        Err(error) => {
+            scan.errors.push(LanguagePackError {
+                file: dir.to_string_lossy().into_owned(),
+                message: format!("无法读取语言包目录: {error}"),
+            });
+            return scan;
+        }
     };
     let allowed = builtin_pack("zh-CN").messages;
+    let mut files = Vec::new();
 
-    for entry in entries.flatten() {
+    for entry in entries {
+        match entry {
+            Ok(entry) => files.push(entry),
+            Err(error) => scan.errors.push(LanguagePackError {
+                file: dir.to_string_lossy().into_owned(),
+                message: format!("无法枚举语言包目录: {error}"),
+            }),
+        }
+    }
+    files.sort_by_key(|entry| entry.file_name());
+
+    for entry in files {
         let path = entry.path();
         if path.extension().and_then(|v| v.to_str()) != Some("json") {
             continue;
@@ -140,14 +165,22 @@ pub fn scan_language_packs(dir: &Path, current_locale: Option<&str>) -> Language
 }
 
 fn validate_pack(path: &Path, allowed: &HashMap<String, String>) -> Result<LanguagePack, String> {
-    if fs::metadata(path)
+    let file = File::open(path).map_err(|e| format!("无法打开语言包: {e}"))?;
+    let size = file
+        .metadata()
         .map_err(|e| format!("无法读取文件信息: {e}"))?
-        .len()
-        > MAX_PACK_SIZE
-    {
+        .len();
+    if size > MAX_PACK_SIZE {
         return Err("语言包超过 1 MiB 限制".into());
     }
-    let text = fs::read_to_string(path).map_err(|e| format!("无法读取语言包: {e}"))?;
+    let mut bytes = Vec::with_capacity((size + 1) as usize);
+    file.take(MAX_PACK_SIZE + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| format!("无法读取语言包: {e}"))?;
+    if bytes.len() as u64 > MAX_PACK_SIZE {
+        return Err("语言包超过 1 MiB 限制".into());
+    }
+    let text = String::from_utf8(bytes).map_err(|_| "语言包不是有效 UTF-8".to_string())?;
     let value: serde_json::Value =
         serde_json::from_str(&text).map_err(|e| format!("JSON 格式无效: {e}"))?;
     if value.get("schemaVersion").and_then(|v| v.as_u64()) != Some(1) {
@@ -189,17 +222,13 @@ pub fn resolve_locale(
     scan: &LanguagePackScan,
 ) -> String {
     if configured != "auto" {
-        return if is_valid_locale(configured) && available(configured, scan) {
-            configured.to_string()
-        } else {
-            "zh-CN".into()
-        };
+        return canonical_available(configured, scan).unwrap_or_else(|| "zh-CN".into());
     }
     let Some(locale) = os_locale.filter(|locale| is_valid_locale(locale)) else {
         return "zh-CN".into();
     };
-    if available(locale, scan) {
-        return locale.to_string();
+    if let Some(canonical) = canonical_available(locale, scan) {
+        return canonical;
     }
     let parts: Vec<_> = locale.split('-').collect();
     match parts[0].to_ascii_lowercase().as_str() {
@@ -226,11 +255,11 @@ pub fn resolve_locale(
 
 pub fn resolve_messages(locale: &str, scan: &LanguagePackScan) -> HashMap<String, String> {
     let fallback = builtin_pack("zh-CN").messages;
-    let same_locale = BUILTINS
-        .iter()
-        .any(|(candidate, _)| *candidate == locale)
-        .then(|| builtin_pack(locale).messages)
-        .unwrap_or_default();
+    let same_locale = if BUILTINS.iter().any(|(candidate, _)| *candidate == locale) {
+        builtin_pack(locale).messages
+    } else {
+        HashMap::new()
+    };
     merge_messages(&scan.user_messages, &same_locale, &fallback)
 }
 
@@ -268,8 +297,14 @@ fn builtin_pack(locale: &str) -> LanguagePack {
     serde_json::from_str(json).expect("内置语言包必须有效")
 }
 
-fn available(locale: &str, scan: &LanguagePackScan) -> bool {
-    scan.languages.iter().any(|meta| meta.locale == locale)
+fn canonical_available(locale: &str, scan: &LanguagePackScan) -> Option<String> {
+    if !is_valid_locale(locale) {
+        return None;
+    }
+    scan.languages
+        .iter()
+        .find(|meta| meta.locale.eq_ignore_ascii_case(locale))
+        .map(|meta| meta.locale.clone())
 }
 
 fn is_valid_locale(locale: &str) -> bool {
@@ -405,5 +440,64 @@ mod tests {
     fn locale_segments_match_declared_pattern() {
         assert!(is_valid_locale("en-US"));
         assert!(!is_valid_locale("en-x"));
+    }
+
+    #[test]
+    fn scan_results_follow_file_name_order() {
+        let dir = TempDir::new().unwrap();
+        write_pack(&dir, "z-bad.json", "not json");
+        write_pack(&dir, "a-bad.json", "not json");
+        write_pack(
+            &dir,
+            "it-IT.json",
+            &valid_pack("it-IT", r#"{"tray.quit":"Esci"}"#),
+        );
+        write_pack(
+            &dir,
+            "nl-NL.json",
+            &valid_pack("nl-NL", r#"{"tray.quit":"Afsluiten"}"#),
+        );
+
+        let scan = scan_language_packs(dir.path(), None);
+        assert_eq!(
+            scan.errors
+                .iter()
+                .map(|error| error.file.as_str())
+                .collect::<Vec<_>>(),
+            vec!["a-bad.json", "z-bad.json"]
+        );
+        assert_eq!(
+            scan.languages
+                .iter()
+                .filter(|meta| !meta.builtin)
+                .map(|meta| meta.locale.as_str())
+                .collect::<Vec<_>>(),
+            vec!["it-IT", "nl-NL"]
+        );
+    }
+
+    #[test]
+    fn non_directory_scan_path_reports_error() {
+        let dir = TempDir::new().unwrap();
+        let file = dir.path().join("packs");
+        fs::write(&file, "x").unwrap();
+
+        let scan = scan_language_packs(&file, None);
+        assert_eq!(scan.errors.len(), 1);
+        assert!(scan.errors[0].message.starts_with("无法读取语言包目录:"));
+    }
+
+    #[test]
+    fn resolve_locale_returns_canonical_available_locale() {
+        let dir = TempDir::new().unwrap();
+        write_pack(
+            &dir,
+            "it-IT.json",
+            &valid_pack("it-IT", r#"{"tray.quit":"Esci"}"#),
+        );
+        let scan = scan_language_packs(dir.path(), None);
+
+        assert_eq!(resolve_locale("en-us", None, &scan), "en-US");
+        assert_eq!(resolve_locale("IT-it", None, &scan), "it-IT");
     }
 }
