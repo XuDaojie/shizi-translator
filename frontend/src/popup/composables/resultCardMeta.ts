@@ -31,9 +31,21 @@ import type { MessageKey, MessageParams } from '@/i18n'
 
 type ResultStatus = 'pending' | 'translating' | 'finished' | 'failed' | 'cancelled'
 
+export const POPUP_MESSAGE_KEYS = {
+  ready: 'popup.status.ready',
+  detecting: 'popup.status.detecting',
+  translating: 'popup.status.translating',
+  emptySource: 'popup.error.emptySource',
+  retry: 'popup.button.retry',
+  cancel: 'popup.button.cancel',
+  copySuccess: 'popup.toast.copySuccess',
+  translationFailed: 'popup.error.translationFailed',
+  cancelled: 'popup.status.cancelled',
+} as const satisfies Record<string, MessageKey>
+
 export function resultStatusMeta(status: ResultStatus): { key: MessageKey; params: MessageParams } | null {
-  if (status === 'failed') return { key: 'popup.error.translationFailed', params: {} }
-  if (status === 'cancelled') return { key: 'popup.status.cancelled', params: {} }
-  if (status === 'translating') return { key: 'popup.status.translating', params: {} }
+  if (status === 'failed') return { key: POPUP_MESSAGE_KEYS.translationFailed, params: {} }
+  if (status === 'cancelled') return { key: POPUP_MESSAGE_KEYS.cancelled, params: {} }
+  if (status === 'translating') return { key: POPUP_MESSAGE_KEYS.translating, params: {} }
   return null
 }

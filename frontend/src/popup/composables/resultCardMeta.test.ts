@@ -1,5 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import { displayModelName, isMachineTranslateProtocol, resultStatusMeta, shouldShowTokens } from './resultCardMeta'
+import type { InterfaceLanguageSnapshot } from '@/lib/tauri'
+import { createI18nForTest } from '@/i18n'
+import zhCN from '@/i18n/locales/zh-CN.json'
+import enUS from '@/i18n/locales/en-US.json'
+import { displayModelName, isMachineTranslateProtocol, POPUP_MESSAGE_KEYS, resultStatusMeta, shouldShowTokens } from './resultCardMeta'
+
+const snapshot = (locale: string, revision: number): InterfaceLanguageSnapshot => ({
+  configuredLocale: locale,
+  locale,
+  revision,
+  languages: [],
+  userMessages: {},
+  errors: [],
+})
 
 describe('resultCardMeta', () => {
   it('识别微软 Edge 机器翻译协议', () => {
@@ -31,5 +44,36 @@ describe('resultCardMeta', () => {
     expect(resultStatusMeta('cancelled')).toEqual({ key: 'popup.status.cancelled', params: {} })
     expect(resultStatusMeta('translating')).toEqual({ key: 'popup.status.translating', params: {} })
     expect(resultStatusMeta('finished')).toBeNull()
+  })
+
+  it('集中声明弹窗状态、动作和 toast 的消息 key 契约', () => {
+    expect(POPUP_MESSAGE_KEYS).toEqual({
+      ready: 'popup.status.ready',
+      detecting: 'popup.status.detecting',
+      translating: 'popup.status.translating',
+      emptySource: 'popup.error.emptySource',
+      retry: 'popup.button.retry',
+      cancel: 'popup.button.cancel',
+      copySuccess: 'popup.toast.copySuccess',
+      translationFailed: 'popup.error.translationFailed',
+      cancelled: 'popup.status.cancelled',
+    })
+  })
+
+  it('同一消息 key 随运行时 locale 切换重新渲染', async () => {
+    const i18n = createI18nForTest(async (locale) => locale === 'en-US' ? enUS : zhCN)
+    await i18n.applySnapshot(snapshot('zh-CN', 1))
+    expect([
+      i18n.t(POPUP_MESSAGE_KEYS.ready),
+      i18n.t(POPUP_MESSAGE_KEYS.retry),
+      i18n.t(POPUP_MESSAGE_KEYS.copySuccess),
+    ]).toEqual(['就绪', '重试', '已复制到剪贴板'])
+
+    await i18n.applySnapshot(snapshot('en-US', 2))
+    expect([
+      i18n.t(POPUP_MESSAGE_KEYS.ready),
+      i18n.t(POPUP_MESSAGE_KEYS.retry),
+      i18n.t(POPUP_MESSAGE_KEYS.copySuccess),
+    ]).toEqual(['Ready', 'Retry', 'Copied to clipboard'])
   })
 })

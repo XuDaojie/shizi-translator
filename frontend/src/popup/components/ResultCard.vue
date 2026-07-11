@@ -2,7 +2,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import ResultCardView from './ResultCardView.vue'
 import type { CardState } from '../composables/useTranslationEvents'
-import { displayModelName, resultStatusMeta, shouldShowTokens } from '../composables/resultCardMeta'
+import { displayModelName, POPUP_MESSAGE_KEYS, resultStatusMeta, shouldShowTokens } from '../composables/resultCardMeta'
 import { speakText, copyText, getTauriApis } from '../composables/utils'
 import { toast } from '@/lib/toast'
 import { t } from '@/i18n'
@@ -91,7 +91,7 @@ const onSpeak = (): void => {
 const onCopy = async (): Promise<void> => {
   const text = textRef.value?.textContent ?? props.card.text
   const ok = await copyText(text)
-  if (ok) toast.success(t('popup.toast.copySuccess'))
+  if (ok) toast.success(t(POPUP_MESSAGE_KEYS.copySuccess))
   else toast.error(t('popup.error.copyFailed'))
 }
 

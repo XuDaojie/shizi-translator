@@ -14,6 +14,7 @@ import {
   doubleRaf,
 } from './composables/mainWindowReady'
 import { getTauriApis } from './composables/utils'
+import { POPUP_MESSAGE_KEYS } from './composables/resultCardMeta'
 import { toast } from '@/lib/toast'
 import { matchShortcutKeys } from '@/lib/matchShortcut'
 import { translationLanguage } from '@/shared/translation-languages'
@@ -81,7 +82,7 @@ const detectedLangBadge = ref('')
 const charCount = ref(0)
 type StatusAction = { key: MessageKey; params?: MessageParams; onClick: () => void }
 const statusInfo = ref<{ key: MessageKey; params: MessageParams; loading: boolean; action: StatusAction | null }>({
-  key: 'popup.status.ready', params: {}, loading: false, action: null,
+  key: POPUP_MESSAGE_KEYS.ready, params: {}, loading: false, action: null,
 })
 const pendingConfigRefresh = ref<AppConfig | null>(null)
 /** 程序快捷键「打开设置」；默认 Ctrl+,，随 app-config 同步。 */
@@ -117,7 +118,7 @@ const languageLabel = (code: string): string => {
 }
 const detectedOrLabel = computed(() => {
   if (detectedLangBadge.value) return languageLabel(detectedLangBadge.value)
-  if (sessionSourceLang.value === 'auto') return t('popup.status.detecting')
+  if (sessionSourceLang.value === 'auto') return t(POPUP_MESSAGE_KEYS.detecting)
   return sourceLangLabel.value
 })
 
@@ -136,22 +137,22 @@ const updateBatchStatus = (): void => {
       const detected = list.find((c) => c.detectedSourceLang)?.detectedSourceLang ?? ''
       detectedLangBadge.value = detected
     }
-    setStatus('popup.status.completed', false, { key: 'popup.button.retry', onClick: retryTranslation })
+    setStatus('popup.status.completed', false, { key: POPUP_MESSAGE_KEYS.retry, onClick: retryTranslation })
     applyPendingConfigRefresh()
   } else if (allFailed) {
     isTranslating.value = false
     currentBatchId.value = null
     detectedLangBadge.value = ''
-    setStatus('popup.status.failed', false, { key: 'popup.button.retry', onClick: retryTranslation })
+    setStatus('popup.status.failed', false, { key: POPUP_MESSAGE_KEYS.retry, onClick: retryTranslation })
     applyPendingConfigRefresh()
   } else if (anyTranslating) {
-    setStatus('popup.status.translating', true, { key: 'popup.button.cancel', onClick: cancelTranslation })
+    setStatus(POPUP_MESSAGE_KEYS.translating, true, { key: POPUP_MESSAGE_KEYS.cancel, onClick: cancelTranslation })
   } else {
     isTranslating.value = false
     currentBatchId.value = null
     sourceBadge.value = null
     detectedLangBadge.value = ''
-    setStatus('popup.status.partial', false, { key: 'popup.button.retry', onClick: retryTranslation })
+    setStatus('popup.status.partial', false, { key: POPUP_MESSAGE_KEYS.retry, onClick: retryTranslation })
     applyPendingConfigRefresh()
   }
 }
@@ -163,7 +164,7 @@ const onStarted = (payload: TranslationEventPayload, isNewBatch: boolean): void 
     charCount.value = sourceText.value.length
     sourceBadge.value = payload.sourceType ?? null
     detectedLangBadge.value = ''
-    setStatus('popup.status.translating', true, { key: 'popup.button.cancel', onClick: cancelTranslation })
+    setStatus(POPUP_MESSAGE_KEYS.translating, true, { key: POPUP_MESSAGE_KEYS.cancel, onClick: cancelTranslation })
   }
 }
 const onDetectedLang = (lang: string | null): void => {
@@ -284,13 +285,13 @@ const applyPendingConfigRefresh = (): void => {
 const startManualTranslation = async (): Promise<void> => {
   if (isTranslating.value) return
   const text = sourceText.value.trim()
-  if (!text) { toast.info(t('popup.error.emptySource')); return }
+  if (!text) { toast.info(t(POPUP_MESSAGE_KEYS.emptySource)); return }
   const apis = getTauriApis()
   if (!apis) { toast.info(t('popup.error.tauriUnavailable')); return }
   try {
     await apis.invoke('start_translation', { text })
   } catch (e) {
-    toast.error(t('popup.error.translationFailed'), String(e))
+    toast.error(t(POPUP_MESSAGE_KEYS.translationFailed), String(e))
     logger.error('手动翻译失败', String(e))
   }
 }
