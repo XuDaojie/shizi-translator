@@ -15,7 +15,6 @@ pub struct TrayI18nHandles {
     pub translate: MenuItem<tauri::Wry>,
     pub settings: MenuItem<tauri::Wry>,
     pub quit: MenuItem<tauri::Wry>,
-    pub popup_title: Arc<RwLock<String>>,
     pub settings_title: Arc<RwLock<String>>,
 }
 
@@ -59,7 +58,6 @@ pub fn setup_tray(app: &tauri::App) -> tauri::Result<TrayI18nHandles> {
         translate: translate_item,
         settings: settings_item,
         quit: quit_item,
-        popup_title: Arc::new(RwLock::new("Shizi 翻译".into())),
         settings_title: Arc::new(RwLock::new("Shizi 设置".into())),
     })
 }

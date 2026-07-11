@@ -3,14 +3,49 @@ use crate::{
     core::i18n::{resolve_locale, resolve_messages, scan_language_packs, LanguageSnapshot},
 };
 use serde::Serialize;
-use std::{fs, process::Command};
+use std::{fs, path::PathBuf, process::Command, sync::Mutex};
 use tauri::{AppHandle, Emitter, Manager, State};
+
+// ponytail: 语言切换是低频全局操作；未来出现并发瓶颈时再迁移为 async/per-app 锁。
+static LANGUAGE_APPLY_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LanguageChanged<'a> {
     locale: &'a str,
     revision: u64,
+}
+
+fn language_pack_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    app.path()
+        .app_config_dir()
+        .map(|dir| dir.join("lang"))
+        .map_err(|error| format!("无法获取应用配置目录: {error}"))
+}
+
+fn build_language_snapshot(
+    app: &AppHandle,
+    configured_locale: &str,
+    revision: u64,
+) -> Result<LanguageSnapshot, String> {
+    let dir = language_pack_dir(app)?;
+
+    let available = scan_language_packs(&dir, None);
+    let locale = resolve_locale(
+        configured_locale,
+        sys_locale::get_locale().as_deref(),
+        &available,
+    );
+    let scan = scan_language_packs(&dir, Some(&locale));
+
+    Ok(LanguageSnapshot {
+        configured_locale: configured_locale.into(),
+        locale,
+        revision,
+        languages: scan.languages,
+        user_messages: scan.user_messages,
+        errors: scan.errors,
+    })
 }
 
 pub fn apply_interface_language(
@@ -20,21 +55,18 @@ pub fn apply_interface_language(
     increment_revision: bool,
     emit_change: bool,
 ) -> Result<LanguageSnapshot, String> {
-    let dir = app
-        .path()
-        .app_config_dir()
-        .map_err(|error| format!("无法获取应用配置目录: {error}"))?
-        .join("lang");
-    fs::create_dir_all(&dir).map_err(|error| format!("无法创建语言包目录: {error}"))?;
-
-    let available = scan_language_packs(&dir, None);
-    let locale = resolve_locale(
-        configured_locale,
-        sys_locale::get_locale().as_deref(),
-        &available,
-    );
-    let scan = scan_language_packs(&dir, Some(&locale));
-    let messages = resolve_messages(&locale, &scan);
+    let _guard = LANGUAGE_APPLY_LOCK
+        .lock()
+        .map_err(|_| "界面语言应用锁已损坏".to_string())?;
+    fs::create_dir_all(language_pack_dir(app)?)
+        .map_err(|error| format!("无法创建语言包目录: {error}"))?;
+    let mut snapshot =
+        build_language_snapshot(app, configured_locale, state.interface_language_revision())?;
+    let scan = crate::core::i18n::LanguagePackScan {
+        user_messages: snapshot.user_messages.clone(),
+        ..Default::default()
+    };
+    let messages = resolve_messages(&snapshot.locale, &scan);
     let handles = app.state::<TrayI18nHandles>();
 
     handles
@@ -55,11 +87,6 @@ pub fn apply_interface_language(
         .map_err(|error| format!("无法更新托盘提示: {error}"))?;
 
     *handles
-        .popup_title
-        .write()
-        .map_err(|_| "翻译窗口标题状态锁已损坏".to_string())? =
-        messages["window.popupTitle"].clone();
-    *handles
         .settings_title
         .write()
         .map_err(|_| "设置窗口标题状态锁已损坏".to_string())? =
@@ -76,26 +103,17 @@ pub fn apply_interface_language(
             .map_err(|error| format!("无法更新设置窗口标题: {error}"))?;
     }
 
-    let revision = if increment_revision {
+    snapshot.revision = if increment_revision {
         state.next_interface_language_revision()
     } else {
         state.interface_language_revision()
-    };
-
-    let snapshot = LanguageSnapshot {
-        configured_locale: configured_locale.into(),
-        locale,
-        revision,
-        languages: scan.languages,
-        user_messages: scan.user_messages,
-        errors: scan.errors,
     };
     if emit_change {
         app.emit(
             "interface-language:changed",
             LanguageChanged {
                 locale: &snapshot.locale,
-                revision,
+                revision: snapshot.revision,
             },
         )
         .map_err(|error| format!("界面语言已更新，但无法广播语言变更: {error}"))?;
@@ -112,7 +130,11 @@ pub fn get_interface_language_snapshot(
         .config_store
         .get()
         .map_err(|error| error.to_string())?;
-    apply_interface_language(&app, &state, &configured.interface_language, false, false)
+    build_language_snapshot(
+        &app,
+        &configured.interface_language,
+        state.interface_language_revision(),
+    )
 }
 
 #[tauri::command]
@@ -129,11 +151,7 @@ pub fn refresh_interface_languages(
 
 #[tauri::command]
 pub fn open_language_pack_directory(app: AppHandle) -> Result<(), String> {
-    let dir = app
-        .path()
-        .app_config_dir()
-        .map_err(|error| format!("无法获取应用配置目录: {error}"))?
-        .join("lang");
+    let dir = language_pack_dir(&app)?;
     fs::create_dir_all(&dir).map_err(|error| format!("无法创建语言包目录: {error}"))?;
     #[cfg(windows)]
     {
