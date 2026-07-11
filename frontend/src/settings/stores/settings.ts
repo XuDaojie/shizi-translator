@@ -25,6 +25,7 @@ import {
 } from '@/lib/tauri'
 import { toast } from '@/lib/toast'
 import { createLogger } from '@public/logger.js'
+import { t } from '@/i18n'
 
 const STORAGE_KEY = 'app:settings:v1'
 const logger = createLogger('settings')
@@ -416,16 +417,16 @@ const persist = async (notify = false): Promise<void> => {
   const err = validateConfig(config)
   if (err) {
     saveStatus.value = 'error'
-    toast.error('保存失败', err)
+    toast.error(t('settings.toast.saveFailed'), err)
     logger.warn('配置校验失败', err)
     return
   }
   try {
     if (isTauriReady()) {
       await invokeSaveAppConfig(config)
-      if (notify) toast.success('配置已保存')
+      if (notify) toast.success(t('settings.toast.saved'))
     } else if (notify) {
-      toast.info('Tauri 未就绪，仅本地保存')
+      toast.info(t('settings.toast.saved'), t('settings.status.localPreference'))
     }
     if (serializeForDirty(state) === serializeForDirty(snapshot)) {
       commitBaseline(snapshot)
@@ -436,7 +437,7 @@ const persist = async (notify = false): Promise<void> => {
     }
   } catch (e) {
     saveStatus.value = 'error'
-    toast.error('保存失败', String(e))
+    toast.error(t('settings.toast.saveFailed'), String(e))
     logger.error('保存配置失败', String(e))
   }
 }
@@ -599,11 +600,11 @@ export const useSettings = () => ({
   /** 注册一个用户自定义渠道类型;返回新 id,重复则抛错。 */
   addCustomServiceType(name: string): CustomServiceType {
     const clean = name.trim()
-    if (!clean) throw new Error('渠道名不能为空')
+    if (!clean) throw new Error(t('settings.error.channelNameRequired'))
     const id = newCustomTypeId(clean)
     const all = buildServices(state.customServiceTypes)
     if (all.some((s) => s.name.toLowerCase() === clean.toLowerCase())) {
-      throw new Error(`已存在同名渠道:${clean}`)
+      throw new Error(t('settings.error.duplicateChannel', { name: clean }))
     }
     const entry: CustomServiceType = {
       id,
@@ -617,7 +618,7 @@ export const useSettings = () => ({
   removeCustomServiceType(typeId: string): void {
     const inUse = state.services.some((s) => s.type === typeId)
     if (inUse) {
-      throw new Error('该渠道仍有实例在使用,请先删除或迁移实例')
+      throw new Error(t('settings.error.channelInUse'))
     }
     state.customServiceTypes = state.customServiceTypes.filter((t) => t.id !== typeId)
   },

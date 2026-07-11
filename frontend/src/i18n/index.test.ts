@@ -13,6 +13,8 @@ import deDE from './locales/de-DE.json'
 import esES from './locales/es-ES.json'
 
 const packages = [zhCN, zhTW, enUS, jaJP, koKR, frFR, deDE, esES]
+const placeholders = (message: string): string[] =>
+  [...message.matchAll(/\{([A-Za-z][A-Za-z0-9_]*)\}/g)].map((match) => match[1]).sort()
 
 const snapshot = (
   locale: string,
@@ -37,6 +39,12 @@ describe('内置语言包', () => {
       expect(pkg.name).toBeTruthy()
       expect(Object.keys(pkg.messages).sort()).toEqual(zhKeys)
       expect(Object.values(pkg.messages).every((message) => typeof message === 'string')).toBe(true)
+      for (const key of zhKeys) {
+        expect(
+          placeholders(pkg.messages[key as keyof typeof pkg.messages]),
+          `${pkg.locale}/${key}`,
+        ).toEqual(placeholders(zhCN.messages[key as keyof typeof zhCN.messages]))
+      }
     }
   })
 
@@ -57,6 +65,19 @@ describe('内置语言包', () => {
       expect(pkg.messages['tray.tooltip']).toContain('Shizi')
       expect(pkg.messages['tray.quit']).toBe(quit[index])
       expect(pkg.messages['settings.aria.recordShortcut']).toBe(recordShortcut[index])
+    }
+  })
+
+  it('高风险设置与历史文案保持同名 key 语义和参数契约', () => {
+    const enabled = ['启用 {name}', '啟用 {name}', 'Enable {name}', '{name} を有効化', '{name} 활성화', 'Activer {name}', '{name} aktivieren', 'Activar {name}']
+    const recordCount = ['{count} 条', '{count} 筆', '{count} records', '{count} 件', '{count}개', '{count} éléments', '{count} Einträge', '{count} registros']
+    const loadFailed = ['翻译历史加载失败', '載入翻譯歷史失敗', 'Failed to load translation history', '翻訳履歴の読み込みに失敗しました', '번역 기록을 불러오지 못했습니다', "Échec du chargement de l’historique des traductions", 'Übersetzungsverlauf konnte nicht geladen werden', 'No se pudo cargar el historial de traducciones']
+    for (const [index, pkg] of packages.entries()) {
+      expect(pkg.messages['settings.aria.enableNamedService'], pkg.locale).toBe(enabled[index])
+      expect(pkg.messages['history.recordCount'], pkg.locale).toBe(recordCount[index])
+      expect(pkg.messages['history.loadFailed'], pkg.locale).toBe(loadFailed[index])
+      expect(placeholders(pkg.messages['history.filterEmpty']), pkg.locale).toEqual(['filter'])
+      expect(placeholders(pkg.messages['history.loadFailed']), pkg.locale).toEqual([])
     }
   })
 })
