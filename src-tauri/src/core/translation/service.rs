@@ -167,6 +167,7 @@ mod tests {
             service_name: "test".to_string(),
             service_type: "llm".to_string(),
             protocol: "mock".to_string(),
+            model_name: "mock-model".to_string(),
         }
     }
 

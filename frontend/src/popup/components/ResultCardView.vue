@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import ServiceIcon from '@/settings/components/ServiceIcon.vue'
 
 type CardStatus = 'success' | 'loading' | 'error' | 'aborted' | 'pending'
@@ -49,6 +50,38 @@ const emit = defineEmits<{
   (e: 'refresh'): void
 }>()
 
+const clipRef = ref<HTMLElement | null>(null)
+/** 内部测高：父组件未传 hasOverflow 时（如历史详情）仍能显示「展开全文」 */
+const autoOverflow = ref(false)
+
+const showOverflow = computed(() => props.hasOverflow || autoOverflow.value)
+
+/**
+ * 相对折叠态 max-height(6.4em) 测高，避免 expanded 后 max-height 变大导致溢出标志被清掉、
+ * 「收起」按钮消失。
+ */
+const measureOverflow = (): void => {
+  if (props.collapsed) return
+  const clip = clipRef.value
+  if (!clip) return
+  const textEl = clip.querySelector('.result-text') as HTMLElement | null
+  if (!textEl) return
+  const prevMax = clip.style.maxHeight
+  clip.style.maxHeight = '6.4em'
+  autoOverflow.value = textEl.scrollHeight > clip.clientHeight + 1
+  clip.style.maxHeight = prevMax
+}
+
+const scheduleMeasure = (): void => {
+  void nextTick(() => measureOverflow())
+}
+
+onMounted(scheduleMeasure)
+watch(
+  () => [props.text, props.collapsed, props.status, props.expanded] as const,
+  scheduleMeasure,
+)
+
 const onHeaderClick = (e: MouseEvent): void => {
   if ((e.target as HTMLElement).closest('.result-collapse-btn')) return
   emit('toggle-collapse')
@@ -68,7 +101,7 @@ const showDotFinal = (): boolean => props.loading || props.status === 'loading'
     class="result-card"
     :class="{
       'collapsed': collapsed,
-      'has-overflow': hasOverflow,
+      'has-overflow': showOverflow,
       'expanded': expanded,
       'failed': status === 'error',
       'cancelled': status === 'aborted',
@@ -95,7 +128,7 @@ const showDotFinal = (): boolean => props.loading || props.status === 'loading'
     </div>
     <div class="result-card-body">
       <div class="result-card-body-inner">
-        <div class="result-text-clip">
+        <div ref="clipRef" class="result-text-clip">
           <slot>
             <div class="result-text">{{ text }}<span v-if="status === 'loading'" class="stream-cursor" /></div>
           </slot>
@@ -120,7 +153,7 @@ const showDotFinal = (): boolean => props.loading || props.status === 'loading'
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-15 6.7L3 16" /><path d="M3 21v-5h5" /></svg>
           </button>
           <span v-if="modelName || showTokens" class="result-model-group">
-            <span v-if="modelName" class="result-model-tag">{{ modelName }}</span>
+            <span v-if="modelName" class="result-model-tag" :title="modelName">{{ modelName }}</span>
             <span v-if="showTokens" class="result-tokens" title="输入 / 输出 Token">
               <span class="tok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5" /><polyline points="5 12 12 5 19 12" /></svg>{{ inputTokens }}</span>
               <span class="tok-sep" />

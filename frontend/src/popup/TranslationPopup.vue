@@ -153,10 +153,10 @@ onBeforeUnmount(() => {
 })
 
 /* === 卡片配置同步（复刻旧 refreshCardsFromConfig + syncServiceCards） === */
-const enabledPayloads = (config: AppConfig): Array<{ serviceInstanceId: string; serviceType: string; serviceName: string }> =>
+const enabledPayloads = (config: AppConfig): Array<{ serviceInstanceId: string; serviceType: string; serviceName: string; modelName: string }> =>
   (config.services || [])
     .filter((s) => s.enabled)
-    .map((s) => ({ serviceInstanceId: s.id, serviceType: s.serviceType, serviceName: s.name }))
+    .map((s) => ({ serviceInstanceId: s.id, serviceType: s.serviceType, serviceName: s.name, modelName: s.model || '' }))
 
 const refreshCardsFromConfig = (config: AppConfig): void => {
   const payloads = enabledPayloads(config)
@@ -168,7 +168,11 @@ const refreshCardsFromConfig = (config: AppConfig): void => {
     })
     payloads.forEach((p) => {
       const card = cards.get(p.serviceInstanceId)
-      if (card) { card.serviceName = p.serviceName; card.serviceType = p.serviceType }
+      if (card) {
+        card.serviceName = p.serviceName
+        card.serviceType = p.serviceType
+        if (p.modelName) card.modelName = p.modelName
+      }
     })
     return
   }
@@ -183,7 +187,7 @@ const refreshCardsFromConfig = (config: AppConfig): void => {
         serviceInstanceId: p.serviceInstanceId,
         serviceName: p.serviceName,
         serviceType: p.serviceType,
-        modelName: '',
+        modelName: p.modelName,
         text: '',
         status: 'pending',
         collapsed: true, // 空闲默认收缩
@@ -198,6 +202,7 @@ const refreshCardsFromConfig = (config: AppConfig): void => {
     } else {
       card.serviceName = p.serviceName
       card.serviceType = p.serviceType
+      if (p.modelName) card.modelName = p.modelName
     }
   })
 }

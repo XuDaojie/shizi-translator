@@ -243,11 +243,23 @@
 .result-action-btn:focus-visible { outline: 2px solid var(--popup-accent); outline-offset: 1px; }
 .result-action-btn svg { width: 12px; height: 12px; stroke-width: 1.6; }
 
-.result-model-group { margin-left: auto; display: inline-flex; align-items: center; gap: 3px; }
+/* 模型名 + Token 靠右：模型名可收缩省略，Token 永不被挤掉 */
+.result-model-group {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: calc(100% - 56px); /* 留给朗读/复制按钮 */
+}
 .result-model-tag {
   font-size: 0.625rem; color: var(--popup-fg-3);
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 55%;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  min-width: 0;
+  flex: 0 1 auto;
+  max-width: 9em;
+  cursor: default;
 }
 .result-tokens {
   display: inline-flex;
@@ -258,6 +270,7 @@
   font-variant-numeric: tabular-nums;
   user-select: none;
   letter-spacing: 0.01em;
+  flex: 0 0 auto; /* 始终完整显示输入/输出 Token */
 }
 .result-tokens .tok { display: inline-flex; align-items: center; gap: 2px; }
 .result-tokens .tok svg { width: 9px; height: 9px; opacity: 0.55; stroke-width: 2; }

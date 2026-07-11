@@ -26,6 +26,7 @@ pub fn build_batch_requests(
                 service_name: s.name.clone(),
                 service_type: s.service_type.clone(),
                 protocol: s.protocol.clone(),
+                model_name: s.model.clone(),
             },
             prompts: TranslationPromptConfig {
                 system_prompt: s.system_prompt.clone(),
@@ -101,6 +102,7 @@ mod tests {
             vec!["a", "c"]
         );
         assert_eq!(requests[0].service.service_name, "svc-a");
+        assert_eq!(requests[0].service.model_name, "deepseek-chat");
     }
 
     #[test]

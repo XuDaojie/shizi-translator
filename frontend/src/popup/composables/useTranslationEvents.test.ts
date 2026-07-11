@@ -38,10 +38,11 @@ function makeHarness() {
 describe('useTranslationEvents.dispatch', () => {
   it('started 新 batch 创建卡片并标记 translating', () => {
     const h = makeHarness()
-    h.dispatch({ type: 'started', sessionId: 'batch-1:svc-a', serviceInstanceId: 'svc-a', serviceName: 'OpenAI', serviceType: 'openai', sourceText: 'hi', sourceType: 'selectedText' })
+    h.dispatch({ type: 'started', sessionId: 'batch-1:svc-a', serviceInstanceId: 'svc-a', serviceName: 'OpenAI', serviceType: 'openai', modelName: 'gpt-4o-mini', sourceText: 'hi', sourceType: 'selectedText' })
     expect(h.cards.get('svc-a')).toBeDefined()
     expect(h.cards.get('svc-a')!.status).toBe('translating')
     expect(h.cards.get('svc-a')!.serviceName).toBe('OpenAI')
+    expect(h.cards.get('svc-a')!.modelName).toBe('gpt-4o-mini')
     expect(h.calls.started[0].isNewBatch).toBe(true)
   })
 

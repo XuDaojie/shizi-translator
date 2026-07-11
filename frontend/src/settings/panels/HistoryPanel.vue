@@ -78,7 +78,8 @@ const filteredSessions = computed<HistorySession[]>(() =>
     ? sessions.value
     : sessions.value.filter((s) => s.trigger === activeFilter.value),
 )
-const isEmpty = computed(() => isEmptyHistory(filteredSessions.value))
+/* 空态只看全部历史，与原型一致；筛选无命中仍保留筛选栏 */
+const isEmpty = computed(() => isEmptyHistory(sessions.value))
 const activeSession = computed<HistorySession | null>(() =>
   activeId.value ? filteredSessions.value.find((s) => s.id === activeId.value) ?? null : null,
 )
@@ -199,14 +200,23 @@ const retryResult = (r: HistoryResult): void => {
   toast.info('已请求重新翻译', `${r.serviceName} · ${r.modelName || '默认模型'}`)
 }
 
-/* 卡片折叠态：按 sessionId + serviceInstanceId 记录。 */
+/* 卡片折叠 / 展开全文：按 sessionId + serviceInstanceId 记录（与弹窗结果卡对齐）。 */
 const collapsedMap = reactive<Record<string, boolean>>({})
+const expandedMap = reactive<Record<string, boolean>>({})
 const cardKey = (sessionId: string, r: HistoryResult): string => `${sessionId}:${r.serviceInstanceId}`
 const isCollapsed = (sessionId: string, r: HistoryResult): boolean => collapsedMap[cardKey(sessionId, r)] ?? false
+const isExpanded = (sessionId: string, r: HistoryResult): boolean => expandedMap[cardKey(sessionId, r)] ?? false
 const toggleCollapse = (sessionId: string, r: HistoryResult): void => {
   const k = cardKey(sessionId, r)
   collapsedMap[k] = !collapsedMap[k]
 }
+const toggleExpand = (sessionId: string, r: HistoryResult): void => {
+  const k = cardKey(sessionId, r)
+  expandedMap[k] = !expandedMap[k]
+}
+/** 与弹窗一致：有 usage 数据时展示 Token；模型名始终传给 ResultCardView。 */
+const showResultTokens = (r: HistoryResult): boolean =>
+  r.inputTokens != null || r.outputTokens != null
 
 const speakSource = (): void => {
   const text = activeSession.value?.source
@@ -289,13 +299,6 @@ onBeforeUnmount(() => {
 
 <template>
   <div ref="rootRef" class="flex flex-col gap-3">
-    <div class="flex items-center justify-end">
-      <Button variant="ghost" size="sm" :disabled="isEmpty || loading || clearing" class="text-muted-foreground hover:text-destructive" @click="showClearConfirm = true">
-        <Trash2 class="h-3.5 w-3.5" />
-        清空全部
-      </Button>
-    </div>
-
     <div v-if="loading" class="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border py-16 text-center text-muted-foreground">
       <HistoryIcon class="h-5 w-5" />
       <p class="text-sm">正在加载翻译历史...</p>
@@ -321,7 +324,7 @@ onBeforeUnmount(() => {
     </div>
 
     <template v-else>
-      <!-- 触发方式筛选（sticky 冻结顶部） -->
+      <!-- 触发方式筛选（sticky 置顶，与原型对齐；清空作为筛选栏右侧次要操作） -->
       <div ref="headerRef" class="sticky top-0 z-30 shrink-0 bg-background pb-4">
         <div class="-mt-[10px] h-[10px] bg-background" aria-hidden="true" />
         <div class="flex items-center gap-1 rounded-md border border-border bg-card p-1 text-[12px]">
@@ -335,6 +338,16 @@ onBeforeUnmount(() => {
           >
             <component :is="f.icon" class="h-3.5 w-3.5" />
             <span class="whitespace-nowrap">{{ f.label }}</span>
+          </button>
+          <button
+            type="button"
+            title="清空全部"
+            class="ml-auto flex h-7 items-center gap-1.5 rounded px-2.5 text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
+            :disabled="clearing"
+            @click="showClearConfirm = true"
+          >
+            <Trash2 class="h-3.5 w-3.5" />
+            <span class="whitespace-nowrap">清空</span>
           </button>
         </div>
       </div>
@@ -408,15 +421,17 @@ onBeforeUnmount(() => {
                       :status="cardStatus(r)"
                       :text="resultText(r)"
                       :collapsed="isCollapsed(activeSession.id, r)"
-                      :show-tokens="false"
-                      :input-tokens="r.inputTokens ?? undefined"
-                      :output-tokens="r.outputTokens ?? undefined"
+                      :expanded="isExpanded(activeSession.id, r)"
+                      :show-tokens="showResultTokens(r)"
+                      :input-tokens="r.inputTokens ?? 0"
+                      :output-tokens="r.outputTokens ?? 0"
                       :show-actions="r.status !== 'pending'"
                       :show-refresh="false"
                       @copy="copy(resultText(r))"
                       @refresh="retryResult(r)"
                       @speak="speak(resultText(r))"
                       @toggle-collapse="toggleCollapse(activeSession.id, r)"
+                      @toggle-expand="toggleExpand(activeSession.id, r)"
                     />
                   </li>
                 </ul>

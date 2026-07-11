@@ -18,6 +18,8 @@ pub struct TranslationServiceMeta {
     pub service_name: String,
     pub service_type: String,
     pub protocol: String,
+    /// 服务配置中的模型名（弹窗结果卡右下角展示）
+    pub model_name: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -180,6 +182,7 @@ mod tests {
             service_name: "test".to_string(),
             service_type: "llm".to_string(),
             protocol: "mock".to_string(),
+            model_name: "mock-model".to_string(),
         }
     }
 
@@ -380,9 +383,11 @@ mod tests {
         assert_eq!(payload["serviceName"], "test");
         assert_eq!(payload["serviceType"], "llm");
         assert_eq!(payload["protocol"], "mock");
+        assert_eq!(payload["modelName"], "mock-model");
         assert!(payload.get("session_id").is_none());
         assert!(payload.get("source_text").is_none());
         assert!(payload.get("source_type").is_none());
+        assert!(payload.get("model_name").is_none());
         assert!(
             payload.get("service").is_none(),
             "service 应打平，不作为嵌套字段"
