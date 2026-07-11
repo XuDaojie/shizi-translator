@@ -119,8 +119,8 @@ npm run test                # vitest 单测
 4. **版本更新同步**：版本号变更时须同步相关文件
 5. **插件同步规范**：新增或升级插件/技能后，必须同步更新 `plugins.md` 文件
 6. **子代理模型调度规范**：调度子代理前必须遵循 [docs/agent-model-policy.md](docs/agent-model-policy.md)。
-   - Claude Code / Codex 使用弱模型、中模型、强模型三档，默认使用中模型。
-   - 任务卡必须写明实际模型名，禁止只写“弱模型 / 中模型 / 强模型”。
+   - Claude Code / Codex 使用弱模型、中模型、强模型三档，默认使用中模型；Codex 依次使用 `gpt-5.6-luna` / `gpt-5.6-terra` / `gpt-5.6-sol`。
+   - 任务卡必须写明实际模型名；Codex 还必须写明推理强度（默认依次为 `low` / `medium` / `high`），禁止只写“弱模型 / 中模型 / 强模型”。
    - Grok Build 不执行模型决策门，始终继承当前会话模型。
    - 子代理连续失败后不得自行升级模型，必须停机回报主会话。
 
