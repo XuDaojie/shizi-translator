@@ -73,7 +73,7 @@ const buildDefaults = (): AppSettings => {
       popupPrecreate: true,
       overlayPrecreate: true,
       theme: 'system',
-      language: 'zh-CN',
+      language: 'auto',
       updateChannel: 'stable',
       autoCheckUpdate: true,
     },
@@ -488,6 +488,7 @@ export const useSettings = () => ({
     }
     syncingFromBackend = true
     state.services = mergeBackendIntoServices(state.services, backend.services)
+    state.general.language = backend.interfaceLanguage
     state.translation.defaultSourceLang =
       backend.defaultSourceLang ?? state.translation.defaultSourceLang
     state.translation.defaultTargetLang =

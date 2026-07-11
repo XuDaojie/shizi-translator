@@ -24,6 +24,7 @@ export interface ServiceInstanceConfig {
 }
 
 export interface AppConfig {
+  interfaceLanguage: string;
   targetLang: string;
   defaultSourceLang: string;
   autoCopy: boolean;

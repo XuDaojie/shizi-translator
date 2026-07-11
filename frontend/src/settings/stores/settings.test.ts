@@ -277,6 +277,7 @@ describe('syncFromBackend', () => {
     const localId = settings.state.services[0].id;
 
     vi.mocked(invokeGetAppConfig).mockResolvedValue({
+      interfaceLanguage: 'fr-FR',
       targetLang: '中文',
       services: [
         {
@@ -325,6 +326,7 @@ describe('syncFromBackend', () => {
 
     await settings.syncFromBackend();
 
+    expect(settings.state.general.language).toBe('fr-FR');
     expect(settings.state.services.map((s) => s.id)).toEqual([localId, 'extra']);
     expect(settings.state.services[0].apiKey).toBe('backend-key');
     expect(settings.state.services[0].enabled).toBe(true);

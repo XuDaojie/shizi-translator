@@ -3,13 +3,18 @@ use std::env;
 
 use serde::{Deserialize, Serialize};
 
-/// normalize 兜底用：target_lang 为空时回退英语（不读 OS，避免每次 save 查系统 locale）。
-const FALLBACK_TARGET_LANG: &str = "en-US";
+/// normalize 兜底用：target_lang 非法时回退简体中文（不读 OS，避免每次 save 查系统 locale）。
+const FALLBACK_TARGET_LANG: &str = "zh-CN";
 
-/// 首次安装默认目标语言：读 OS locale 并映射到语言列表 code，不在列表回退 en-US。
+const TRANSLATION_LANGS: &[&str] = &[
+    "zh-CN", "zh-TW", "en", "ja", "ko", "fr", "de", "es", "pt", "ru", "it", "nl",
+    "pl", "tr", "ar", "th", "vi", "id", "hi",
+];
+
+/// 首次安装默认目标语言：读 OS locale 并映射到翻译语言 code，不在列表回退 zh-CN。
 fn default_target_lang_from_os() -> String {
     let os = sys_locale::get_locale().unwrap_or_else(|| "en-US".to_string());
-    map_os_lang_to_list(&os)
+    map_os_lang_to_translation(&os)
 }
 
 const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
@@ -28,6 +33,10 @@ fn default_source_lang() -> String {
     "auto".to_string()
 }
 
+fn default_interface_language() -> String {
+    "auto".to_string()
+}
+
 fn default_chain_of_thought() -> String {
     "off".to_string()
 }
@@ -40,16 +49,10 @@ fn default_history_limit() -> usize {
     500
 }
 
-/// 把 OS locale（如 `zh-CN`、`zh-Hans`、`en-GB`）映射到语言下拉列表中的 code。
-/// 精确匹配优先；否则按主语言前缀映射；都不匹配回退 `en-US`。
-fn map_os_lang_to_list(os: &str) -> String {
+/// 把 OS locale（如 `zh-CN`、`zh-Hans`、`en-GB`）映射到翻译语言 code。
+/// 中文区分简繁体，其他语言按主语言映射，都不匹配回退 `zh-CN`。
+fn map_os_lang_to_translation(os: &str) -> String {
     let lower = os.to_lowercase();
-    let codes = [
-        "zh-CN", "zh-TW", "en-US", "ja-JP", "ko-KR", "fr-FR", "de-DE", "es-ES", "ru-RU",
-    ];
-    if let Some(matched) = codes.iter().find(|c| c.eq_ignore_ascii_case(&lower)) {
-        return (*matched).to_string();
-    }
     let main = lower.split('-').next().unwrap_or("");
     let mapped = match main {
         "zh" => {
@@ -59,14 +62,9 @@ fn map_os_lang_to_list(os: &str) -> String {
                 "zh-CN"
             }
         }
-        "en" => "en-US",
-        "ja" => "ja-JP",
-        "ko" => "ko-KR",
-        "fr" => "fr-FR",
-        "de" => "de-DE",
-        "es" => "es-ES",
-        "ru" => "ru-RU",
-        _ => "en-US",
+        "en" | "ja" | "ko" | "fr" | "de" | "es" | "pt" | "ru" | "it" | "nl"
+        | "pl" | "tr" | "ar" | "th" | "vi" | "id" | "hi" => main,
+        _ => "zh-CN",
     };
     mapped.to_string()
 }
@@ -104,6 +102,8 @@ pub struct AppConfig {
     #[serde(default)]
     pub services: Vec<ServiceInstanceConfig>,
     pub target_lang: String,
+    #[serde(default = "default_interface_language")]
+    pub interface_language: String,
     #[serde(default = "default_source_lang")]
     pub default_source_lang: String,
     #[serde(default = "default_true")]
@@ -246,6 +246,7 @@ impl AppConfig {
                 .ok()
                 .filter(|s| !s.trim().is_empty())
                 .unwrap_or_else(default_target_lang_from_os),
+            interface_language: default_interface_language(),
             default_source_lang: default_source_lang(),
             auto_copy: true,
             restore_clipboard: true,
@@ -263,8 +264,14 @@ impl AppConfig {
     pub fn normalized(mut self) -> Self {
         self.shortcuts = normalize_shortcuts(self.shortcuts);
         self.services = self.services.into_iter().map(|s| s.normalized()).collect();
-        self.target_lang = normalize_string(self.target_lang, FALLBACK_TARGET_LANG);
-        self.default_source_lang = normalize_string(self.default_source_lang, "auto");
+        if !TRANSLATION_LANGS.contains(&self.target_lang.as_str()) {
+            self.target_lang = FALLBACK_TARGET_LANG.to_string();
+        }
+        if self.default_source_lang != "auto"
+            && !TRANSLATION_LANGS.contains(&self.default_source_lang.as_str())
+        {
+            self.default_source_lang = default_source_lang();
+        }
         if self.history_limit == 0 {
             self.history_limit = default_history_limit();
         }
@@ -316,6 +323,32 @@ fn normalize_log_level(value: String) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn interface_language_defaults_to_auto_and_serializes_camel_case() {
+        let config = AppConfig::from_env();
+        assert_eq!(config.interface_language, "auto");
+        let json = serde_json::to_value(config).unwrap();
+        assert_eq!(json["interfaceLanguage"], "auto");
+    }
+
+    #[test]
+    fn normalized_rejects_old_translation_codes_without_aliasing() {
+        let mut config = AppConfig::from_env();
+        config.default_source_lang = "en-US".into();
+        config.target_lang = "ja-JP".into();
+        let normalized = config.normalized();
+        assert_eq!(normalized.default_source_lang, "auto");
+        assert_ne!(normalized.target_lang, "ja-JP");
+    }
+
+    #[test]
+    fn translation_locale_mapping_uses_new_codes() {
+        assert_eq!(map_os_lang_to_translation("en-GB"), "en");
+        assert_eq!(map_os_lang_to_translation("pt-BR"), "pt");
+        assert_eq!(map_os_lang_to_translation("zh-Hant-HK"), "zh-TW");
+        assert_eq!(map_os_lang_to_translation("xx-YY"), "zh-CN");
+    }
 
     #[test]
     fn from_env_creates_default_service() {
@@ -458,11 +491,8 @@ mod tests {
     #[test]
     fn from_env_target_lang_uses_os_or_fallback() {
         let config = AppConfig::from_env();
-        let valid = [
-            "zh-CN", "zh-TW", "en-US", "ja-JP", "ko-KR", "fr-FR", "de-DE", "es-ES", "ru-RU",
-        ];
         assert!(
-            valid.contains(&config.target_lang.as_str()),
+            TRANSLATION_LANGS.contains(&config.target_lang.as_str()),
             "from_env target_lang 应是 OS 映射结果（列表 code 之一），实际: {}",
             config.target_lang
         );
@@ -470,35 +500,35 @@ mod tests {
 
     #[test]
     fn map_os_lang_exact_match() {
-        assert_eq!(map_os_lang_to_list("zh-CN"), "zh-CN");
-        assert_eq!(map_os_lang_to_list("en-US"), "en-US");
-        assert_eq!(map_os_lang_to_list("fr-FR"), "fr-FR");
+        assert_eq!(map_os_lang_to_translation("zh-CN"), "zh-CN");
+        assert_eq!(map_os_lang_to_translation("en-US"), "en");
+        assert_eq!(map_os_lang_to_translation("fr-FR"), "fr");
     }
 
     #[test]
     fn map_os_lang_zh_variants() {
-        assert_eq!(map_os_lang_to_list("zh-Hans"), "zh-CN");
-        assert_eq!(map_os_lang_to_list("zh-SG"), "zh-CN");
-        assert_eq!(map_os_lang_to_list("zh-Hant"), "zh-TW");
-        assert_eq!(map_os_lang_to_list("zh-HK"), "zh-TW");
-        assert_eq!(map_os_lang_to_list("zh-TW"), "zh-TW");
+        assert_eq!(map_os_lang_to_translation("zh-Hans"), "zh-CN");
+        assert_eq!(map_os_lang_to_translation("zh-SG"), "zh-CN");
+        assert_eq!(map_os_lang_to_translation("zh-Hant"), "zh-TW");
+        assert_eq!(map_os_lang_to_translation("zh-HK"), "zh-TW");
+        assert_eq!(map_os_lang_to_translation("zh-TW"), "zh-TW");
     }
 
     #[test]
     fn map_os_lang_main_prefix() {
-        assert_eq!(map_os_lang_to_list("en-GB"), "en-US");
-        assert_eq!(map_os_lang_to_list("ja-JP"), "ja-JP");
-        assert_eq!(map_os_lang_to_list("ko-KR"), "ko-KR");
-        assert_eq!(map_os_lang_to_list("de-DE"), "de-DE");
-        assert_eq!(map_os_lang_to_list("es-ES"), "es-ES");
-        assert_eq!(map_os_lang_to_list("ru-RU"), "ru-RU");
+        assert_eq!(map_os_lang_to_translation("en-GB"), "en");
+        assert_eq!(map_os_lang_to_translation("ja-JP"), "ja");
+        assert_eq!(map_os_lang_to_translation("ko-KR"), "ko");
+        assert_eq!(map_os_lang_to_translation("de-DE"), "de");
+        assert_eq!(map_os_lang_to_translation("es-ES"), "es");
+        assert_eq!(map_os_lang_to_translation("ru-RU"), "ru");
     }
 
     #[test]
-    fn map_os_lang_unmapped_falls_back_to_en_us() {
-        assert_eq!(map_os_lang_to_list("th-TH"), "en-US");
-        assert_eq!(map_os_lang_to_list("xx-YY"), "en-US");
-        assert_eq!(map_os_lang_to_list(""), "en-US");
+    fn map_os_lang_unmapped_falls_back_to_zh_cn() {
+        assert_eq!(map_os_lang_to_translation("th-TH"), "th");
+        assert_eq!(map_os_lang_to_translation("xx-YY"), "zh-CN");
+        assert_eq!(map_os_lang_to_translation(""), "zh-CN");
     }
 
     #[test]

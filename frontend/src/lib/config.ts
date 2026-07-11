@@ -36,6 +36,7 @@ export function validateConfig(config: AppConfig): string | null {
 export function projectToAppConfig(state: AppSettings): AppConfig {
   const historyLimit = Number(state.translation.historyLimit)
   return {
+    interfaceLanguage: state.general.language,
     targetLang: state.translation.defaultTargetLang,
     defaultSourceLang: state.translation.defaultSourceLang,
     autoCopy: state.translation.autoCopy,

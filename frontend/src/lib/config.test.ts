@@ -30,7 +30,7 @@ const makeState = (services: ServiceInstance[]): AppSettings => ({
     showTrayIcon: true,
     closeAction: 'minimize',
     theme: 'light',
-    language: 'zh-CN',
+    language: 'auto',
     updateChannel: 'stable',
     autoCheckUpdate: true,
     popupPrecreate: true,
@@ -79,6 +79,7 @@ describe('projectToAppConfig', () => {
 
     const config = projectToAppConfig(state);
 
+    expect(config.interfaceLanguage).toBe('auto');
     expect(config.targetLang).toBe('中文');
     expect(config.historyLimit).toBe(500);
     expect(config.popupPrecreate).toBe(true);

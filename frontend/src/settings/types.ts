@@ -1,7 +1,7 @@
 import type { ServiceProtocolId } from '@/types/config';
 
 export type ThemeMode = 'light' | 'dark' | 'system'
-export type UILanguage = 'zh-CN' | 'en-US'
+export type UILanguage = 'auto' | 'zh-CN' | 'zh-TW' | 'en-US' | 'ja-JP' | 'ko-KR' | 'fr-FR' | 'de-DE' | 'es-ES' | (string & {})
 export type UpdateChannel = 'stable' | 'beta'
 export type CloseAction = 'minimize' | 'quit'
 export type LogLevel = 'error' | 'warn' | 'info' | 'debug'
