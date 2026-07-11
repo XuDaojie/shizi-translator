@@ -369,6 +369,23 @@ let syncingFromBackend = false
 let latestLanguageRefreshRequest = 0
 let latestInterfaceLanguageChange = 0
 let syncFromBackendPromise: Promise<void> | null = null
+const backendSyncConflict = new Error(t('settings.status.saveFailed'))
+
+const readConsistentBackendState = async (): Promise<{
+  config: AppConfig
+  snapshot: InterfaceLanguageSnapshot
+}> => {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const before = await invokeGetInterfaceLanguageSnapshot()
+    const config = await invokeGetAppConfig()
+    const after = await invokeGetInterfaceLanguageSnapshot()
+    if (
+      before.revision === after.revision
+      && config.interfaceLanguage === after.configuredLocale
+    ) return { config, snapshot: after }
+  }
+  throw backendSyncConflict
+}
 
 /**
  * 从后端拉取快捷键冲突并写入对应 binding.error。失败静默——冲突信息非关键。
@@ -542,20 +559,20 @@ export const useSettings = () => ({
     let pushFailed = false
     try {
       let backend: AppConfig
+      let languageSnapshot: InterfaceLanguageSnapshot
       try {
-        backend = await invokeGetAppConfig()
-      } catch {
+        ({ config: backend, snapshot: languageSnapshot } = await readConsistentBackendState())
+      } catch (error) {
+        if (error === backendSyncConflict) {
+          resumeAutoSave = false
+          saveStatus.value = 'error'
+          throw error
+        }
         logger.warn('从后端同步配置失败')
         return
       }
-      let languageSnapshot: InterfaceLanguageSnapshot | undefined
-      try {
-        languageSnapshot = await invokeGetInterfaceLanguageSnapshot()
-      } catch (error) {
-        logger.warn('读取界面语言列表失败', String(error))
-      }
       if (!backend.services || backend.services.length === 0) {
-        if (languageSnapshot) applyInterfaceLanguageSnapshot(languageSnapshot)
+        applyInterfaceLanguageSnapshot(languageSnapshot)
         const pushed = cloneSettings(state)
         try {
           await invokeSaveAppConfig(projectToAppConfig(pushed))
@@ -572,7 +589,7 @@ export const useSettings = () => ({
       }
       state.services = mergeBackendIntoServices(state.services, backend.services)
       state.general.language = backend.interfaceLanguage
-      if (languageSnapshot) applyInterfaceLanguageSnapshot(languageSnapshot)
+      applyInterfaceLanguageSnapshot(languageSnapshot)
       state.translation.defaultSourceLang =
         backend.defaultSourceLang ?? state.translation.defaultSourceLang
       state.translation.defaultTargetLang =

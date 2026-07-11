@@ -15,7 +15,8 @@ pub fn open_settings(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn get_app_config(state: tauri::State<'_, AppState>) -> Result<AppConfig, String> {
+pub fn get_app_config(state: tauri::State<'_, AppState>) -> Result<AppConfig, String> {
+    let _guard = lock_interface_language()?;
     state.config_store.get().map_err(|error| error.to_string())
 }
 

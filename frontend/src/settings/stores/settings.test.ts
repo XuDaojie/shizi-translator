@@ -37,6 +37,7 @@ beforeEach(() => {
   vi.useRealTimers();
   vi.resetAllMocks();
   vi.mocked(invokeGetShortcutConflicts).mockResolvedValue([]);
+  vi.mocked(invokeGetInterfaceLanguageSnapshot).mockResolvedValue(languageSnapshot());
   vi.mocked(isTauriReady).mockReturnValue(false);
   fakeLocalStorage.clear();
   useSettings().reset();
@@ -453,6 +454,72 @@ describe('mergeBackendIntoServices', () => {
 })
 
 describe('syncFromBackend', () => {
+  it('稳定快照只读取一轮并应用对应配置', async () => {
+    vi.mocked(isTauriReady).mockReturnValue(true)
+    const settings = useSettings()
+    const localId = settings.state.services[0].id
+    vi.mocked(invokeGetAppConfig).mockResolvedValue(makeAppConfig([
+      makeBackend({ id: localId }),
+    ], { interfaceLanguage: 'auto' }))
+
+    await settings.syncFromBackend()
+
+    expect(invokeGetAppConfig).toHaveBeenCalledTimes(1)
+    expect(invokeGetInterfaceLanguageSnapshot).toHaveBeenCalledTimes(2)
+  })
+
+  it('快照 revision 变化时重试并只应用第二轮一致状态', async () => {
+    vi.mocked(isTauriReady).mockReturnValue(true)
+    const settings = useSettings()
+    const localId = settings.state.services[0].id
+    vi.mocked(invokeGetInterfaceLanguageSnapshot)
+      .mockResolvedValueOnce(languageSnapshot({ configuredLocale: 'zh-CN', revision: 1 }))
+      .mockResolvedValueOnce(languageSnapshot({ configuredLocale: 'en-US', revision: 2 }))
+      .mockResolvedValueOnce(languageSnapshot({ configuredLocale: 'en-US', revision: 2 }))
+      .mockResolvedValueOnce(languageSnapshot({
+        configuredLocale: 'en-US',
+        locale: 'en-US',
+        revision: 2,
+        languages: [{ locale: 'en-US', name: 'English', builtin: true }],
+      }))
+    vi.mocked(invokeGetAppConfig)
+      .mockResolvedValueOnce(makeAppConfig([makeBackend({ id: localId })], { interfaceLanguage: 'zh-CN' }))
+      .mockResolvedValueOnce(makeAppConfig([makeBackend({ id: localId })], { interfaceLanguage: 'en-US' }))
+
+    await settings.syncFromBackend()
+
+    expect(invokeGetAppConfig).toHaveBeenCalledTimes(2)
+    expect(invokeGetInterfaceLanguageSnapshot).toHaveBeenCalledTimes(4)
+    expect(settings.state.general.language).toBe('en-US')
+    expect(settings.interfaceLanguages.value).toEqual([
+      { locale: 'en-US', name: 'English', builtin: true },
+    ])
+  })
+
+  it('三轮快照都变化时同步失败且保留旧状态', async () => {
+    vi.mocked(isTauriReady).mockReturnValue(true)
+    const settings = useSettings()
+    const oldLanguage = settings.state.general.language
+    const oldServices = JSON.parse(JSON.stringify(settings.state.services))
+    const oldDirty = settings.dirty.value
+    vi.mocked(invokeGetInterfaceLanguageSnapshot).mockImplementation(async () => {
+      const revision = vi.mocked(invokeGetInterfaceLanguageSnapshot).mock.calls.length
+      return languageSnapshot({ configuredLocale: 'en-US', revision })
+    })
+    vi.mocked(invokeGetAppConfig).mockResolvedValue(makeAppConfig([
+      makeBackend({ id: 'backend-only' }),
+    ], { interfaceLanguage: 'en-US' }))
+
+    await expect(settings.syncFromBackend()).rejects.toThrow()
+
+    expect(invokeGetAppConfig).toHaveBeenCalledTimes(3)
+    expect(invokeGetInterfaceLanguageSnapshot).toHaveBeenCalledTimes(6)
+    expect(settings.state.general.language).toBe(oldLanguage)
+    expect(settings.state.services).toEqual(oldServices)
+    expect(settings.dirty.value).toBe(oldDirty)
+    expect(settings.saveStatus.value).toBe('error')
+  })
+
   it('同步期间选择的语言在同步后恢复并保存', async () => {
     vi.mocked(isTauriReady).mockReturnValue(true)
     const backend = deferred<AppConfig>()
@@ -467,7 +534,7 @@ describe('syncFromBackend', () => {
     expect(settings.state.general.language).toBe('fr-FR')
     expect(invokeSaveAppConfig).not.toHaveBeenCalled()
 
-    backend.resolve(makeAppConfig([makeBackend({ id: localId })]))
+    backend.resolve(makeAppConfig([makeBackend({ id: localId })], { interfaceLanguage: 'auto' }))
     await syncing
     await changing
 
@@ -488,7 +555,7 @@ describe('syncFromBackend', () => {
     const syncing = settings.syncFromBackend()
     const changingFr = settings.setInterfaceLanguage('fr-FR')
     const changingDe = settings.setInterfaceLanguage('de-DE')
-    backend.resolve(makeAppConfig([makeBackend({ id: localId })]))
+    backend.resolve(makeAppConfig([makeBackend({ id: localId })], { interfaceLanguage: 'auto' }))
     await syncing
     await Promise.all([changingFr, changingDe])
 
@@ -530,6 +597,10 @@ describe('syncFromBackend', () => {
 
     const first = settings.syncFromBackend()
     const second = settings.syncFromBackend()
+    expect(invokeGetAppConfig).not.toHaveBeenCalled()
+
+    snapshot.resolve(languageSnapshot())
+    await Promise.resolve()
     expect(invokeGetAppConfig).toHaveBeenCalledTimes(1)
 
     backend.resolve({
@@ -537,9 +608,6 @@ describe('syncFromBackend', () => {
       autoCopy: true, restoreClipboard: true, historyLimit: 500, services: [],
       popupPrecreate: true, overlayPrecreate: true, collectUsage: true, logLevel: 'info', shortcuts: {},
     })
-    await Promise.resolve()
-    expect(invokeGetInterfaceLanguageSnapshot).toHaveBeenCalledTimes(1)
-    snapshot.resolve(languageSnapshot())
     await Promise.all([first, second])
 
     vi.mocked(invokeGetAppConfig).mockResolvedValueOnce({
@@ -592,11 +660,11 @@ describe('syncFromBackend', () => {
     const settings = useSettings()
     settings.state.general.language = 'it-IT'
     vi.mocked(invokeGetAppConfig).mockResolvedValue({
-      interfaceLanguage: 'it-IT', targetLang: 'zh-CN', defaultSourceLang: 'auto',
+      interfaceLanguage: 'zh-CN', targetLang: 'zh-CN', defaultSourceLang: 'auto',
       autoCopy: true, restoreClipboard: true, historyLimit: 500, services: [],
       popupPrecreate: true, overlayPrecreate: true, collectUsage: true, logLevel: 'info', shortcuts: {},
     })
-    vi.mocked(invokeGetInterfaceLanguageSnapshot).mockResolvedValueOnce(languageSnapshot({
+    vi.mocked(invokeGetInterfaceLanguageSnapshot).mockResolvedValue(languageSnapshot({
       configuredLocale: 'zh-CN', locale: 'zh-CN',
       languages: [{ locale: 'zh-CN', name: '简体中文', builtin: true }],
     }))
@@ -677,6 +745,11 @@ describe('syncFromBackend', () => {
     vi.mocked(isTauriReady).mockReturnValue(true);
     const settings = useSettings();
     const localId = settings.state.services[0].id;
+    vi.mocked(invokeGetInterfaceLanguageSnapshot).mockResolvedValue(languageSnapshot({
+      configuredLocale: 'fr-FR',
+      locale: 'fr-FR',
+      languages: [{ locale: 'fr-FR', name: 'Français', builtin: true }],
+    }));
 
     vi.mocked(invokeGetAppConfig).mockResolvedValue({
       interfaceLanguage: 'fr-FR',
@@ -754,7 +827,7 @@ describe('syncFromBackend', () => {
       languages: [{ locale: 'zh-CN', name: '简体中文', builtin: true }],
     }));
     vi.mocked(invokeGetAppConfig).mockResolvedValue({
-      interfaceLanguage: 'it-IT', targetLang: 'zh-CN', services: [makeBackend({ id: localId })],
+      interfaceLanguage: 'zh-CN', targetLang: 'zh-CN', services: [makeBackend({ id: localId })],
       defaultSourceLang: 'auto', autoCopy: true, restoreClipboard: true, historyLimit: 500,
       popupPrecreate: true, overlayPrecreate: true, collectUsage: true, logLevel: 'info', shortcuts: {},
     });
