@@ -3,7 +3,7 @@ import type { InterfaceLanguageSnapshot } from '@/lib/tauri'
 import { createI18nForTest } from '@/i18n'
 import zhCN from '@/i18n/locales/zh-CN.json'
 import enUS from '@/i18n/locales/en-US.json'
-import { displayModelName, isMachineTranslateProtocol, POPUP_MESSAGE_KEYS, resultStatusMeta, shouldShowTokens } from './resultCardMeta'
+import { displayModelName, isMachineTranslateProtocol, POPUP_MESSAGE_KEYS, resultStatusMeta, shouldShowTokens, showResultActions } from './resultCardMeta'
 
 const snapshot = (locale: string, revision: number): InterfaceLanguageSnapshot => ({
   configuredLocale: locale,
@@ -37,6 +37,14 @@ describe('resultCardMeta', () => {
     expect(shouldShowTokens('microsoft_edge', false)).toBe(false)
     expect(shouldShowTokens('openai_chat', true)).toBe(true)
     expect(shouldShowTokens('openai_chat', false)).toBe(false)
+  })
+
+  it('失败或取消时刷新操作保持可见，普通空操作隐藏', () => {
+    expect(showResultActions(false, true, 'error')).toBe(true)
+    expect(showResultActions(false, true, 'aborted')).toBe(true)
+    expect(showResultActions(false, false, 'error')).toBe(false)
+    expect(showResultActions(false, true, 'success')).toBe(false)
+    expect(showResultActions(true, false, 'success')).toBe(true)
   })
 
   it('状态元数据返回消息 key 而非可见中文', () => {

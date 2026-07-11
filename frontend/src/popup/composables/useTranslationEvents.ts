@@ -203,8 +203,12 @@ export function useTranslationEvents(opts: UseTranslationEventsOptions): UseTran
   let unlistenConfig: (() => void) | null = null
   let disposed = false
   if (listenFn) {
-    listenFn('translation:event', (ev) => dispatch(ev.payload)).then((fn) => { if (disposed) fn(); else unlistenTranslation = fn })
+    listenFn('translation:event', (ev) => {
+      if (disposed) return
+      dispatch(ev.payload)
+    }).then((fn) => { if (disposed) fn(); else unlistenTranslation = fn })
     listenFn('app-config:changed', (ev) => {
+      if (disposed) return
       const cfg = ev.payload as unknown as AppConfig
       opts.onConfigChanged(cfg)
     }).then((fn) => { if (disposed) fn(); else unlistenConfig = fn })

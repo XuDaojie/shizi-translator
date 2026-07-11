@@ -123,6 +123,24 @@ describe('useTranslationEvents.dispatch', () => {
 })
 
 describe('useTranslationEvents 生命周期', () => {
+  it('dispose 后忽略已排队的翻译与配置回调', async () => {
+    const handlers = new Map<string, (event: { payload: unknown }) => void>()
+    const listen = vi.fn(async (event: string, handler: (event: { payload: unknown }) => void) => {
+      handlers.set(event, handler)
+      return () => {}
+    })
+    const h = makeHarness(listen)
+    await Promise.resolve()
+    h.unlisten()
+    handlers.get('translation:event')?.({ payload: {
+      type: 'started', sessionId: 'batch-1:svc-a', serviceInstanceId: 'svc-a',
+    } })
+    handlers.get('app-config:changed')?.({ payload: { services: [] } })
+    expect(h.cards.size).toBe(0)
+    expect(h.calls.started).toHaveLength(0)
+    expect(h.calls.config).toHaveLength(0)
+  })
+
   it('监听注册晚于 dispose 完成时立即注销', async () => {
     const unlisten = vi.fn()
     let resolveListen!: (fn: () => void) => void

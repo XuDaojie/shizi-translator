@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { SOURCE_LANGUAGES, TARGET_LANGUAGES, type TranslationLanguage } from '@/shared/translation-languages'
 import { t, type MessageKey } from '@/i18n'
 
@@ -14,6 +14,7 @@ const props = defineProps<Props>()
 const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void
   (e: 'pick', value: string): void
+  (e: 'close'): void
 }>()
 
 const search = ref('')
@@ -45,7 +46,8 @@ const moveActive = (delta: 1 | -1): void => {
 }
 
 const onKeydown = (e: KeyboardEvent): void => {
-  if (e.key === 'ArrowDown') { e.preventDefault(); moveActive(1) }
+  if (e.key === 'Escape') { e.preventDefault(); emit('close') }
+  else if (e.key === 'ArrowDown') { e.preventDefault(); moveActive(1) }
   else if (e.key === 'ArrowUp') { e.preventDefault(); moveActive(-1) }
   else if (e.key === 'Enter') {
     e.preventDefault()
@@ -65,6 +67,7 @@ const setInitialActive = async (): Promise<void> => {
 }
 
 watch(() => props.modelValue, () => { void setInitialActive() })
+onMounted(() => { void setInitialActive() })
 
 defineExpose({ focus: () => inputRef.value?.focus() })
 </script>
@@ -78,19 +81,25 @@ defineExpose({ focus: () => inputRef.value?.focus() })
         v-model="search"
         type="text"
         class="lang-picker-input"
+        role="combobox"
+        aria-expanded="true"
+        aria-controls="language-options"
+        :aria-label="placeholder"
         :placeholder="placeholder"
         autocomplete="off"
         spellcheck="false"
         @keydown="onKeydown"
       />
     </div>
-    <ul ref="listRef" class="lang-picker-list">
+    <ul id="language-options" ref="listRef" class="lang-picker-list" role="listbox">
       <li
         v-for="lang in filtered"
         :key="lang.code"
         class="lang-option"
         :class="{ 'is-selected': lang.code === modelValue }"
         :data-value="lang.code"
+        role="option"
+        :aria-selected="lang.code === modelValue"
         @click="select(lang.code)"
       >
         <span class="lang-option-native">{{ lang.nativeName }}</span>

@@ -30,6 +30,11 @@ export function shouldShowTokens(
 import type { MessageKey, MessageParams } from '@/i18n'
 
 type ResultStatus = 'pending' | 'translating' | 'finished' | 'failed' | 'cancelled'
+export type ResultViewStatus = 'success' | 'loading' | 'error' | 'aborted' | 'pending'
+
+export function showResultActions(showActions: boolean, showRefresh: boolean, status: ResultViewStatus): boolean {
+  return showActions || (showRefresh && (status === 'error' || status === 'aborted'))
+}
 
 export const POPUP_MESSAGE_KEYS = {
   ready: 'popup.status.ready',

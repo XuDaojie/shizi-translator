@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import ServiceIcon from '@/settings/components/ServiceIcon.vue'
 import { t } from '@/i18n'
+import { showResultActions } from '../composables/resultCardMeta'
 
 type CardStatus = 'success' | 'loading' | 'error' | 'aborted' | 'pending'
 
@@ -56,6 +57,7 @@ const clipRef = ref<HTMLElement | null>(null)
 const autoOverflow = ref(false)
 
 const showOverflow = computed(() => props.hasOverflow || autoOverflow.value)
+const actionsVisible = computed(() => showResultActions(props.showActions, props.showRefresh, props.status))
 
 /** 与 components.css `.result-text-clip { max-height: 6.4em }` 保持一致 */
 const COLLAPSED_MAX_HEIGHT_EM = 6.4
@@ -127,7 +129,7 @@ const showDotFinal = (): boolean => props.loading || props.status === 'loading'
       <span class="result-header-status" :hidden="!showDotFinal()">
         <span :class="dotClass()" />
       </span>
-      <button class="result-collapse-btn" :title="t('popup.tooltip.collapse')" :aria-label="t('popup.tooltip.collapse')" @click="onCollapseClick">
+      <button class="result-collapse-btn" type="button" :title="t(collapsed ? 'popup.button.expand' : 'popup.tooltip.collapse')" :aria-label="t(collapsed ? 'popup.button.expand' : 'popup.tooltip.collapse')" @click="onCollapseClick">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
       </button>
     </div>
@@ -138,20 +140,21 @@ const showDotFinal = (): boolean => props.loading || props.status === 'loading'
             <div class="result-text" dir="auto">{{ text }}<span v-if="status === 'loading'" class="stream-cursor" /></div>
           </slot>
         </div>
-        <button class="result-expand-btn" type="button" tabindex="-1" @click="onExpandClick">
+        <button class="result-expand-btn" type="button" :aria-label="t(expanded ? 'popup.button.collapse' : 'popup.button.expand')" @click="onExpandClick">
           <span class="result-expand-label">{{ expanded ? t('popup.button.collapse') : t('popup.button.expand') }}</span>
           <svg class="result-expand-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
         </button>
-        <div class="result-actions" :style="{ visibility: showActions ? 'visible' : 'hidden' }">
-          <button class="result-action-btn" :title="t('popup.tooltip.speakResult')" :aria-label="t('popup.tooltip.speakResult')" @click="emit('speak')">
+        <div class="result-actions" :style="{ visibility: actionsVisible ? 'visible' : 'hidden' }">
+          <button class="result-action-btn" type="button" :title="t('popup.tooltip.speakResult')" :aria-label="t('popup.tooltip.speakResult')" @click="emit('speak')">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><path d="M19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07" /></svg>
           </button>
-          <button class="result-action-btn" :title="t('popup.tooltip.copyResult')" :aria-label="t('popup.tooltip.copyResult')" @click="emit('copy')">
+          <button class="result-action-btn" type="button" :title="t('popup.tooltip.copyResult')" :aria-label="t('popup.tooltip.copyResult')" @click="emit('copy')">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg>
           </button>
           <button
             v-if="showRefresh && (status === 'error' || status === 'aborted')"
             class="result-action-btn result-refresh-btn"
+            type="button"
             :title="t('popup.button.retry')"
             :aria-label="t('popup.button.retry')"
             @click="emit('refresh')"

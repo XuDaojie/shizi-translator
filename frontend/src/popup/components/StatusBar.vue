@@ -20,7 +20,7 @@ withDefaults(defineProps<Props>(), { action: null })
     <div class="status-left">
       <span class="status-dot" :class="{ loading }" />
       <span>{{ text }}</span>
-      <button v-if="action" class="status-action" @click="action.onClick">{{ action.label }}</button>
+      <button v-if="action" class="status-action" type="button" @click="action.onClick">{{ action.label }}</button>
     </div>
     <span>{{ t('popup.charCount', { count: charCount }) }}</span>
   </div>
