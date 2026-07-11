@@ -7,6 +7,7 @@ import { loadBuiltin, ZH_CN_PACKAGE, type LanguagePackage } from './loaders'
 
 type Params = Record<string, string | number>
 type BuiltinLoader = (locale: string) => Promise<LanguagePackage>
+type SnapshotLoader = () => Promise<InterfaceLanguageSnapshot>
 const PLACEHOLDER = /\{([A-Za-z][A-Za-z0-9_]*)\}/g
 
 export interface I18nRuntime {
@@ -20,31 +21,27 @@ export interface I18nRuntime {
   reloadCurrentLocale: () => Promise<void>
 }
 
-function createRuntime(loader: BuiltinLoader): I18nRuntime {
+function createRuntime(loader: BuiltinLoader, fetchSnapshot: SnapshotLoader): I18nRuntime {
   const activeLocale = ref('zh-CN')
   const activeRevision = ref(-1)
   const users = ref<Record<string, string>>({})
   const builtins = ref<Record<string, string>>(ZH_CN_PACKAGE.messages)
-  let currentSnapshot: InterfaceLanguageSnapshot | undefined
   let highestRequestedRevision = -1
-  let requestId = 0
 
-  const loadSnapshot = async (snapshot: InterfaceLanguageSnapshot, force = false): Promise<void> => {
-    if (force ? snapshot.revision < highestRequestedRevision : snapshot.revision <= highestRequestedRevision) return
+  const loadSnapshot = async (snapshot: InterfaceLanguageSnapshot): Promise<void> => {
+    if (snapshot.revision <= highestRequestedRevision) return
     highestRequestedRevision = snapshot.revision
-    const id = ++requestId
     let pkg: LanguagePackage
     try {
       pkg = await loader(snapshot.locale)
     } catch {
       pkg = ZH_CN_PACKAGE
     }
-    if (snapshot.revision < highestRequestedRevision || id !== requestId) return
+    if (snapshot.revision < highestRequestedRevision) return
     activeLocale.value = pkg.locale
     activeRevision.value = snapshot.revision
     users.value = { ...snapshot.userMessages }
     builtins.value = pkg.messages
-    currentSnapshot = snapshot
   }
   const applySnapshot = (snapshot: InterfaceLanguageSnapshot): Promise<void> => loadSnapshot(snapshot)
 
@@ -63,14 +60,11 @@ function createRuntime(loader: BuiltinLoader): I18nRuntime {
     t,
     formatDateTime: (value, options) => new Intl.DateTimeFormat(activeLocale.value, options).format(new Date(value)),
     applySnapshot,
-    reloadCurrentLocale: async () => {
-      if (!currentSnapshot) return
-      await loadSnapshot(currentSnapshot, true)
-    },
+    reloadCurrentLocale: async () => applySnapshot(await fetchSnapshot()),
   }
 }
 
-const runtime = createRuntime(loadBuiltin)
+const runtime = createRuntime(loadBuiltin, invokeGetInterfaceLanguageSnapshot)
 export const locale = runtime.locale
 export const revision = runtime.revision
 export const userMessages = runtime.userMessages
@@ -81,4 +75,7 @@ export const applySnapshot = runtime.applySnapshot
 export const reloadCurrentLocale = runtime.reloadCurrentLocale
 export const initializeI18n = async (snapshot?: InterfaceLanguageSnapshot): Promise<void> =>
   applySnapshot(snapshot ?? await invokeGetInterfaceLanguageSnapshot())
-export const createI18nForTest = (loader: BuiltinLoader = loadBuiltin): I18nRuntime => createRuntime(loader)
+export const createI18nForTest = (
+  loader: BuiltinLoader = loadBuiltin,
+  fetchSnapshot: SnapshotLoader = invokeGetInterfaceLanguageSnapshot,
+): I18nRuntime => createRuntime(loader, fetchSnapshot)

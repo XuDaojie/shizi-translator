@@ -76,19 +76,40 @@ describe('i18n 运行时', () => {
     expect(loads).toBe(2)
   })
 
-  it('主动重载不会临时改写公开 revision', async () => {
-    let resolveReload!: (pkg: LanguagePackage) => void
-    let loads = 0
-    const i18n = createI18nForTest(async () => {
-      loads++
-      return loads === 1 ? enUS : new Promise<LanguagePackage>((resolve) => { resolveReload = resolve })
-    })
+  it('主动重载获取并应用后端最新快照', async () => {
+    let fetches = 0
+    const i18n = createI18nForTest(
+      async () => enUS,
+      async () => { fetches++; return snapshot('en-US', 4, { 'common.save': 'Reloaded' }) },
+    )
     await i18n.applySnapshot(snapshot('en-US', 3))
-    const pending = i18n.reloadCurrentLocale()
+    await i18n.reloadCurrentLocale()
+    expect(fetches).toBe(1)
+    expect(i18n.revision.value).toBe(4)
+    expect(i18n.t('common.save')).toBe('Reloaded')
+  })
+
+  it('主动重载忽略后端旧 revision', async () => {
+    const i18n = createI18nForTest(
+      async () => enUS,
+      async () => snapshot('en-US', 2, { 'common.save': 'Old' }),
+    )
+    await i18n.applySnapshot(snapshot('en-US', 3, { 'common.save': 'Current' }))
+    await i18n.reloadCurrentLocale()
     expect(i18n.revision.value).toBe(3)
-    resolveReload(enUS)
-    await pending
-    expect(loads).toBe(2)
+    expect(i18n.t('common.save')).toBe('Current')
+  })
+
+  it('主动重载获取失败时保留当前有效状态并向调用者抛出', async () => {
+    const failure = new Error('snapshot unavailable')
+    const i18n = createI18nForTest(
+      async () => enUS,
+      async () => { throw failure },
+    )
+    await i18n.applySnapshot(snapshot('en-US', 3, { 'common.save': 'Current' }))
+    await expect(i18n.reloadCurrentLocale()).rejects.toBe(failure)
+    expect(i18n.revision.value).toBe(3)
+    expect(i18n.t('common.save')).toBe('Current')
   })
 
   it('并发加载时旧 revision 不覆盖新 revision', async () => {
