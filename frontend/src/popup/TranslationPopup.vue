@@ -16,7 +16,7 @@ import {
 import { getTauriApis } from './composables/utils'
 import { toast } from '@/lib/toast'
 import { matchShortcutKeys } from '@/lib/matchShortcut'
-import { LANGUAGES } from './data/languages'
+import { translationLanguage } from '@/shared/translation-languages'
 import type { AppConfig } from '@/types/config'
 
 const logger = createLogger('translate')
@@ -61,7 +61,7 @@ const setStatus = (text: string, loading: boolean, action: { label: string; onCl
 }
 
 /* === 引擎/语言标签 === */
-const sourceLangLabel = computed(() => LANGUAGES.find((l) => l.value === sessionSourceLang.value)?.label ?? '自动检测')
+const sourceLangLabel = computed(() => translationLanguage(sessionSourceLang.value)?.nativeName ?? sessionSourceLang.value)
 const detectedOrLabel = computed(() => {
   if (detectedLangBadge.value) return detectedLangBadge.value
   if (sessionSourceLang.value === 'auto') return '检测中…'

@@ -1,8 +1,8 @@
 export interface TranslationLanguage {
-  code: string
-  nativeName: string
-  promptName: string
-  nameKey: `language.${string}`
+  readonly code: string
+  readonly nativeName: string
+  readonly promptName: string
+  readonly nameKey: `language.${string}`
 }
 
 const TARGET_LANGUAGE_DATA = [
@@ -27,7 +27,7 @@ const TARGET_LANGUAGE_DATA = [
   ['hi', 'हिन्दी', 'Hindi'],
 ] as const
 
-export const TARGET_LANGUAGES: TranslationLanguage[] = TARGET_LANGUAGE_DATA.map(
+export const TARGET_LANGUAGES: readonly TranslationLanguage[] = TARGET_LANGUAGE_DATA.map(
   ([code, nativeName, promptName]) => ({ code, nativeName, promptName, nameKey: `language.${code}` }),
 )
 
@@ -38,7 +38,7 @@ export const AUTO_LANGUAGE: TranslationLanguage = {
   nameKey: 'language.auto',
 }
 
-export const SOURCE_LANGUAGES: TranslationLanguage[] = [AUTO_LANGUAGE, ...TARGET_LANGUAGES]
+export const SOURCE_LANGUAGES: readonly TranslationLanguage[] = [AUTO_LANGUAGE, ...TARGET_LANGUAGES]
 export const TRANSLATION_LANGUAGES = SOURCE_LANGUAGES
 
 export const translationLanguage = (code: string): TranslationLanguage | undefined =>
