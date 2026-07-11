@@ -1,20 +1,31 @@
+use std::sync::{Arc, RwLock};
 use tauri::{
     menu::{Menu, MenuItem},
-    tray::{TrayIconBuilder, TrayIconEvent},
+    tray::{TrayIcon, TrayIconBuilder, TrayIconEvent},
     Manager,
 };
 
 use crate::app::state::AppState;
 use crate::app::window::{show_settings_window, show_window};
-use crate::ui::web_popup::{show_translation_popup, show_translation_error};
+use crate::ui::web_popup::{show_translation_error, show_translation_popup};
 
-pub fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
+#[derive(Clone)]
+pub struct TrayI18nHandles {
+    pub tray: TrayIcon,
+    pub translate: MenuItem<tauri::Wry>,
+    pub settings: MenuItem<tauri::Wry>,
+    pub quit: MenuItem<tauri::Wry>,
+    pub popup_title: Arc<RwLock<String>>,
+    pub settings_title: Arc<RwLock<String>>,
+}
+
+pub fn setup_tray(app: &tauri::App) -> tauri::Result<TrayI18nHandles> {
     let translate_item = MenuItem::with_id(app, "translate", "翻译", true, None::<&str>)?;
     let settings_item = MenuItem::with_id(app, "settings", "设置", true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&translate_item, &settings_item, &quit_item])?;
 
-    TrayIconBuilder::new()
+    let tray = TrayIconBuilder::new()
         .icon(app.default_window_icon().unwrap().clone())
         .tooltip("Shizi - 翻译助手")
         .menu(&menu)
@@ -43,5 +54,12 @@ pub fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
         })
         .build(app)?;
 
-    Ok(())
+    Ok(TrayI18nHandles {
+        tray,
+        translate: translate_item,
+        settings: settings_item,
+        quit: quit_item,
+        popup_title: Arc::new(RwLock::new("Shizi 翻译".into())),
+        settings_title: Arc::new(RwLock::new("Shizi 设置".into())),
+    })
 }

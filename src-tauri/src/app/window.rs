@@ -1,6 +1,7 @@
 use tauri::{Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 use crate::app::shortcuts::attach_app_shortcut_focus_listener;
+use crate::app::tray::TrayI18nHandles;
 
 pub const SETTINGS_LABEL: &str = "settings";
 pub const SETTINGS_URL: &str = "settings.html";
@@ -31,7 +32,13 @@ pub fn ensure_settings_window(app: &tauri::AppHandle) -> Result<WebviewWindow, S
 
     let window =
         WebviewWindowBuilder::new(app, SETTINGS_LABEL, WebviewUrl::App(SETTINGS_URL.into()))
-            .title("Shizi - 设置")
+            .title(
+                app.state::<TrayI18nHandles>()
+                    .settings_title
+                    .read()
+                    .map(|title| title.clone())
+                    .unwrap_or_else(|_| "Shizi 设置".into()),
+            )
             .inner_size(820.0, 600.0)
             .resizable(false)
             .minimizable(false)

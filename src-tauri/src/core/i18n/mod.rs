@@ -357,7 +357,7 @@ mod tests {
     }
 
     #[test]
-    fn partial_user_pack_overrides_then_falls_back_to_same_locale_builtin() {
+    fn partial_user_pack_overrides_then_falls_back_to_complete_same_locale_builtin() {
         let dir = TempDir::new().unwrap();
         write_pack(
             &dir,
@@ -368,7 +368,11 @@ mod tests {
         let messages = resolve_messages("en-US", &scan);
 
         assert_eq!(messages["tray.quit"], "Exit now");
+        assert_eq!(messages["tray.translate"], "Translate");
         assert_eq!(messages["tray.settings"], "Settings");
+        assert_eq!(messages["tray.tooltip"], "Shizi Translator");
+        assert_eq!(messages["window.popupTitle"], "Shizi Translator");
+        assert_eq!(messages["window.settingsTitle"], "Shizi Settings");
     }
 
     #[test]

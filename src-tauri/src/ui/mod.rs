@@ -1,7 +1,8 @@
 pub mod config;
 pub mod history;
-pub mod service_probe;
+pub mod i18n;
 pub mod logging;
 pub mod ocr_popup;
 pub mod overlay;
+pub mod service_probe;
 pub mod web_popup;

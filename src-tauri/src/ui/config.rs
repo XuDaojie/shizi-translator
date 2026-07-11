@@ -1,3 +1,4 @@
+use crate::ui::i18n::apply_interface_language;
 use crate::{
     app::{
         shortcuts::{replace_global_shortcuts, ShortcutBindingError},
@@ -39,10 +40,20 @@ pub async fn save_app_config(
 
     // 运行时即时切换日志等级（tauri-plugin-log 注册时内部 level 为 Debug 不挡，
     // 全局 set_max_level 独占控制权，无需重启插件）。
-    log::set_max_level(crate::app::logging::parse_level_filter(&saved_config.log_level));
+    log::set_max_level(crate::app::logging::parse_level_filter(
+        &saved_config.log_level,
+    ));
 
     // 新配置已全部注册成功并持久化，清空启动时记录的快捷键冲突。
     let _ = state.set_shortcut_conflicts(Vec::new());
+
+    apply_interface_language(&app, &state, &saved_config.interface_language, true, true).map_err(
+        |error| {
+            ShortcutBindingError::global(format!(
+                "配置已保存且快捷键已更新，但界面语言同步失败: {error}"
+            ))
+        },
+    )?;
 
     app.emit("app-config:changed", &saved_config)
         .map_err(|error| ShortcutBindingError::global(format!("无法广播配置变更: {error}")))?;

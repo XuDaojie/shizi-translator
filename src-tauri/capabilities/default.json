@@ -9,6 +9,7 @@
     "core:window:allow-hide",
     "core:window:allow-show",
     "core:window:allow-set-focus",
+    "core:window:allow-set-title",
     "global-shortcut:default",
     "dialog:allow-save",
     "mcp-bridge:default"

@@ -4,10 +4,11 @@ mod platform;
 mod ui;
 
 use app::{
-    logging, popup_window::ensure_popup_window,
+    logging,
+    popup_window::ensure_popup_window,
     shortcuts::{handle_global_shortcut, register_global_shortcuts_at_startup},
     state::AppState,
-    tray::setup_tray,
+    tray::{setup_tray, TrayI18nHandles},
     window::{ensure_settings_window, setup_close_to_hide},
 };
 use core::{
@@ -18,6 +19,10 @@ use tauri::Manager;
 use ui::{
     config::{get_app_config, get_shortcut_conflicts, open_settings, save_app_config},
     history::{clear_translation_history, list_translation_history},
+    i18n::{
+        apply_interface_language, get_interface_language_snapshot, open_language_pack_directory,
+        refresh_interface_languages,
+    },
     logging::{export_logs, write_frontend_log},
     ocr_popup::trigger_ocr_translation,
     overlay::{
@@ -42,7 +47,8 @@ fn load_history_store_or_fallback(
             let message = format!("历史库加载失败，将使用内存历史库: {}", error);
             log::error!("{}", message);
             eprintln!("{}", message);
-            HistoryStore::in_memory().map_err(|fallback_error| tauri::Error::Anyhow(fallback_error.into()))
+            HistoryStore::in_memory()
+                .map_err(|fallback_error| tauri::Error::Anyhow(fallback_error.into()))
         }
     }
 }
@@ -95,6 +101,9 @@ pub fn run() {
             show_overlay,
             write_frontend_log,
             export_logs,
+            get_interface_language_snapshot,
+            refresh_interface_languages,
+            open_language_pack_directory,
         ])
         .setup(|app| {
             let config_store = ConfigStore::load(app.handle())
@@ -111,7 +120,22 @@ pub fn run() {
             let history_store = load_history_store_or_fallback(HistoryStore::load(app.handle()))?;
             app.manage(AppState::new(config_store, history_store));
 
-            setup_tray(app)?;
+            let tray_i18n_handles: TrayI18nHandles = setup_tray(app)?;
+            app.manage(tray_i18n_handles);
+            let configured_locale = app
+                .state::<AppState>()
+                .config_store
+                .get()
+                .map(|config| config.interface_language)
+                .unwrap_or_else(|_| "auto".into());
+            apply_interface_language(
+                app.handle(),
+                &app.state::<AppState>(),
+                &configured_locale,
+                false,
+                false,
+            )
+            .map_err(|error| tauri::Error::Anyhow(std::io::Error::other(error).into()))?;
             setup_close_to_hide(app);
 
             let config = app
@@ -143,7 +167,8 @@ mod tests {
 
     #[test]
     fn history_store_load_failure_falls_back_to_memory_store() {
-        let store = load_history_store_or_fallback(Err(HistoryError::Lock)).expect("应降级到内存历史库");
+        let store =
+            load_history_store_or_fallback(Err(HistoryError::Lock)).expect("应降级到内存历史库");
         assert_eq!(store.path(), Path::new(":memory:"));
         assert!(store.list_recent(1).expect("内存历史库应可读").is_empty());
     }
