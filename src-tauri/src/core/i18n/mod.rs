@@ -147,14 +147,18 @@ pub fn scan_language_packs(dir: &Path, current_locale: Option<&str>) -> Language
         let result = validate_pack(&path, &allowed);
         match result {
             Ok(pack) => {
-                if !scan.languages.iter().any(|meta| meta.locale == pack.locale) {
+                if !scan
+                    .languages
+                    .iter()
+                    .any(|meta| meta.locale.eq_ignore_ascii_case(&pack.locale))
+                {
                     scan.languages.push(LanguageMeta {
                         locale: pack.locale.clone(),
                         name: pack.name.clone(),
                         builtin: false,
                     });
                 }
-                if current_locale == Some(pack.locale.as_str()) {
+                if current_locale.is_some_and(|locale| locale.eq_ignore_ascii_case(&pack.locale)) {
                     scan.user_messages = pack.messages;
                 }
             }
@@ -499,5 +503,26 @@ mod tests {
 
         assert_eq!(resolve_locale("en-us", None, &scan), "en-US");
         assert_eq!(resolve_locale("IT-it", None, &scan), "it-IT");
+    }
+
+    #[test]
+    fn builtin_user_override_matches_locale_case_insensitively() {
+        let dir = TempDir::new().unwrap();
+        write_pack(
+            &dir,
+            "en-us.json",
+            &valid_pack("en-us", r#"{"tray.quit":"Exit now"}"#),
+        );
+
+        let scan = scan_language_packs(dir.path(), Some("en-US"));
+        assert_eq!(
+            scan.languages
+                .iter()
+                .filter(|meta| meta.locale.eq_ignore_ascii_case("en-US"))
+                .count(),
+            1
+        );
+        assert_eq!(scan.user_messages["tray.quit"], "Exit now");
+        assert_eq!(resolve_locale("en-us", None, &scan), "en-US");
     }
 }
