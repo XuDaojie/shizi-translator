@@ -367,6 +367,7 @@ let saveStatusIdleTimer: ReturnType<typeof setTimeout> | undefined
 let persistQueue: Promise<void> = Promise.resolve()
 let syncingFromBackend = false
 let latestLanguageRefreshRequest = 0
+let latestInterfaceLanguageChange = 0
 let syncFromBackendPromise: Promise<void> | null = null
 
 /**
@@ -508,12 +509,21 @@ export const useSettings = () => ({
     }
   },
   openLanguagePackDirectory: invokeOpenLanguagePackDirectory,
-  setInterfaceLanguage(value: string): Promise<void> {
+  async setInterfaceLanguage(value: string): Promise<void> {
     if (state.general.language === value) return Promise.resolve()
+    const changeId = ++latestInterfaceLanguageChange
+    const syncing = syncFromBackendPromise
     state.general.language = value
     if (autoSaveTimer) clearTimeout(autoSaveTimer)
     autoSaveTimer = undefined
-    return persist()
+    if (syncing) {
+      await syncing
+      if (changeId !== latestInterfaceLanguageChange) return
+      state.general.language = value
+      if (autoSaveTimer) clearTimeout(autoSaveTimer)
+      autoSaveTimer = undefined
+    }
+    await persist()
   },
   async save(): Promise<void> {
     if (autoSaveTimer) clearTimeout(autoSaveTimer)

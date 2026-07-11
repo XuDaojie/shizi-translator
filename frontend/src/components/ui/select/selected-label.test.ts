@@ -12,4 +12,11 @@ describe('findSelectedLabel', () => {
 
     expect(label.value).toBe('Auto')
   })
+
+  it('无匹配或空 value 时返回 undefined', () => {
+    const options = [{ value: 'auto', label: 'Auto' }]
+
+    expect(findSelectedLabel(options, 'missing')).toBeUndefined()
+    expect(findSelectedLabel(options, undefined)).toBeUndefined()
+  })
 })

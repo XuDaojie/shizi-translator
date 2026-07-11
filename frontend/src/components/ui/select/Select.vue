@@ -65,7 +65,8 @@ const contentClasses = cn(
 <template>
   <SelectRoot :model-value="modelValue" :disabled="disabled" @update:model-value="onUpdate">
     <SelectTrigger :class="triggerClasses">
-      <SelectValue :placeholder="placeholder">{{ selectedLabel }}</SelectValue>
+      <SelectValue v-if="selectedLabel" :placeholder="placeholder">{{ selectedLabel }}</SelectValue>
+      <SelectValue v-else :placeholder="placeholder" />
       <SelectIcon class="ml-2 h-4 w-4 opacity-60">
         <ChevronDown />
       </SelectIcon>

@@ -2,7 +2,7 @@ import { nextTick } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { applyBackendLogLevel, applyShortcutConflicts, mergeBackendIntoServices, useSettings } from './settings';
 import { DEFAULT_PROMPTS } from '../tokens';
-import type { ServiceInstanceConfig } from '@/types/config';
+import type { AppConfig, ServiceInstanceConfig } from '@/types/config';
 import { invokeGetAppConfig, invokeGetInterfaceLanguageSnapshot, invokeGetShortcutConflicts, invokeRefreshInterfaceLanguages, invokeSaveAppConfig, isTauriReady } from '@/lib/tauri';
 import type { AppSettings, ServiceInstance } from '../types';
 import type { InterfaceLanguageSnapshot } from '@/lib/tauri';
@@ -313,6 +313,13 @@ const makeBackend = (over: Partial<ServiceInstanceConfig>): ServiceInstanceConfi
   ...over,
 })
 
+const makeAppConfig = (services: ServiceInstanceConfig[], over: Partial<AppConfig> = {}): AppConfig => ({
+  interfaceLanguage: 'zh-CN', targetLang: 'zh-CN', defaultSourceLang: 'auto',
+  autoCopy: true, restoreClipboard: true, historyLimit: 500, services,
+  popupPrecreate: true, overlayPrecreate: true, collectUsage: true,
+  logLevel: 'info', shortcuts: {}, ...over,
+})
+
 describe('mergeBackendIntoServices', () => {
   it('后端核心字段覆盖前端同 id 实例，前端独有字段保留', () => {
     const local = [
@@ -446,6 +453,73 @@ describe('mergeBackendIntoServices', () => {
 })
 
 describe('syncFromBackend', () => {
+  it('同步期间选择的语言在同步后恢复并保存', async () => {
+    vi.mocked(isTauriReady).mockReturnValue(true)
+    const backend = deferred<AppConfig>()
+    vi.mocked(invokeGetAppConfig).mockReturnValue(backend.promise)
+    vi.mocked(invokeGetInterfaceLanguageSnapshot).mockResolvedValue(languageSnapshot())
+    vi.mocked(invokeSaveAppConfig).mockImplementation(async (config) => config)
+    const settings = useSettings()
+    const localId = settings.state.services[0].id
+
+    const syncing = settings.syncFromBackend()
+    const changing = settings.setInterfaceLanguage('fr-FR')
+    expect(settings.state.general.language).toBe('fr-FR')
+    expect(invokeSaveAppConfig).not.toHaveBeenCalled()
+
+    backend.resolve(makeAppConfig([makeBackend({ id: localId })]))
+    await syncing
+    await changing
+
+    expect(settings.state.general.language).toBe('fr-FR')
+    expect(invokeSaveAppConfig).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(invokeSaveAppConfig).mock.calls[0][0].interfaceLanguage).toBe('fr-FR')
+  })
+
+  it('同步期间连续切换语言只保存最后一次', async () => {
+    vi.mocked(isTauriReady).mockReturnValue(true)
+    const backend = deferred<AppConfig>()
+    vi.mocked(invokeGetAppConfig).mockReturnValue(backend.promise)
+    vi.mocked(invokeGetInterfaceLanguageSnapshot).mockResolvedValue(languageSnapshot())
+    vi.mocked(invokeSaveAppConfig).mockImplementation(async (config) => config)
+    const settings = useSettings()
+    const localId = settings.state.services[0].id
+
+    const syncing = settings.syncFromBackend()
+    const changingFr = settings.setInterfaceLanguage('fr-FR')
+    const changingDe = settings.setInterfaceLanguage('de-DE')
+    backend.resolve(makeAppConfig([makeBackend({ id: localId })]))
+    await syncing
+    await Promise.all([changingFr, changingDe])
+
+    expect(settings.state.general.language).toBe('de-DE')
+    expect(invokeSaveAppConfig).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(invokeSaveAppConfig).mock.calls[0][0].interfaceLanguage).toBe('de-DE')
+  })
+
+  it('同步失败后最新语言仍尝试保存并保留失败状态', async () => {
+    Object.assign(window, { setTimeout })
+    vi.mocked(isTauriReady).mockReturnValue(true)
+    const backend = deferred<AppConfig>()
+    vi.mocked(invokeGetAppConfig).mockReturnValue(backend.promise)
+    vi.mocked(invokeSaveAppConfig).mockRejectedValue(new Error('save failed'))
+    const settings = useSettings()
+
+    const syncing = settings.syncFromBackend()
+    const changing = settings.setInterfaceLanguage('fr-FR')
+    await Promise.resolve()
+    expect(invokeSaveAppConfig).not.toHaveBeenCalled()
+    backend.reject(new Error('sync failed'))
+    await syncing
+    await changing
+
+    expect(invokeSaveAppConfig).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(invokeSaveAppConfig).mock.calls[0][0].interfaceLanguage).toBe('fr-FR')
+    expect(settings.state.general.language).toBe('fr-FR')
+    expect(settings.dirty.value).toBe(true)
+    expect(settings.saveStatus.value).toBe('error')
+  })
+
   it('并发同步复用同一 flight，完成后允许再次同步', async () => {
     vi.mocked(isTauriReady).mockReturnValue(true)
     const backend = deferred<Awaited<ReturnType<typeof invokeGetAppConfig>>>()
