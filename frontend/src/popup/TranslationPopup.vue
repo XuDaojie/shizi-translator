@@ -37,6 +37,36 @@ const applyDocumentLanguageAndTitle = async (): Promise<void> => {
   }
 }
 
+const reloadAndApplyLanguage = async (): Promise<void> => {
+  try {
+    await reloadCurrentLocale()
+    if (!disposed) await applyDocumentLanguageAndTitle()
+  } catch (error) {
+    logger.warn('刷新界面语言失败', String(error))
+  }
+}
+
+const setupLanguageSync = async (): Promise<void> => {
+  const apis = getTauriApis()
+  if (!apis) {
+    await applyDocumentLanguageAndTitle()
+    return
+  }
+  try {
+    const unlisten = await apis.listen('interface-language:changed', () => {
+      void reloadAndApplyLanguage()
+    })
+    if (disposed) {
+      unlisten()
+      return
+    }
+    unlistenLanguageChanged = unlisten
+    await reloadAndApplyLanguage()
+  } catch (error) {
+    logger.warn('监听界面语言变更失败', String(error))
+  }
+}
+
 /* === 顶层状态（spec 6.1） === */
 const popupRef = ref<HTMLElement | null>(null)
 const sourceText = ref('')
@@ -386,18 +416,7 @@ const runColdStartReady = async (): Promise<void> => {
 }
 
 onMounted(() => {
-  void applyDocumentLanguageAndTitle()
-  const apis = getTauriApis()
-  if (apis) {
-    void apis.listen('interface-language:changed', () => {
-      void reloadCurrentLocale()
-        .then(applyDocumentLanguageAndTitle)
-        .catch((error) => logger.warn('刷新界面语言失败', String(error)))
-    }).then((unlisten) => {
-      if (disposed) unlisten()
-      else unlistenLanguageChanged = unlisten
-    }).catch((error) => logger.warn('监听界面语言变更失败', String(error)))
-  }
+  void setupLanguageSync()
   charCount.value = sourceText.value.length
   void runColdStartReady()
   void collectEdgeTranslateEnv()
