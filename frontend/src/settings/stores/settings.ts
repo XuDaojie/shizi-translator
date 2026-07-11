@@ -366,6 +366,7 @@ let autoSaveTimer: ReturnType<typeof setTimeout> | undefined
 let saveStatusIdleTimer: ReturnType<typeof setTimeout> | undefined
 let syncingFromBackend = false
 let latestLanguageRefreshRequest = 0
+let syncFromBackendPromise: Promise<void> | null = null
 
 /**
  * 从后端拉取快捷键冲突并写入对应 binding.error。失败静默——冲突信息非关键。
@@ -507,8 +508,10 @@ export const useSettings = () => ({
     await persist(true)
   },
   /** 启动时从后端 config.json 同步：后端空则推前端覆盖，后端非空则按 id 合并。失败静默降级。 */
-  async syncFromBackend(): Promise<void> {
-    if (!isTauriReady()) return
+  syncFromBackend(): Promise<void> {
+    if (!isTauriReady()) return Promise.resolve()
+    if (syncFromBackendPromise) return syncFromBackendPromise
+    const execution = (async (): Promise<void> => {
     if (autoSaveTimer) clearTimeout(autoSaveTimer)
     autoSaveTimer = undefined
     syncingFromBackend = true
@@ -536,8 +539,9 @@ export const useSettings = () => ({
           commitBaseline(pushed)
           saveStatus.value = 'idle'
         } catch {
-          resumeAutoSave = false
-          pushFailed = true
+          const changedDuringPush = serializeForDirty(state) !== serializeForDirty(pushed)
+          resumeAutoSave = changedDuringPush
+          pushFailed = !changedDuringPush
           logger.warn('推送配置到后端失败')
         }
         await refreshShortcutConflicts()
@@ -573,6 +577,12 @@ export const useSettings = () => ({
         autoSaveTimer = setTimeout(() => void persist(), 300)
       }
     }
+    })()
+    const flight = execution.finally(() => {
+      if (syncFromBackendPromise === flight) syncFromBackendPromise = null
+    })
+    syncFromBackendPromise = flight
+    return flight
   },
   reset(): void {
     const defaults = buildDefaults()

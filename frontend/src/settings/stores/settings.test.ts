@@ -35,9 +35,11 @@ vi.stubGlobal('crypto', { randomUUID: () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxx
 
 beforeEach(() => {
   vi.useRealTimers();
+  vi.resetAllMocks();
+  vi.mocked(invokeGetShortcutConflicts).mockResolvedValue([]);
+  vi.mocked(isTauriReady).mockReturnValue(false);
   fakeLocalStorage.clear();
   useSettings().reset();
-  vi.clearAllMocks();
 });
 
 const languageSnapshot = (over: Record<string, unknown> = {}) => ({
@@ -360,6 +362,38 @@ describe('mergeBackendIntoServices', () => {
 })
 
 describe('syncFromBackend', () => {
+  it('并发同步复用同一 flight，完成后允许再次同步', async () => {
+    vi.mocked(isTauriReady).mockReturnValue(true)
+    const backend = deferred<Awaited<ReturnType<typeof invokeGetAppConfig>>>()
+    const snapshot = deferred<InterfaceLanguageSnapshot>()
+    vi.mocked(invokeGetAppConfig).mockReturnValueOnce(backend.promise)
+    vi.mocked(invokeGetInterfaceLanguageSnapshot).mockReturnValueOnce(snapshot.promise)
+    const settings = useSettings()
+
+    const first = settings.syncFromBackend()
+    const second = settings.syncFromBackend()
+    expect(invokeGetAppConfig).toHaveBeenCalledTimes(1)
+
+    backend.resolve({
+      interfaceLanguage: 'auto', targetLang: 'zh-CN', defaultSourceLang: 'auto',
+      autoCopy: true, restoreClipboard: true, historyLimit: 500, services: [],
+      popupPrecreate: true, overlayPrecreate: true, collectUsage: true, logLevel: 'info', shortcuts: {},
+    })
+    await Promise.resolve()
+    expect(invokeGetInterfaceLanguageSnapshot).toHaveBeenCalledTimes(1)
+    snapshot.resolve(languageSnapshot())
+    await Promise.all([first, second])
+
+    vi.mocked(invokeGetAppConfig).mockResolvedValueOnce({
+      interfaceLanguage: 'auto', targetLang: 'zh-CN', defaultSourceLang: 'auto',
+      autoCopy: true, restoreClipboard: true, historyLimit: 500, services: [],
+      popupPrecreate: true, overlayPrecreate: true, collectUsage: true, logLevel: 'info', shortcuts: {},
+    })
+    vi.mocked(invokeGetInterfaceLanguageSnapshot).mockResolvedValueOnce(languageSnapshot())
+    await settings.syncFromBackend()
+    expect(invokeGetAppConfig).toHaveBeenCalledTimes(2)
+  })
+
   it('Tauri 未就绪时静默降级，不调用任何 invoke', async () => {
     vi.mocked(isTauriReady).mockReturnValue(false);
     const settings = useSettings();
@@ -443,6 +477,34 @@ describe('syncFromBackend', () => {
     expect(settings.saveStatus.value).toBe('error')
     await vi.advanceTimersByTimeAsync(350)
     expect(invokeSaveAppConfig).toHaveBeenCalledTimes(1)
+  })
+
+  it('首次推送等待期间的用户修改在旧推送失败后恢复自动保存', async () => {
+    vi.useFakeTimers()
+    vi.mocked(isTauriReady).mockReturnValue(true)
+    vi.mocked(invokeGetAppConfig).mockResolvedValue({
+      interfaceLanguage: 'auto', targetLang: 'zh-CN', defaultSourceLang: 'auto',
+      autoCopy: true, restoreClipboard: true, historyLimit: 500, services: [],
+      popupPrecreate: true, overlayPrecreate: true, collectUsage: true, logLevel: 'info', shortcuts: {},
+    })
+    vi.mocked(invokeGetInterfaceLanguageSnapshot).mockResolvedValue(languageSnapshot())
+    const pendingSave = deferred<Awaited<ReturnType<typeof invokeSaveAppConfig>>>()
+    vi.mocked(invokeSaveAppConfig)
+      .mockReturnValueOnce(pendingSave.promise)
+      .mockImplementation(async (config) => config)
+    const settings = useSettings()
+
+    const sync = settings.syncFromBackend()
+    await vi.waitFor(() => expect(invokeSaveAppConfig).toHaveBeenCalledTimes(1))
+    settings.state.translation.autoCopy = false
+    await nextTick()
+    pendingSave.reject(new Error('old push failed'))
+    await sync
+    expect(invokeSaveAppConfig).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(350)
+    expect(invokeSaveAppConfig).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(invokeSaveAppConfig).mock.calls[1][0].autoCopy).toBe(false)
   })
 
   it('invokeGetAppConfig 抛错时静默降级', async () => {
