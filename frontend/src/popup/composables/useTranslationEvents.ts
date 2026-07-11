@@ -7,6 +7,8 @@ export interface CardState {
   serviceInstanceId: string
   serviceName: string
   serviceType: string
+  /** 协议 id（openai_chat / claude_messages / microsoft_edge），用于判断是否展示模型名/Token */
+  protocol: string
   modelName: string
   text: string
   status: CardStatus
@@ -26,6 +28,7 @@ export interface TranslationEventPayload {
   serviceInstanceId?: string
   serviceName?: string
   serviceType?: string
+  protocol?: string
   modelName?: string
   sourceText?: string
   sourceType?: 'selectedText' | 'ocrText' | null
@@ -61,6 +64,7 @@ function ensureCard(cards: Map<string, CardState>, payload: TranslationEventPayl
       serviceInstanceId: id,
       serviceName: payload.serviceName ?? '翻译',
       serviceType: payload.serviceType ?? '',
+      protocol: payload.protocol ?? '',
       modelName: payload.modelName ?? '',
       text: '',
       status: 'pending',
@@ -112,6 +116,7 @@ export function useTranslationEvents(opts: UseTranslationEventsOptions): UseTran
         const card = ensureCard(opts.cards, payload)
         card.serviceName = payload.serviceName ?? card.serviceName
         card.serviceType = payload.serviceType ?? card.serviceType
+        card.protocol = payload.protocol ?? card.protocol
         card.modelName = payload.modelName ?? card.modelName
         card.status = 'translating'
         card.text = ''

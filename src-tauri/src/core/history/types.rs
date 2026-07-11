@@ -108,7 +108,13 @@ impl NewHistoryResult {
             service_name: request.service.service_name.clone(),
             service_type: request.service.service_type.clone(),
             protocol: request.service.protocol.clone(),
-            model_name: service.model.clone(),
+            // 与事件 meta 一致：MT 不写入模型名
+            model_name: if service.protocol == "microsoft_edge" || request.service.protocol == "microsoft_edge"
+            {
+                String::new()
+            } else {
+                service.model.clone()
+            },
         }
     }
 }

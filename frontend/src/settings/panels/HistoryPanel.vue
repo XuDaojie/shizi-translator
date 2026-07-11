@@ -19,6 +19,7 @@ import {
   type HistorySession,
   type HistoryTrigger,
 } from '../history'
+import { displayModelName, shouldShowTokens } from '@/popup/composables/resultCardMeta'
 
 interface Props {
   state: AppSettings
@@ -78,8 +79,9 @@ const filteredSessions = computed<HistorySession[]>(() =>
     ? sessions.value
     : sessions.value.filter((s) => s.trigger === activeFilter.value),
 )
-/* 空态只看全部历史，与原型一致；筛选无命中仍保留筛选栏 */
+/* 空态只看全部历史，与原型一致；筛选无命中保留筛选栏并展示筛选空态 */
 const isEmpty = computed(() => isEmptyHistory(sessions.value))
+const activeFilterLabel = computed(() => FILTERS.find((f) => f.id === activeFilter.value)?.label ?? '')
 const activeSession = computed<HistorySession | null>(() =>
   activeId.value ? filteredSessions.value.find((s) => s.id === activeId.value) ?? null : null,
 )
@@ -153,6 +155,7 @@ const filteredGrouped = computed<Bucket[]>(() => {
     .map((b) => ({ ...b, entries: b.entries.filter((s) => s.trigger === activeFilter.value) }))
     .filter((b) => b.entries.length > 0)
 })
+const isFilterEmpty = computed(() => !isEmpty.value && filteredGrouped.value.length === 0)
 
 const copy = async (text: string, isSource = false): Promise<void> => {
   if (!text) { toast.error('复制失败', '该记录没有可复制的文本'); return }
@@ -214,9 +217,12 @@ const toggleExpand = (sessionId: string, r: HistoryResult): void => {
   const k = cardKey(sessionId, r)
   expandedMap[k] = !expandedMap[k]
 }
-/** 与弹窗一致：有 usage 数据时展示 Token；模型名始终传给 ResultCardView。 */
+/** 与弹窗一致：LLM 且有 usage 时展示 Token；MT 不展示。 */
 const showResultTokens = (r: HistoryResult): boolean =>
-  r.inputTokens != null || r.outputTokens != null
+  shouldShowTokens(r.protocol, r.inputTokens != null || r.outputTokens != null)
+
+const resultModelName = (r: HistoryResult): string =>
+  displayModelName(r.protocol, r.modelName)
 
 const speakSource = (): void => {
   const text = activeSession.value?.source
@@ -352,8 +358,22 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
+      <!-- 筛选无结果 → 保留筛选栏，替换左右网格（与原型对齐） -->
+      <div
+        v-if="isFilterEmpty"
+        class="flex flex-1 flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border py-16 text-center"
+      >
+        <div class="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
+          <component :is="FILTERS.find((f) => f.id === activeFilter)?.icon ?? HistoryIcon" class="h-5 w-5" />
+        </div>
+        <div class="flex flex-col gap-1">
+          <p class="text-sm font-medium text-foreground">「{{ activeFilterLabel }}」筛选条件下暂无记录</p>
+          <p class="text-[12px] text-muted-foreground">切换其他触发方式，或选择「全部」查看所有翻译。</p>
+        </div>
+      </div>
+
       <!-- 左右布局 -->
-      <div class="flex gap-4">
+      <div v-else class="flex gap-4">
         <!-- 左:列表（独立滚动） -->
         <aside class="w-[240px] shrink-0 self-start sticky top-[var(--history-aside-top)] max-h-[var(--history-aside-h)] flex min-h-0 flex-col gap-3 overflow-y-auto scrollbar-thin">
           <template v-for="bucket in filteredGrouped" :key="bucket.label">
@@ -379,9 +399,16 @@ onBeforeUnmount(() => {
                     <Layers class="h-2.5 w-2.5" />
                     {{ s.results.length }}
                   </span>
-                  <template v-if="s.results.some((r) => r.status !== 'success')">
-                    <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-destructive" :title="`${s.results.filter((r) => r.status !== 'success').length} 个翻译结果异常`" />
-                  </template>
+                  <span class="ml-auto flex items-center gap-1">
+                    <template v-if="s.results.some((r) => r.status === 'pending')">
+                      <span class="inline-flex items-center gap-0.5 rounded border border-accent/40 bg-accent/10 px-1 py-0.5 text-accent" title="仍在翻译中">
+                        <span class="h-1.5 w-1.5 rounded-full bg-accent" />
+                      </span>
+                    </template>
+                    <template v-if="s.results.some((r) => r.status !== 'success') && !s.results.some((r) => r.status === 'pending')">
+                      <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-destructive" :title="`${s.results.filter((r) => r.status !== 'success').length} 个翻译结果异常`" />
+                    </template>
+                  </span>
                 </div>
                 <div class="line-clamp-2 text-[12px] leading-snug text-foreground">{{ s.source }}</div>
               </li>
@@ -417,7 +444,7 @@ onBeforeUnmount(() => {
                     <ResultCardView
                       :engine-name="r.serviceName"
                       :service-type="serviceTypeOf(r)"
-                      :model-name="r.modelName"
+                      :model-name="resultModelName(r)"
                       :status="cardStatus(r)"
                       :text="resultText(r)"
                       :collapsed="isCollapsed(activeSession.id, r)"

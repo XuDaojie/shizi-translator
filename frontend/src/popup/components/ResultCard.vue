@@ -2,6 +2,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import ResultCardView from './ResultCardView.vue'
 import type { CardState } from '../composables/useTranslationEvents'
+import { displayModelName, shouldShowTokens } from '../composables/resultCardMeta'
 import { speakText, copyText, getTauriApis } from '../composables/utils'
 import { toast } from '@/lib/toast'
 
@@ -107,13 +108,13 @@ const onRefresh = async (): Promise<void> => {
   <ResultCardView
     :engine-name="card.serviceName"
     :service-type="card.serviceType"
-    :model-name="card.modelName"
+    :model-name="displayModelName(card.protocol, card.modelName)"
     :status="viewStatus"
     :loading="isLoading"
     :collapsed="card.collapsed"
     :has-overflow="card.hasOverflow"
     :expanded="card.expanded"
-    :show-tokens="card.usage !== null"
+    :show-tokens="shouldShowTokens(card.protocol, card.usage !== null)"
     :input-tokens="card.usage?.inputTokens ?? 0"
     :output-tokens="card.usage?.outputTokens ?? 0"
     :show-actions="card.showActions"

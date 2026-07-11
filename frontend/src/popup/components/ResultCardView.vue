@@ -56,9 +56,13 @@ const autoOverflow = ref(false)
 
 const showOverflow = computed(() => props.hasOverflow || autoOverflow.value)
 
+/** 与 components.css `.result-text-clip { max-height: 6.4em }` 保持一致 */
+const COLLAPSED_MAX_HEIGHT_EM = 6.4
+
 /**
- * 相对折叠态 max-height(6.4em) 测高，避免 expanded 后 max-height 变大导致溢出标志被清掉、
- * 「收起」按钮消失。
+ * 用正文 scrollHeight 对比折叠态上限（6.4em → px），不改 DOM max-height。
+ * 旧实现临时写 style.maxHeight 会触发 transition，clientHeight 滞后，
+ * 点「收起」后误判为无溢出，导致「展开全文」按钮消失。
  */
 const measureOverflow = (): void => {
   if (props.collapsed) return
@@ -66,10 +70,9 @@ const measureOverflow = (): void => {
   if (!clip) return
   const textEl = clip.querySelector('.result-text') as HTMLElement | null
   if (!textEl) return
-  const prevMax = clip.style.maxHeight
-  clip.style.maxHeight = '6.4em'
-  autoOverflow.value = textEl.scrollHeight > clip.clientHeight + 1
-  clip.style.maxHeight = prevMax
+  const fontSize = parseFloat(getComputedStyle(clip).fontSize) || 13
+  const collapsedMaxPx = COLLAPSED_MAX_HEIGHT_EM * fontSize
+  autoOverflow.value = textEl.scrollHeight > collapsedMaxPx + 1
 }
 
 const scheduleMeasure = (): void => {
@@ -77,8 +80,9 @@ const scheduleMeasure = (): void => {
 }
 
 onMounted(scheduleMeasure)
+// 不监听 expanded：展开/收起不改变是否溢出；监听它还会在 transition 期间误测
 watch(
-  () => [props.text, props.collapsed, props.status, props.expanded] as const,
+  () => [props.text, props.collapsed, props.status] as const,
   scheduleMeasure,
 )
 

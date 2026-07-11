@@ -153,10 +153,16 @@ onBeforeUnmount(() => {
 })
 
 /* === 卡片配置同步（复刻旧 refreshCardsFromConfig + syncServiceCards） === */
-const enabledPayloads = (config: AppConfig): Array<{ serviceInstanceId: string; serviceType: string; serviceName: string; modelName: string }> =>
+const enabledPayloads = (config: AppConfig): Array<{ serviceInstanceId: string; serviceType: string; serviceName: string; protocol: string; modelName: string }> =>
   (config.services || [])
     .filter((s) => s.enabled)
-    .map((s) => ({ serviceInstanceId: s.id, serviceType: s.serviceType, serviceName: s.name, modelName: s.model || '' }))
+    .map((s) => ({
+      serviceInstanceId: s.id,
+      serviceType: s.serviceType,
+      serviceName: s.name,
+      protocol: s.protocol || '',
+      modelName: s.protocol === 'microsoft_edge' ? '' : (s.model || ''),
+    }))
 
 const refreshCardsFromConfig = (config: AppConfig): void => {
   const payloads = enabledPayloads(config)
@@ -171,7 +177,8 @@ const refreshCardsFromConfig = (config: AppConfig): void => {
       if (card) {
         card.serviceName = p.serviceName
         card.serviceType = p.serviceType
-        if (p.modelName) card.modelName = p.modelName
+        card.protocol = p.protocol
+        card.modelName = p.modelName
       }
     })
     return
@@ -187,6 +194,7 @@ const refreshCardsFromConfig = (config: AppConfig): void => {
         serviceInstanceId: p.serviceInstanceId,
         serviceName: p.serviceName,
         serviceType: p.serviceType,
+        protocol: p.protocol,
         modelName: p.modelName,
         text: '',
         status: 'pending',
@@ -202,7 +210,8 @@ const refreshCardsFromConfig = (config: AppConfig): void => {
     } else {
       card.serviceName = p.serviceName
       card.serviceType = p.serviceType
-      if (p.modelName) card.modelName = p.modelName
+      card.protocol = p.protocol
+      card.modelName = p.modelName
     }
   })
 }

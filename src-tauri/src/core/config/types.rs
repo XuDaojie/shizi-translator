@@ -125,7 +125,11 @@ pub struct AppConfig {
 impl ServiceInstanceConfig {
     pub fn normalized(mut self) -> Self {
         self.api_key = self.api_key.and_then(non_empty_string);
-        self.model = normalize_string(self.model, DEFAULT_MODEL);
+        // 机器翻译无模型概念；勿用 LLM 默认模型（gpt-4o-mini）回填，否则结果卡右下角会误显
+        self.model = match self.protocol.as_str() {
+            "microsoft_edge" => String::new(),
+            _ => normalize_string(self.model, DEFAULT_MODEL),
+        };
         if self.endpoint.trim().is_empty() {
             self.endpoint = match self.protocol.as_str() {
                 "claude_messages" => DEFAULT_CLAUDE_BASE_URL.to_string(),
@@ -639,7 +643,29 @@ mod tests {
         .normalized();
         assert_eq!(svc.endpoint, "https://edge.microsoft.com/translate/translatetext");
         assert!(svc.api_key.is_none());
-        assert_eq!(svc.model, DEFAULT_MODEL);
+        assert_eq!(svc.model, "", "微软翻译不应回填 LLM 默认模型");
+    }
+
+    #[test]
+    fn normalized_clears_stale_model_for_microsoft_edge() {
+        let svc = ServiceInstanceConfig {
+            id: "ms".to_string(),
+            service_type: "microsoft".to_string(),
+            name: "微软翻译".to_string(),
+            enabled: true,
+            protocol: "microsoft_edge".to_string(),
+            api_key: None,
+            endpoint: DEFAULT_EDGE_TRANSLATE_URL.to_string(),
+            model: DEFAULT_MODEL.to_string(), // 旧配置误写入的 LLM 默认模型
+            timeout_seconds: 60,
+            system_prompt: String::new(),
+            translation_prompt: String::new(),
+            reflection_prompt: String::new(),
+            reflection_enabled: false,
+            chain_of_thought: default_chain_of_thought(),
+        }
+        .normalized();
+        assert_eq!(svc.model, "");
     }
 
     #[test]

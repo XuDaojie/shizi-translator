@@ -26,7 +26,12 @@ pub fn build_batch_requests(
                 service_name: s.name.clone(),
                 service_type: s.service_type.clone(),
                 protocol: s.protocol.clone(),
-                model_name: s.model.clone(),
+                // 机器翻译无模型；防御配置里残留的 LLM 默认模型名
+                model_name: if s.protocol == "microsoft_edge" {
+                    String::new()
+                } else {
+                    s.model.clone()
+                },
             },
             prompts: TranslationPromptConfig {
                 system_prompt: s.system_prompt.clone(),
@@ -103,6 +108,26 @@ mod tests {
         );
         assert_eq!(requests[0].service.service_name, "svc-a");
         assert_eq!(requests[0].service.model_name, "deepseek-chat");
+    }
+
+    #[test]
+    fn build_batch_clears_model_for_microsoft_edge() {
+        let mut svc = service("ms", true);
+        svc.service_type = "microsoft".to_string();
+        svc.protocol = "microsoft_edge".to_string();
+        svc.model = "gpt-4o-mini".to_string(); // 误写入的默认模型
+
+        let requests = build_batch_requests(
+            TranslationInput::ManualText("hello".to_string()),
+            "中文".to_string(),
+            "auto".to_string(),
+            &[svc],
+            "batch-1",
+        )
+        .expect("应生成批次");
+
+        assert_eq!(requests[0].service.model_name, "");
+        assert_eq!(requests[0].service.protocol, "microsoft_edge");
     }
 
     #[test]
