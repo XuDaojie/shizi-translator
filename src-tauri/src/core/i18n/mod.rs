@@ -376,6 +376,18 @@ mod tests {
     }
 
     #[test]
+    fn locale_without_builtin_or_user_messages_falls_back_to_zh_cn() {
+        let messages = resolve_messages("it-IT", &LanguagePackScan::default());
+
+        assert_eq!(messages["tray.quit"], "退出");
+        assert_eq!(messages["tray.translate"], "翻译");
+        assert_eq!(messages["tray.settings"], "设置");
+        assert_eq!(messages["tray.tooltip"], "Shizi 翻译");
+        assert_eq!(messages["window.popupTitle"], "Shizi 翻译");
+        assert_eq!(messages["window.settingsTitle"], "Shizi 设置");
+    }
+
+    #[test]
     fn invalid_packs_report_precise_errors() {
         let cases = [
             ("wrong.json", valid_pack("fr-FR", r#"{"tray.quit":"x"}"#), "文件名 locale 与包内 locale 不一致"),
