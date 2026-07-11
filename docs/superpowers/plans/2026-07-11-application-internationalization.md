@@ -870,7 +870,7 @@ cargo build
 
 预期：所有命令退出码为 0；若任一失败，先按 `systematic-debugging` 定位根因并只修复相关任务，不跳过验证。
 
-- [ ] **步骤 2：启动开发环境并执行手动验收**
+- [x] **步骤 2：启动开发环境并执行手动验收**
 
 运行：`npm run tauri dev`
 
@@ -896,26 +896,26 @@ cargo build
 
 未通过项必须写出实际失败现象，不得将其标为完成。
 
-## 执行结果（2026-07-12）
+## 执行结果（2026-07-12，修复后复验）
 
-- 自动验证：`npm run test`（132/132）、`npm run typecheck`、`npm run build`、`cargo test`（250 passed、2 ignored）、`cargo build` 均退出码 0；Rust 仅有既存 unused/dead-code warning。
-- 手动验收 1：通过。`auto` 在当前系统解析为 `zh-CN`，首次界面为简体中文。
-- 手动验收 2：未通过。8 种内置 locale 的弹窗文案、tooltip、两个窗口标题均在相同窗口实例内更新，无 reload；但设置页的主题、关闭行为、更新通道等原生下拉当前值在切换后仍残留旧中文，托盘菜单未能通过 Computer Use 直接检查。
-- 手动验收 3：通过。临时写入不支持的 `xx-YY` 并重启后回退 `zh-CN`，窗口标题为 `Shizi 翻译`。
-- 手动验收 4：未验收。临时 mock 服务可流式翻译，但设置页不接受 `mock` 协议并显示 `Auto-save failed`，无法形成“翻译进行中有效保存并切换语言”的可靠证据。
-- 手动验收 5：通过。源语言下拉为 `auto + 19`，目标语言下拉为 19 种且无 `auto`。
-- 手动验收 6：通过。下拉第一列保持 native name，第二列随西班牙语界面显示本地化名称。
-- 手动验收 7：由自动契约验证替代。前端共享 19 语言目录测试及 Rust prompt 稳定名称/未知 code 原样测试通过，未实际发送 19 次外部 LLM 请求。
-- 手动验收 8：由自动契约验证替代。Rust 覆盖 19 种 Edge 显式映射及未知语言返回错误，未依赖外部网络逐项请求。
-- 手动验收 9：通过。新增合法 `it-IT` 包并刷新后立即出现在语言列表。
-- 手动验收 10：通过。局部 `en-US` 覆盖仅替换 `settings.title`，缺失键使用内置英文。
-- 手动验收 11：通过。删除 `en-US` 覆盖并刷新后恢复内置 `Settings`。
-- 手动验收 12：通过。非法 JSON、错误 schema、文件名/locale 不一致、未知 key、超过 1 MiB 均被拒绝并显示 `file + reason`。
-- 手动验收 13：部分通过。阿拉伯语 source 正文按 RTL 对齐且应用布局保持 LTR；result 正文因 mock 固定拉丁前缀及第 4 项限制未形成阿拉伯语首强字符的手动证据。
-- 额外证据：19 种 source/target 目录及未知历史 code 原样展示由前端/Rust 自动测试覆盖；fallback 创建期标题已改为当前 `zh-CN` 的 `Shizi 翻译`。
-- 用户数据恢复：原 `config.json` SHA-256 `A212AFBFCAB866FF557DFB3FC245A377F1A7C86B34EDF5EE1549C2C6C40C5FE9` 恢复后完全一致；原 `lang` 目录不存在，验收结束后仍不存在；Shizi 验收进程为 0。
+- 自动验证：`npm run test`（142/142）、`npm run typecheck`、`npm run build`、`cargo test`（250 passed、2 ignored）、`cargo build` 均退出码 0；Rust 仅有既存 unused/dead-code warning。
+- 验收 1：通过（UI + 自动契约）。`auto` 在当前系统解析为 `zh-CN`，首次界面为简体中文。
+- 验收 2：通过（UI + 托盘自动契约）。8 种内置 locale 逐一切换时设置页、弹窗、tooltip、两个窗口标题及关闭行为/主题/更新通道 Select 当前 label 均更新，两个窗口 ID 全程不变；连续快速切换最终收敛到最后选择。Computer Use 无法定位系统托盘菜单，托盘三菜单与 tooltip 由 Rust 固定句柄 `set_text`/`set_tooltip` 路径和 8 份完整字典契约替代验证，不记为纯手动托盘验证。
+- 验收 3：通过（UI）。临时写入不支持的 `xx-YY` 并重启后回退 `zh-CN`，窗口标题为 `Shizi 翻译`。
+- 验收 4：通过（UI + 自动契约）。mock 服务配置可保存且不再出现 `Auto-save failed`；720ms 流式翻译期间切换 locale 后输入、同一 popup/card 和请求结果保留，完成状态与重试文案使用新 locale；Computer Use 截图延迟未稳定捕获中间帧，事件不中断与卡片复用由前端翻译事件测试补证。
+- 验收 5：通过（UI + 自动契约）。源语言下拉为 `auto + 19`，目标语言下拉为 19 种且无 `auto`。
+- 验收 6：通过（UI）。下拉第一列保持 native name，第二列随西班牙语界面显示本地化名称。
+- 验收 7：通过（自动契约替代外部请求）。前端共享 19 语言目录测试及 Rust prompt 稳定名称/未知 code 原样测试通过，未实际发送 19 次外部 LLM 请求。
+- 验收 8：通过（自动契约替代外部网络）。Rust 覆盖 19 种 Edge 显式映射、detected code 保留及未知语言返回错误。
+- 验收 9：通过（UI）。合法 `it-IT` 包刷新后立即出现在语言列表。
+- 验收 10：通过（UI + 自动契约）。局部 `en-US` 覆盖只替换目标键，缺失键使用内置英文。
+- 验收 11：通过（UI + 自动契约）。删除覆盖并刷新后恢复内置英文。
+- 验收 12：通过（UI + 自动契约）。非法 JSON、错误 schema、文件名/locale 不一致、未知 key、超过 1 MiB 均被拒绝并显示 `file + reason`。
+- 验收 13：通过（UI + 源码契约）。阿拉伯语 source 正文视觉 RTL，应用工具栏/卡片布局保持 LTR；`ResultCardView` 同样设置 `dir="auto"`，mock 结果因固定拉丁前缀未伪造阿拉伯语译文视觉证据。
+- 额外证据：19 种 source/target 目录及未知历史 code 原样展示由前端/Rust 自动测试覆盖；fallback 创建期标题为当前 `zh-CN` 的 `Shizi 翻译`。
+- 用户数据恢复：本轮原 `config.json` SHA-256 `60F7A2BAB2E12D0ABA92274CD6565589F176FFBF10CC333D0BB91D3A12FD0471` 恢复后完全一致；原 `lang` 目录存在且为空，验收结束后仍存在且为空；Shizi 验收进程为 0。
 
-- [ ] **步骤 4：提交**
+- [x] **步骤 4：提交**
 
 ```bash
 git add src-tauri/tauri.conf.json docs/superpowers/plans/2026-07-11-application-internationalization.md
