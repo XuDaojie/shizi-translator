@@ -143,7 +143,7 @@ describe('projectToAppConfig', () => {
     const state = makeState([]);
     state.shortcut.bindings = [
       { id: 'translate-selection', label: '划词翻译', description: '', keys: ' Alt+D ' },
-      { id: 'translate-screenshot', label: '截图翻译', description: '', keys: 'Alt+E' },
+      { id: 'translate-screenshot', label: '截图翻译', description: '', keys: 'Alt+S' },
       { id: 'word-lookup', label: '取词翻译', description: '', keys: '' },
     ];
 
@@ -151,7 +151,7 @@ describe('projectToAppConfig', () => {
 
     expect(config.shortcuts).toEqual({
       'translate-selection': 'Alt+D',
-      'translate-screenshot': 'Alt+E',
+      'translate-screenshot': 'Alt+S',
       'word-lookup': '',
     });
   });

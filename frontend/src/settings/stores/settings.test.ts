@@ -265,12 +265,12 @@ describe('settings defaults', () => {
     expect(state.services[1].model).toBe('glm-4-flash');
   });
 });
-  it('默认快捷键使用 Alt+D 和 Alt+E', () => {
+  it('默认快捷键使用 Alt+D 和 Alt+S', () => {
     const { state } = useSettings();
 
     expect(Object.fromEntries(state.shortcut.bindings.map((b) => [b.id, b.keys]))).toMatchObject({
       'translate-selection': 'Alt+D',
-      'translate-screenshot': 'Alt+E',
+      'translate-screenshot': 'Alt+S',
     });
   });
 

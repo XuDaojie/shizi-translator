@@ -120,7 +120,7 @@ const buildDefaults = (): AppSettings => {
           id: 'translate-screenshot',
           label: '截图翻译',
           description: '框选屏幕区域后识别并翻译其中的文字。',
-          keys: 'Alt+E',
+          keys: 'Alt+S',
         },
         {
           id: 'word-lookup',

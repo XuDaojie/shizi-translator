@@ -164,7 +164,7 @@ fn default_shortcuts() -> HashMap<String, String> {
         (
             "translate-screenshot".to_string(),
             env::var("SHIZI_SHORTCUT_TRANSLATE_SCREENSHOT")
-                .unwrap_or_else(|_| "Alt+E".to_string()),
+                .unwrap_or_else(|_| "Alt+S".to_string()),
         ),
         (
             "translate-clipboard".to_string(),
@@ -193,7 +193,8 @@ fn normalize_shortcuts(mut shortcuts: HashMap<String, String>) -> HashMap<String
             .unwrap_or(default_keys);
         let keys = match (id.as_str(), keys.as_str()) {
             ("translate-selection", "Alt+T") => "Alt+D".to_string(),
-            ("translate-screenshot", "Alt+O") => "Alt+E".to_string(),
+            // 历史默认：Alt+O → Alt+E → Alt+S
+            ("translate-screenshot", "Alt+O" | "Alt+E") => "Alt+S".to_string(),
             _ => keys,
         };
         normalized.insert(id, keys);
@@ -725,7 +726,7 @@ mod tests {
         let config = AppConfig::from_env();
 
         assert_eq!(config.shortcuts.get("translate-selection").map(String::as_str), Some("Alt+D"));
-        assert_eq!(config.shortcuts.get("translate-screenshot").map(String::as_str), Some("Alt+E"));
+        assert_eq!(config.shortcuts.get("translate-screenshot").map(String::as_str), Some("Alt+S"));
         assert_eq!(
             config.shortcuts.get("translate-clipboard").map(String::as_str),
             Some("Ctrl+Shift+C")
@@ -748,7 +749,12 @@ mod tests {
         let config = config.normalized();
 
         assert_eq!(config.shortcuts.get("translate-selection").map(String::as_str), Some("Alt+D"));
-        assert_eq!(config.shortcuts.get("translate-screenshot").map(String::as_str), Some("Alt+E"));
+        assert_eq!(config.shortcuts.get("translate-screenshot").map(String::as_str), Some("Alt+S"));
+
+        let mut config = AppConfig::from_env();
+        config.shortcuts.insert("translate-screenshot".to_string(), "Alt+E".to_string());
+        let config = config.normalized();
+        assert_eq!(config.shortcuts.get("translate-screenshot").map(String::as_str), Some("Alt+S"));
     }
 
     #[test]
