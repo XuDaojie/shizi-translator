@@ -88,6 +88,7 @@ src-tauri/src/ui/settings_commands.rs
 - 未接通入口已从 UI 隐藏或降级为只读展示。
 - 高级页配置导出/导入已接通（导出剔除 API Key，导入保留本地 Key）。
 - 高级日志系统已落地：前后端独立日志（Shizi.log / frontend.log）、运行时等级切换、API Key 与翻译正文脱敏、5MB 轮转 + 7 天清理、导出 zip。
+- 开发中功能 dev/release 可见性分离（2026-07-12）：未对接渠道与 wip 功能块（思维链 / 反思 / 主题 / 自动检查更新）在 release 包（`npm run tauri build`）隐藏、dev 包可见，`config.json` 数据保留、dev 切回仍可见、已配值后端行为不变；判据 `import.meta.env.DEV`（`useDevMode` composable + `<DevOnly>` 组件）。
 
 - ~~Anthropic / Claude 专用 provider~~ ✅。
 - `TranslationInput` / `TranslationMode` 的完整输入模型。

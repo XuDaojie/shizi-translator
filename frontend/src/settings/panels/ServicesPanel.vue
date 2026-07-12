@@ -27,12 +27,13 @@ import {
   SettingSelect,
   SettingTextarea,
   ModelCombobox,
-
+  DevOnly,
 } from '../components'
 import type { AppSettings, ServiceId, ServiceInstance } from '../types'
 import { DEFAULT_PROMPTS, serviceById } from '../tokens'
 import { invokeValidateServiceCredential, invokeListServiceModels } from '@/lib/tauri'
 import { useSettings } from '../stores/settings'
+import { useDevMode } from '../composables/useDevMode'
 import { validateServiceForEnable } from '@/settings/service-validation'
 import { t } from '@/i18n'
 
@@ -41,6 +42,7 @@ const props = defineProps<{
 }>()
 
 const settings = useSettings()
+const isDev = useDevMode()
 
 /** 思维链长度档位,默认「关闭」对应 `chainOfThought: 'off'`。 */
 const chainOfThoughtOptions = computed(() => [
@@ -50,7 +52,19 @@ const chainOfThoughtOptions = computed(() => [
   { label: t('settings.option.long'), value: 'long', description: t('settings.description.reasoningLong') },
 ])
 
-const activeInstanceId = ref<string>(props.state.services[0]?.id ?? '')
+/** 渠道 protocols 为空即视为"尚未对接"，在 UI 上标记开发中并置灰启用。 */
+const isDeveloping = (type: ServiceId): boolean =>
+  serviceById(type)?.protocols.length === 0
+
+/** 当前环境下可见的实例：dev 全可见；release 过滤掉未对接渠道实例。 */
+const isVisibleInstance = (inst: ServiceInstance): boolean =>
+  isDev || !isDeveloping(inst.type)
+
+/** 第一个可见实例 id，无可见实例时返回空字符串（详情页走空态分支）。 */
+const firstVisibleInstanceId = (): string =>
+  props.state.services.find(isVisibleInstance)?.id ?? ''
+
+const activeInstanceId = ref<string>(firstVisibleInstanceId())
 const search = ref('')
 const pickerOpen = ref(false)
 /** 正在拉取模型的实例 id；用单值 ref 保证模板 loading 能可靠刷新。 */
@@ -60,6 +74,10 @@ const tab = ref<'translate' | 'ocr'>('translate')
 
 // 内置 + 用户自定义渠道的合并视图
 const mergedServices = computed(() => settings.getMergedServices())
+/** 添加渠道对话框候选：dev 全展示；release 过滤掉未对接渠道（protocols 为空）。 */
+const addableServices = computed(() =>
+  isDev ? mergedServices.value : mergedServices.value.filter((s) => s.protocols.length > 0),
+)
 
 const probeRequest = (inst: ServiceInstance) => ({
   protocol: inst.protocol,
@@ -79,10 +97,6 @@ const activeService = computed(() =>
   activeInstance.value ? serviceById(activeInstance.value.type) : undefined,
 )
 
-/** 渠道 protocols 为空即视为"尚未对接"，在 UI 上标记开发中并置灰启用。 */
-const isDeveloping = (type: ServiceId): boolean =>
-  serviceById(type)?.protocols.length === 0
-
 const keyStatusFor = (instanceId: string): ServiceInstance['keyStatus'] =>
   keyStatusById.value[instanceId] ?? 'idle'
 
@@ -92,7 +106,8 @@ const setKeyStatus = (instanceId: string, status: ServiceInstance['keyStatus']):
 
 const filteredInstances = computed(() => {
   const q = search.value.trim().toLowerCase()
-  const list = props.state.services
+  // release 包隐藏未对接渠道实例（dev 全可见）
+  const list = props.state.services.filter(isVisibleInstance)
   if (!q) return list
   return list.filter((inst) => {
     const meta = serviceById(inst.type)
@@ -144,7 +159,7 @@ const onRemove = (): void => {
   const name = activeInstance.value.name
   if (!window.confirm(t('settings.dialog.deleteService', { name }))) return
   settings.removeService(removedId)
-  activeInstanceId.value = props.state.services[0]?.id ?? ''
+  activeInstanceId.value = firstVisibleInstanceId()
 }
 
 const onAddService = (type: ServiceId): void => {
@@ -445,7 +460,7 @@ const onDragEnd = (): void => {
 
               <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 <button
-                  v-for="svc in mergedServices"
+                  v-for="svc in addableServices"
                   :key="svc.id"
                   type="button"
                   class="group relative flex flex-col items-start gap-1.5 rounded-md border border-border bg-card p-2.5 text-left transition-colors hover:border-primary/40 hover:bg-accent/40"
@@ -756,24 +771,26 @@ const onDragEnd = (): void => {
         </SettingRow>
       </SettingGroup>
 
-      <SettingGroup
-        v-if="activeService.category === 'llm'"
-        :title="t('settings.field.chainOfThought')"
-        bare
-      >
-        <SettingRow
+      <DevOnly>
+        <SettingGroup
+          v-if="activeService.category === 'llm'"
           :title="t('settings.field.chainOfThought')"
-          :description="t('settings.description.chainOfThought')"
-          status="wip"
-          vertical
+          bare
         >
-          <SettingSelect
-            :model-value="activeInstance.chainOfThought"
-            :options="chainOfThoughtOptions"
-            @update:model-value="(v) => (activeInstance!.chainOfThought = v as typeof activeInstance.chainOfThought)"
-          />
-        </SettingRow>
-      </SettingGroup>
+          <SettingRow
+            :title="t('settings.field.chainOfThought')"
+            :description="t('settings.description.chainOfThought')"
+            status="wip"
+            vertical
+          >
+            <SettingSelect
+              :model-value="activeInstance.chainOfThought"
+              :options="chainOfThoughtOptions"
+              @update:model-value="(v) => (activeInstance!.chainOfThought = v as typeof activeInstance.chainOfThought)"
+            />
+          </SettingRow>
+        </SettingGroup>
+      </DevOnly>
 
       <SettingGroup
         v-if="activeService.category === 'llm'"
@@ -804,31 +821,33 @@ const onDragEnd = (): void => {
             @update:model-value="(v) => (activeInstance!.translationPrompt = v)"
           />
         </SettingRow>
-        <SettingRow
-          :title="t('settings.field.reflectionPrompt')"
-          :description="t('settings.description.reflectionPrompt')"
-          status="wip"
-          vertical
-        >
-          <div class="flex w-full items-center justify-between gap-3">
-            <p class="text-xs text-muted-foreground">
-              {{ t(activeInstance.reflectionEnabled ? 'settings.status.reflectionEnabled' : 'settings.status.reflectionDisabled') }}
-            </p>
-            <SettingSwitch
-              :model-value="activeInstance.reflectionEnabled"
-              :title="t(activeInstance.reflectionEnabled ? 'settings.button.disableReflection' : 'settings.button.enableReflection')"
-              @update:model-value="(v) => (activeInstance!.reflectionEnabled = v)"
+        <DevOnly>
+          <SettingRow
+            :title="t('settings.field.reflectionPrompt')"
+            :description="t('settings.description.reflectionPrompt')"
+            status="wip"
+            vertical
+          >
+            <div class="flex w-full items-center justify-between gap-3">
+              <p class="text-xs text-muted-foreground">
+                {{ t(activeInstance.reflectionEnabled ? 'settings.status.reflectionEnabled' : 'settings.status.reflectionDisabled') }}
+              </p>
+              <SettingSwitch
+                :model-value="activeInstance.reflectionEnabled"
+                :title="t(activeInstance.reflectionEnabled ? 'settings.button.disableReflection' : 'settings.button.enableReflection')"
+                @update:model-value="(v) => (activeInstance!.reflectionEnabled = v)"
+              />
+            </div>
+            <SettingTextarea
+              v-if="activeInstance.reflectionEnabled"
+              :model-value="activeInstance.reflectionPrompt"
+              :default-value="DEFAULT_PROMPTS.reflection"
+              :placeholder="t('settings.field.reflectionPrompt')"
+              class="mt-3"
+              @update:model-value="(v) => (activeInstance!.reflectionPrompt = v)"
             />
-          </div>
-          <SettingTextarea
-            v-if="activeInstance.reflectionEnabled"
-            :model-value="activeInstance.reflectionPrompt"
-            :default-value="DEFAULT_PROMPTS.reflection"
-            :placeholder="t('settings.field.reflectionPrompt')"
-            class="mt-3"
-            @update:model-value="(v) => (activeInstance!.reflectionPrompt = v)"
-          />
-        </SettingRow>
+          </SettingRow>
+        </DevOnly>
       </SettingGroup>
 
       <SettingGroup v-if="activeService.id === 'custom'" :title="t('settings.field.note')" bare>

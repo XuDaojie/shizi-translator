@@ -12,7 +12,7 @@
 - OpenAI-compatible 流式翻译 provider：调用兼容 `/v1/chat/completions` 的流式接口。
 - Claude / Anthropic 流式翻译 provider：调用 Anthropic Messages API 的 SSE 流式接口，支持 thinking 模式。
 - Mock provider：用于无真实 API Key 的本地验证。
-- 微软翻译 provider（Edge 引擎，免 Key 机器翻译）：调用 Edge 浏览器翻译接口，无需 API Key；机器翻译渠道当前仅微软翻译已对接，DeepL/Google/百度等保持开发中。
+- 微软翻译 provider（Edge 引擎，免 Key 机器翻译）：调用 Edge 浏览器翻译接口，无需 API Key；机器翻译渠道当前仅微软翻译已对接，DeepL/Google/百度等保持开发中（dev 包设置页可见、release 包隐藏入口，config 数据保留）。
 - 启动翻译弹窗与独立设置页：启动即显示翻译弹窗；设置页为独立窗口，可从翻译弹窗设置按钮或托盘「设置」打开。设置页含通用 / 翻译 / 快捷键 / 服务 / 历史 / 高级 6 个分类面板，支持多服务实例管理。翻译弹窗已去除 Windows 原生标题栏，改为自绘顶部工具栏（图钉 / 收藏 / 截图翻译 / 书签 / 设置）作为标题栏并支持拖拽，宽固定 420px、高度随内容自适应（最高 80% 屏幕高），视觉对齐 OpenDesign 原型。
 - 配置实时同步：设置页保存服务启用 / 关闭后，会通过 `app-config:changed` 通知已打开的翻译弹窗同步结果卡片；非翻译中即时新增、删除、排序，翻译进行中保留正在输出的卡片，不新增未参与当前批次的服务卡片。
 - 流式结果展示：Rust 后端通过 Tauri event 推送翻译状态和增量文本，前端实时渲染。
@@ -75,7 +75,7 @@
 - 翻译弹窗打开时即展示所有启用服务的占位卡片，翻译开始后原地刷新内容，无需等待首个结果返回。
 - 设置页保存服务启用 / 关闭后，通过 `app-config:changed` 通知已打开的翻译弹窗同步结果卡片；非翻译中即时新增、删除、排序，翻译进行中保留正在输出的卡片，不新增未参与当前批次的服务卡片。
 - 翻译弹窗输入为空或暂无翻译内容时，结果卡片默认收缩；开始翻译后对应卡片自动展开显示流式内容。
-- 未对接渠道（deepl/google/baidu/youdao/tencent/volcengine/iflytek 等机器翻译）在添加 Dialog 标"开发中"badge、服务列表启用开关置灰、详情页顶部横幅提示。大模型渠道（OpenAI/DeepSeek/Claude/智谱/Gemini/Moonshot/硅基流动/自定义 OpenAI 兼容）均已挂可用协议。
+- 开发中功能 dev 可见 / release 隐藏：未对接渠道（deepl/google/baidu/youdao/tencent/volcengine/iflytek 等机器翻译）与 wip 功能块（思维链 / 反思 / 主题 / 自动检查更新）在 dev 包（`npm run tauri dev`）照常显示（未对接渠道标"开发中"badge、启用开关置灰、详情页横幅提示），release 包（`npm run tauri build`）的添加对话框 / 服务列表 / 详情页不渲染，`config.json` 数据保留、dev 切回仍可见，已配值后端行为不变；判据来自 Vite 编译期常量 `import.meta.env.DEV`（`useDevMode` composable + `<DevOnly>` 组件）。大模型渠道（OpenAI/DeepSeek/Claude/智谱/Gemini/Moonshot/硅基流动/自定义 OpenAI 兼容）均已挂可用协议。
 
 > overlay 仍为纯静态 HTML/JS/CSS（`frontend/public/`），永久不迁；translate.html 已迁移为 Vue 3 入口（`frontend/src/popup/`），与设置页共享工程。
 

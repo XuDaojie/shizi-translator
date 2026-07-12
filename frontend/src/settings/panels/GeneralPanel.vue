@@ -4,6 +4,7 @@ import {
   SettingRow,
   SettingSelect,
   SettingSwitch,
+  DevOnly,
 } from '../components'
 import type { AppSettings } from '../types'
 import { computed } from 'vue'
@@ -100,13 +101,15 @@ const openDirectory = async () => {
   </SettingGroup>
 
   <SettingGroup :title="t('settings.group.appearance')" :description="t('settings.description.appearance')">
-    <SettingRow
-      :title="t('settings.field.theme')"
-      :description="t('settings.description.theme')"
-      status="wip"
-    >
-      <SettingSelect v-model="state.general.theme" :options="themeOptions" />
-    </SettingRow>
+    <DevOnly>
+      <SettingRow
+        :title="t('settings.field.theme')"
+        :description="t('settings.description.theme')"
+        status="wip"
+      >
+        <SettingSelect v-model="state.general.theme" :options="themeOptions" />
+      </SettingRow>
+    </DevOnly>
     <SettingRow :title="t('settings.field.interfaceLanguage')" :description="t('settings.description.interfaceLanguage')">
       <SettingSelect :model-value="state.general.language" :options="languageOptions" @update:model-value="setInterfaceLanguage" />
       <div class="flex gap-1">
@@ -124,12 +127,14 @@ const openDirectory = async () => {
     >
       <SettingSelect v-model="state.general.updateChannel" :options="updateChannelOptions" />
     </SettingRow>
-    <SettingRow
-      :title="t('settings.field.autoCheckUpdate')"
-      :description="t('settings.description.autoCheckUpdate')"
-      status="wip"
-    >
-      <SettingSwitch v-model="state.general.autoCheckUpdate" :aria-label="t('settings.field.autoCheckUpdate')" />
-    </SettingRow>
+    <DevOnly>
+      <SettingRow
+        :title="t('settings.field.autoCheckUpdate')"
+        :description="t('settings.description.autoCheckUpdate')"
+        status="wip"
+      >
+        <SettingSwitch v-model="state.general.autoCheckUpdate" :aria-label="t('settings.field.autoCheckUpdate')" />
+      </SettingRow>
+    </DevOnly>
   </SettingGroup>
 </template>
