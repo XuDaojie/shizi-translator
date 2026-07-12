@@ -94,7 +94,7 @@ const isDev = useDevMode()
 
 ### 5.1 添加渠道对话框
 
-渠道列表（`mergedServices`，传给 `ChannelCombobox` 的 `options` prop）在 release 过滤掉 `protocols.length === 0` 的未对接渠道。dev 下不过滤，保持现状（含 amber 标记 + 禁用启用）。
+添加渠道对话框的渠道按钮网格（`v-for="svc in mergedServices"`）在 release 过滤掉 `protocols.length === 0` 的未对接渠道。dev 下不过滤，保持现状（含 amber 标记）。`ChannelCombobox` 仅用于自定义渠道创建（均为 `openai_chat` 协议），不涉及未对接渠道，无需处理。
 
 ### 5.2 服务列表
 
@@ -104,8 +104,8 @@ const isDev = useDevMode()
 
 `activeInstanceId` 当前初始化为 `props.state.services[0]?.id`。改为取第一个**可见**实例：
 
-- 初始化：第一个满足 `isDev || !isDeveloping(type)` 的实例 id，无则空字符串。
-- 实例增删导致当前选中实例被隐藏时：自动切到第一个可见实例。
+- 初始化（`activeInstanceId` 初值）：第一个满足 `isDev || !isDeveloping(type)` 的实例 id，无则空字符串。
+- 删除当前选中实例后的回退（现有 `activeInstanceId.value = props.state.services[0]?.id` 处）：改为第一个可见实例。
 - 无可见实例：详情页走已有空态分支（`v-else-if="activeInstance && activeService"` 不成立时的兜底）。
 
 ### 5.4 数据保留
@@ -160,7 +160,7 @@ config.json 中的未对接渠道实例不删除。release 下 UI 不渲染，de
 
 修改：
 
-- `frontend/src/settings/panels/ServicesPanel.vue`（思维链 DevOnly、反思 DevOnly、`filteredInstances` 过滤、添加对话框 options 过滤、`activeInstanceId` 回退）
+- `frontend/src/settings/panels/ServicesPanel.vue`（思维链 DevOnly、反思 DevOnly、`filteredInstances` 过滤、添加对话框 `mergedServices` 过滤、`activeInstanceId` 回退）
 - `frontend/src/settings/panels/GeneralPanel.vue`（主题 DevOnly、自动检查更新 DevOnly）
 
 测试：
