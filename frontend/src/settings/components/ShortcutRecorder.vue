@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { AlertCircle, Keyboard, X } from '@lucide/vue'
-import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { t } from '@/i18n'
 
@@ -68,6 +67,7 @@ const start = (): void => {
 }
 
 const clear = (): void => {
+  if (props.disabled) return
   emit('update:modelValue', '')
 }
 
@@ -85,13 +85,13 @@ const onClickOutside = (): void => {
 
 <template>
   <div :class="cn('flex flex-col items-end gap-1', props.className)" @click.stop>
-    <div class="flex items-center gap-2">
+    <div class="flex items-center">
       <button
         type="button"
         :disabled="disabled"
         :class="
           cn(
-            'inline-flex h-9 min-w-[120px] items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-sm shadow-sm',
+            'inline-flex h-9 min-w-[160px] items-center justify-between gap-1 rounded-md border border-input bg-background px-3 text-sm shadow-sm',
             'transition-colors duration-150 ease-smooth',
             'hover:bg-accent/40',
             'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1',
@@ -109,26 +109,22 @@ const onClickOutside = (): void => {
           <Keyboard class="h-3.5 w-3.5 animate-pulse" />
           <span class="text-xs">{{ t('settings.shortcut.recording') }}</span>
         </span>
-        <span v-else-if="modelValue" class="font-mono text-foreground">
-          {{ modelValue }}
-        </span>
+        <template v-else-if="modelValue">
+          <span class="font-mono text-foreground">{{ modelValue }}</span>
+          <span
+            class="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/40 transition-colors hover:bg-destructive/10 hover:text-destructive"
+            :title="disabled ? undefined : t('settings.shortcut.clear')"
+            :aria-label="t('settings.shortcut.clear')"
+            @click.stop="clear"
+          >
+            <X class="h-3.5 w-3.5" />
+          </span>
+        </template>
         <span v-else class="text-muted-foreground text-xs">
           {{ placeholder ?? t('settings.placeholder.shortcut') }}
         </span>
         <span v-if="recording" class="sr-only">{{ t('settings.shortcut.recordingAria') }}</span>
       </button>
-
-      <Button
-        v-if="modelValue"
-        variant="ghost"
-        size="icon"
-        :disabled="disabled"
-        :title="disabled ? undefined : t('settings.shortcut.clear')"
-        :aria-label="t('settings.shortcut.clear')"
-        @click="clear"
-      >
-        <X class="h-4 w-4" />
-      </Button>
     </div>
 
     <p

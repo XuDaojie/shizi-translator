@@ -111,13 +111,19 @@ const openDirectory = async () => {
       </SettingRow>
     </DevOnly>
     <SettingRow :title="t('settings.field.interfaceLanguage')" :description="t('settings.description.interfaceLanguage')">
-      <SettingSelect :model-value="state.general.language" :options="languageOptions" @update:model-value="setInterfaceLanguage" />
-      <div class="flex gap-1">
-        <Button variant="ghost" size="icon" :title="t('settings.button.openLanguageDirectory')" :aria-label="t('settings.button.openLanguageDirectory')" @click="openDirectory"><FolderOpen class="h-4 w-4" /></Button>
-        <Button variant="ghost" size="icon" :disabled="interfaceLanguagesRefreshing" :title="t('settings.button.refreshLanguages')" :aria-label="t('settings.button.refreshLanguages')" @click="refreshLanguages"><RefreshCw :class="['h-4 w-4', interfaceLanguagesRefreshing && 'animate-spin']" /></Button>
+      <div class="flex items-center gap-1">
+        <SettingSelect :model-value="state.general.language" :options="languageOptions" @update:model-value="setInterfaceLanguage" />
+        <DevOnly>
+          <div class="flex gap-1">
+            <Button variant="ghost" size="icon" :title="t('settings.button.openLanguageDirectory')" :aria-label="t('settings.button.openLanguageDirectory')" @click="openDirectory"><FolderOpen class="h-4 w-4" /></Button>
+            <Button variant="ghost" size="icon" :disabled="interfaceLanguagesRefreshing" :title="t('settings.button.refreshLanguages')" :aria-label="t('settings.button.refreshLanguages')" @click="refreshLanguages"><RefreshCw :class="['h-4 w-4', interfaceLanguagesRefreshing && 'animate-spin']" /></Button>
+          </div>
+        </DevOnly>
       </div>
     </SettingRow>
-    <p v-for="error in interfaceLanguageErrors" :key="`${error.file}:${error.message}`" class="text-xs text-destructive">{{ error.file }}: {{ error.message }}</p>
+    <DevOnly>
+      <p v-for="error in interfaceLanguageErrors" :key="`${error.file}:${error.message}`" class="text-xs text-destructive">{{ error.file }}: {{ error.message }}</p>
+    </DevOnly>
   </SettingGroup>
 
   <SettingGroup :title="t('settings.group.update')" :description="t('settings.description.update')">

@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { Download, Upload, RotateCcw, FileText, Globe, BookOpen, Sparkles } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
-import { SettingGroup, SettingRow, SettingSelect, SettingSwitch } from '../components'
+import { DevOnly, SettingGroup, SettingRow, SettingSelect, SettingSwitch } from '../components'
 import type { AppSettings } from '../types'
 import { useSettings } from '../stores/settings'
 import { exportSettings, importSettings, parseImportedSettings } from '../config-io'
@@ -94,14 +94,17 @@ async function onFileChange(e: Event) {
   </SettingGroup>
 
 
-  <SettingGroup :title="t('settings.group.privacy')" :description="t('settings.description.privacy')">
-    <SettingRow
-      :title="t('settings.field.collectUsage')"
-      :description="t('settings.description.restartRequired')"
-    >
-      <SettingSwitch v-model="state.advanced.collectUsage" :aria-label="t('settings.field.collectUsage')" />
-    </SettingRow>
-  </SettingGroup>
+  <DevOnly>
+    <SettingGroup :title="t('settings.group.privacy')" :description="t('settings.description.privacy')">
+      <SettingRow
+        :title="t('settings.field.collectUsage')"
+        :description="t('settings.description.restartRequired')"
+        status="wip"
+      >
+        <SettingSwitch v-model="state.advanced.collectUsage" :aria-label="t('settings.field.collectUsage')" />
+      </SettingRow>
+    </SettingGroup>
+  </DevOnly>
 
   <SettingGroup :title="t('settings.group.data')" :description="t('settings.description.data')">
     <SettingRow
@@ -163,35 +166,37 @@ async function onFileChange(e: Event) {
     </SettingRow>
   </SettingGroup>
 
-  <SettingGroup :title="t('settings.group.about')">
-    <SettingRow :title="t('settings.field.version')" :description="t('settings.description.version')">
-      <span class="text-sm text-muted-foreground font-mono">
-        v{{ appVersion }} · {{ buildChannel }}
-      </span>
-    </SettingRow>
-    <SettingRow :title="t('settings.field.changelog')" :description="t('settings.description.changelog')">
-      <Button variant="ghost" size="sm">
-        <FileText class="h-3.5 w-3.5" />
-        {{ t('common.open') }}
-      </Button>
-    </SettingRow>
-    <SettingRow :title="t('settings.field.homepage')" :description="t('settings.description.homepage')">
-      <Button variant="ghost" size="sm">
-        <Globe class="h-3.5 w-3.5" />
-        {{ t('common.visit') }}
-      </Button>
-    </SettingRow>
-    <SettingRow :title="t('settings.field.documentation')" :description="t('settings.description.documentation')">
-      <Button variant="ghost" size="sm">
-        <BookOpen class="h-3.5 w-3.5" />
-        {{ t('common.view') }}
-      </Button>
-    </SettingRow>
-    <SettingRow :title="t('settings.field.recommend')" :description="t('settings.description.recommend')">
-      <Button variant="ghost" size="sm">
-        <Sparkles class="h-3.5 w-3.5" />
-        {{ t('common.share') }}
-      </Button>
-    </SettingRow>
-  </SettingGroup>
+  <DevOnly>
+    <SettingGroup :title="t('settings.group.about')">
+      <SettingRow :title="t('settings.field.version')" :description="t('settings.description.version')" status="wip">
+        <span class="text-sm text-muted-foreground font-mono">
+          v{{ appVersion }} · {{ buildChannel }}
+        </span>
+      </SettingRow>
+      <SettingRow :title="t('settings.field.changelog')" :description="t('settings.description.changelog')" status="wip">
+        <Button variant="ghost" size="sm">
+          <FileText class="h-3.5 w-3.5" />
+          {{ t('common.open') }}
+        </Button>
+      </SettingRow>
+      <SettingRow :title="t('settings.field.homepage')" :description="t('settings.description.homepage')" status="wip">
+        <Button variant="ghost" size="sm">
+          <Globe class="h-3.5 w-3.5" />
+          {{ t('common.visit') }}
+        </Button>
+      </SettingRow>
+      <SettingRow :title="t('settings.field.documentation')" :description="t('settings.description.documentation')" status="wip">
+        <Button variant="ghost" size="sm">
+          <BookOpen class="h-3.5 w-3.5" />
+          {{ t('common.view') }}
+        </Button>
+      </SettingRow>
+      <SettingRow :title="t('settings.field.recommend')" :description="t('settings.description.recommend')" status="wip">
+        <Button variant="ghost" size="sm">
+          <Sparkles class="h-3.5 w-3.5" />
+          {{ t('common.share') }}
+        </Button>
+      </SettingRow>
+    </SettingGroup>
+  </DevOnly>
 </template>

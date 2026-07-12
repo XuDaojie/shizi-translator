@@ -2,8 +2,8 @@
 
 **日期：** 2026-07-12
 **状态：** 已批准
-**范围：** 设置页服务详情的 wip 功能块（思维链、反思、主题、自动检查更新）、未对接渠道（添加对话框、服务列表、详情页）
-**不在范围：** 侧边栏 badge wip 机制（当前未使用）、后端翻译行为、config.json 数据删改、dead code elimination
+**范围：** 设置页服务详情的 wip 功能块（思维链、反思、主题、自动检查更新）、语言包工具（打开目录/刷新）、高级面板隐私与关于整块、未对接渠道（添加对话框、服务列表、详情页）
+**不在范围：** 侧边栏 badge wip 机制（当前未使用）、后端翻译行为、config.json 数据删改、dead code elimination；界面语言下拉本身在 release 保留
 
 ## 1. 背景与目标
 
@@ -76,7 +76,7 @@ const isDev = useDevMode()
 
 ## 4. wip 功能块隐藏
 
-用 `<DevOnly>` 包裹以下 4 处，保留各处 `status="wip"`（dev 下徽标照常显示）：
+用 `<DevOnly>` 包裹以下 wip 入口，保留各处 `status="wip"`（dev 下徽标照常显示；语言包图标按钮无单独徽标）：
 
 | 功能 | 文件 | 包裹对象 |
 | --- | --- | --- |
@@ -84,6 +84,9 @@ const isDev = useDevMode()
 | 反思 | `frontend/src/settings/panels/ServicesPanel.vue` | 单个 SettingRow（prompts 组内仅包反思这一项，系统 / 翻译提示词不受影响） |
 | 主题 | `frontend/src/settings/panels/GeneralPanel.vue` | SettingRow |
 | 自动检查更新 | `frontend/src/settings/panels/GeneralPanel.vue` | SettingRow |
+| 语言包目录 / 刷新 | `frontend/src/settings/panels/GeneralPanel.vue` | 界面语言行内图标按钮 + 语言包错误提示；语言下拉 release 保留 |
+| 隐私 | `frontend/src/settings/panels/AdvancedPanel.vue` | 整个 SettingGroup（含匿名统计） |
+| 关于 | `frontend/src/settings/panels/AdvancedPanel.vue` | 整个 SettingGroup |
 
 职责分离：
 
