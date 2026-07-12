@@ -783,7 +783,6 @@ const onDragEnd = (): void => {
         <SettingRow
           :title="t('settings.field.systemPrompt')"
           :description="t('settings.description.systemPrompt')"
-          status="wip"
           vertical
         >
           <SettingTextarea
@@ -796,7 +795,6 @@ const onDragEnd = (): void => {
         <SettingRow
           :title="t('settings.field.translationPrompt')"
           :description="t('settings.description.translationPrompt')"
-          status="wip"
           vertical
         >
           <SettingTextarea
