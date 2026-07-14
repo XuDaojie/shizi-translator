@@ -16,7 +16,7 @@
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
-    "@types/node": "^22",
+    "@types/node": "^26",
     "@vitejs/plugin-vue": "^6",
     "tailwindcss": "^4",
     "@tailwindcss/vite": "^4",
