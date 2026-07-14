@@ -7,7 +7,8 @@ const { execFileSync } = require('child_process');
 const repoRoot = path.resolve(__dirname, '..');
 const cargoTomlPath = path.join(repoRoot, 'src-tauri', 'Cargo.toml');
 const tauriConfigPath = path.join(repoRoot, 'src-tauri', 'tauri.conf.json');
-const dryRun = process.argv.includes('--dry-run');
+// 预览：--dry 或 --dry-run（等价）；落盘加 --beta 走预发布
+const dryRun = process.argv.includes('--dry-run') || process.argv.includes('--dry');
 const beta = process.argv.includes('--beta');
 
 // 仅这些类型参与升版；docs/chore/style/test 等不触发发版
@@ -229,7 +230,7 @@ function main() {
   }
 
   if (dryRun) {
-    console.log('（dry-run，未写文件、未打 tag）');
+    console.log('（dry，未写文件、未打 tag）');
     return;
   }
 

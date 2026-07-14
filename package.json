@@ -10,9 +10,9 @@
     "test": "vitest run --config frontend/vite.config.ts",
     "test:watch": "vitest --config frontend/vite.config.ts",
     "release:bump": "node scripts/bump-version.js",
-    "release:bump:dry": "node scripts/bump-version.js --dry-run",
+    "release:bump:dry": "node scripts/bump-version.js --dry",
     "release:bump:beta": "node scripts/bump-version.js --beta",
-    "release:bump:beta:dry": "node scripts/bump-version.js --beta --dry-run"
+    "release:bump:dry:beta": "node scripts/bump-version.js --dry --beta"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
