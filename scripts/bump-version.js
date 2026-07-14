@@ -9,6 +9,9 @@ const cargoTomlPath = path.join(repoRoot, 'src-tauri', 'Cargo.toml');
 const tauriConfigPath = path.join(repoRoot, 'src-tauri', 'tauri.conf.json');
 const dryRun = process.argv.includes('--dry-run');
 
+// 仅这些类型参与升版；docs/chore/style/test 等不触发发版
+const RELEASE_TYPES = new Set(['feat', 'fix', 'perf']);
+
 function git(args) {
   return execFileSync('git', args, {
     cwd: repoRoot,
@@ -83,24 +86,55 @@ function getCommitMessages(range) {
     .filter(Boolean);
 }
 
-function detectBumpLevel(messages) {
+function subjectOf(message) {
+  return message.split(/\r?\n/, 1)[0];
+}
+
+function isBreaking(message) {
+  const firstLine = subjectOf(message);
+  return /BREAKING CHANGE:/i.test(message) || /^[a-z]+(\([^)]+\))?!:/.test(firstLine);
+}
+
+function conventionalType(message) {
+  const match = /^([a-z]+)(\([^)]+\))?!?:/.exec(subjectOf(message));
+  return match ? match[1] : null;
+}
+
+/**
+ * 0.x：breaking → minor；1.0+：breaking → major
+ * 仅 feat / fix / perf / breaking 参与升版
+ */
+function detectBumpLevel(messages, currentMajor) {
   let level = null;
   for (const message of messages) {
-    const firstLine = message.split(/\r?\n/, 1)[0];
-    if (/BREAKING CHANGE:/i.test(message) || /^[a-z]+(\([^)]+\))?!:/.test(firstLine)) {
-      return 'major';
+    if (isBreaking(message)) {
+      // ponytail: 0.x 不进 1.0，与项目 SemVer 约定一致
+      return currentMajor === 0 ? 'minor' : 'major';
     }
-    if (/^feat(\([^)]+\))?:/.test(firstLine)) {
-      level = level === 'major' ? 'major' : 'minor';
+    const type = conventionalType(message);
+    if (!type || !RELEASE_TYPES.has(type)) {
       continue;
     }
-    if (/^[a-z]+(\([^)]+\))?:/.test(firstLine) || /^revert\b/i.test(firstLine)) {
-      if (!level) {
-        level = 'patch';
-      }
+    if (type === 'feat') {
+      level = 'minor';
+      continue;
+    }
+    // fix / perf
+    if (!level) {
+      level = 'patch';
     }
   }
   return level;
+}
+
+function listReleaseCommits(messages) {
+  return messages.filter((message) => {
+    if (isBreaking(message)) {
+      return true;
+    }
+    const type = conventionalType(message);
+    return type && RELEASE_TYPES.has(type);
+  });
 }
 
 function ensureCleanWorktree() {
@@ -127,22 +161,29 @@ function main() {
     return;
   }
 
-  const bumpLevel = detectBumpLevel(messages);
+  const currentVersion = parseVersion(latestTag.slice(1));
+  const bumpLevel = detectBumpLevel(messages, currentVersion.major);
   if (!bumpLevel) {
-    console.log(`没有发现可用于发布的 Conventional Commits，不推进版本。`);
+    console.log(`没有发现可用于发布的提交（feat/fix/perf/breaking），不推进版本。`);
     return;
   }
 
-  const currentVersion = parseVersion(latestTag.slice(1));
   const nextVersion = formatVersion(bumpVersion(currentVersion, bumpLevel));
   const nextTag = `v${nextVersion}`;
+  const releaseCommits = listReleaseCommits(messages);
 
   console.log(`最近版本: ${latestTag}`);
-  console.log(`提交数: ${messages.length}`);
+  console.log(`提交数: ${messages.length}（参与升版: ${releaseCommits.length}）`);
   console.log(`版本级别: ${bumpLevel}`);
   console.log(`下一个版本: ${nextTag}`);
+  console.log('依据:');
+  for (const message of releaseCommits) {
+    const mark = isBreaking(message) ? '!' : ' ';
+    console.log(`  ${mark} ${subjectOf(message)}`);
+  }
 
   if (dryRun) {
+    console.log('（dry-run，未写文件、未打 tag）');
     return;
   }
 
