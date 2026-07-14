@@ -35,6 +35,11 @@ export async function invokeOpenSettings(): Promise<void> {
   return requireInvoke()<void>('open_settings')
 }
 
+/** 用系统默认浏览器打开 https URL。 */
+export async function invokeOpenUrl(url: string): Promise<void> {
+  return requireInvoke()<void>('open_url', { url })
+}
+
 /** 供组件层判断是否就绪（用于挂载时给出"Tauri API 未就绪"提示）。 */
 export function isTauriReady(): boolean {
   return Boolean(tauriGlobal?.core?.invoke);

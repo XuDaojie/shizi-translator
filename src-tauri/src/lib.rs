@@ -17,7 +17,7 @@ use core::{
 };
 use tauri::Manager;
 use ui::{
-    config::{get_app_config, get_shortcut_conflicts, open_settings, save_app_config},
+    config::{get_app_config, get_shortcut_conflicts, open_settings, open_url, save_app_config},
     history::{clear_translation_history, list_translation_history},
     i18n::{
         apply_interface_language, get_interface_language_snapshot, open_language_pack_directory,
@@ -92,6 +92,7 @@ pub fn run() {
             list_translation_history,
             clear_translation_history,
             open_settings,
+            open_url,
             list_service_models,
             validate_service_credential,
             get_capture_frame_meta,

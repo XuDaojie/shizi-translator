@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { Download, Upload, RotateCcw, FileText, Globe, BookOpen, Sparkles } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
@@ -7,15 +7,19 @@ import { DevOnly, SettingGroup, SettingRow, SettingSelect, SettingSwitch } from 
 import type { AppSettings } from '../types'
 import { useSettings } from '../stores/settings'
 import { exportSettings, importSettings, parseImportedSettings } from '../config-io'
-import { invokeExportLogs } from '@/lib/tauri'
+import { invokeExportLogs, invokeOpenUrl } from '@/lib/tauri'
+import { useDevMode } from '../composables/useDevMode'
 import { toast } from '@/lib/toast'
 import { t } from '@/i18n'
+
+const HOMEPAGE_URL = 'https://github.com/XuDaojie/shizi-translator'
 
 const props = defineProps<{
   state: AppSettings
 }>()
 
 const { reset } = useSettings()
+const isDev = useDevMode()
 
 const logLevelOptions = computed(() => [
   { label: 'Error', value: 'error' },
@@ -27,8 +31,28 @@ const logLevelOptions = computed(() => [
 const resetOpen = ref(false)
 const fileInput = ref<HTMLInputElement>()
 
-const appVersion = '0.1.0'
-const buildChannel = 'dev'
+// 与 tauri.conf.json / Cargo.toml 同步，由 Tauri 运行时注入
+const appVersion = ref('…')
+
+onMounted(async () => {
+  try {
+    const tauri = (window as unknown as {
+      __TAURI__?: { app?: { getVersion?: () => Promise<string> } }
+    }).__TAURI__
+    const version = await tauri?.app?.getVersion?.()
+    if (version) appVersion.value = version
+  } catch {
+    // 非 Tauri 环境（纯 vite）保持占位
+  }
+})
+
+async function openHomepage() {
+  try {
+    await invokeOpenUrl(HOMEPAGE_URL)
+  } catch (e) {
+    toast.error(String(e))
+  }
+}
 
 const exporting = ref(false)
 
@@ -166,23 +190,23 @@ async function onFileChange(e: Event) {
     </SettingRow>
   </SettingGroup>
 
-  <DevOnly>
-    <SettingGroup :title="t('settings.group.about')">
-      <SettingRow :title="t('settings.field.version')" :description="t('settings.description.version')" status="wip">
-        <span class="text-sm text-muted-foreground font-mono">
-          v{{ appVersion }} · {{ buildChannel }}
-        </span>
-      </SettingRow>
+  <SettingGroup :title="t('settings.group.about')">
+    <SettingRow :title="t('settings.field.version')" :description="t('settings.description.version')">
+      <span class="text-sm text-muted-foreground font-mono">
+        v{{ appVersion }}{{ isDev ? ' · dev' : '' }}
+      </span>
+    </SettingRow>
+    <SettingRow :title="t('settings.field.homepage')" :description="t('settings.description.homepage')">
+      <Button variant="ghost" size="sm" @click="openHomepage">
+        <Globe class="h-3.5 w-3.5" />
+        {{ t('common.visit') }}
+      </Button>
+    </SettingRow>
+    <DevOnly>
       <SettingRow :title="t('settings.field.changelog')" :description="t('settings.description.changelog')" status="wip">
         <Button variant="ghost" size="sm">
           <FileText class="h-3.5 w-3.5" />
           {{ t('common.open') }}
-        </Button>
-      </SettingRow>
-      <SettingRow :title="t('settings.field.homepage')" :description="t('settings.description.homepage')" status="wip">
-        <Button variant="ghost" size="sm">
-          <Globe class="h-3.5 w-3.5" />
-          {{ t('common.visit') }}
         </Button>
       </SettingRow>
       <SettingRow :title="t('settings.field.documentation')" :description="t('settings.description.documentation')" status="wip">
@@ -197,6 +221,6 @@ async function onFileChange(e: Event) {
           {{ t('common.share') }}
         </Button>
       </SettingRow>
-    </SettingGroup>
-  </DevOnly>
+    </DevOnly>
+  </SettingGroup>
 </template>
