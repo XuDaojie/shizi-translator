@@ -6,6 +6,7 @@ const { execFileSync } = require('child_process');
 
 const repoRoot = path.resolve(__dirname, '..');
 const cargoTomlPath = path.join(repoRoot, 'src-tauri', 'Cargo.toml');
+const cargoLockPath = path.join(repoRoot, 'src-tauri', 'Cargo.lock');
 const tauriConfigPath = path.join(repoRoot, 'src-tauri', 'tauri.conf.json');
 // 预览：--dry 或 --dry-run（等价）；落盘加 --beta 走预发布
 const dryRun = process.argv.includes('--dry-run') || process.argv.includes('--dry');
@@ -67,6 +68,22 @@ function replaceCargoVersion(content, version) {
   );
   if (next === content) {
     throw new Error('未找到 Cargo.toml 顶层 version 字段');
+  }
+  return next;
+}
+
+// 本地包条目：[[package]]\nname = "shizi"\nversion = "..."
+// cargo build 也会改这一行；打 tag 时一并写入，避免发布后工作区脏
+function replaceCargoLockVersion(content, version) {
+  if (!VERSION_RE.test(version)) {
+    throw new Error(`拒绝写入非法版本号: ${version}`);
+  }
+  const next = content.replace(
+    /(\[\[package\]\]\r?\nname = "shizi"\r?\nversion = ")[^"]+(")/,
+    `$1${version}$2`,
+  );
+  if (next === content) {
+    throw new Error('未找到 Cargo.lock 中 shizi 包的 version 字段');
   }
   return next;
 }
@@ -235,15 +252,29 @@ function main() {
   }
 
   const cargoToml = readFile(cargoTomlPath);
+  const cargoLock = readFile(cargoLockPath);
   const tauriConfig = readFile(tauriConfigPath);
   writeFile(cargoTomlPath, replaceCargoVersion(cargoToml, nextVersion));
+  writeFile(cargoLockPath, replaceCargoLockVersion(cargoLock, nextVersion));
   writeFile(tauriConfigPath, replaceTauriVersion(tauriConfig, nextVersion));
 
-  git(['add', '--', cargoTomlPath, tauriConfigPath]);
+  git(['add', '--', cargoTomlPath, cargoLockPath, tauriConfigPath]);
   git(['commit', '-m', `chore(release): 发布 ${nextTag}`]);
   git(['tag', '-a', nextTag, '-m', nextTag]);
 
   console.log(`已创建提交与标签: ${nextTag}`);
+}
+
+if (process.argv.includes('--self-check')) {
+  // ponytail: 最小自检，不拉起 git
+  const sample = '[[package]]\nname = "shizi"\nversion = "0.6.1"\ndependencies = [\n';
+  const got = replaceCargoLockVersion(sample, '0.7.0-beta.1');
+  if (!got.includes('version = "0.7.0-beta.1"')) {
+    console.error('self-check failed: lock version not replaced');
+    process.exit(1);
+  }
+  console.log('self-check ok');
+  process.exit(0);
 }
 
 try {
