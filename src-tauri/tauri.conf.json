@@ -14,7 +14,12 @@
     ],
     "targets": [
       "nsis"
-    ]
+    ],
+    "windows": {
+      "nsis": {
+        "installerIcon": "icons/icon.ico"
+      }
+    }
   },
   "app": {
     "withGlobalTauri": true,

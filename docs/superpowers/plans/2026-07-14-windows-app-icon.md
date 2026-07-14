@@ -20,7 +20,7 @@
 - 修改：`docs/superpowers/plans/2026-07-14-windows-app-icon.md` — 回填任务复选框。
 - 修改：`README.md` — 记录新的 Windows 应用图标。
 - 修改：`docs/roadmap/progressive-development-plan.md` — 回填任务 6 的图标子项状态。
-- 验证但不修改：`src-tauri/tauri.conf.json` — 保持 `bundle.icon = ["icons/icon.ico"]`。
+- 修改：`src-tauri/tauri.conf.json` — 保持应用图标路径，并为 NSIS 安装器显式复用同一 ICO。
 
 ## 任务 1：创建两份 SVG 事实来源
 
@@ -28,7 +28,7 @@
 - 创建：`src-tauri/icons/icon.svg`
 - 创建：`src-tauri/icons/icon-small.svg`
 
-- [ ] **步骤 1：运行源文件基线检查并确认失败**
+- [x] **步骤 1：运行源文件基线检查并确认失败**
 
 运行：
 
@@ -43,7 +43,7 @@ for name in ("icon.svg", "icon-small.svg"):
 
 预期：FAIL，提示缺少 `src-tauri/icons/icon.svg`。
 
-- [ ] **步骤 2：创建完整构图 SVG**
+- [x] **步骤 2：创建完整构图 SVG**
 
 使用 `apply_patch` 创建 `src-tauri/icons/icon.svg`：
 
@@ -64,7 +64,7 @@ for name in ("icon.svg", "icon-small.svg"):
 </svg>
 ```
 
-- [ ] **步骤 3：创建小尺寸构图 SVG**
+- [x] **步骤 3：创建小尺寸构图 SVG**
 
 使用 `apply_patch` 创建 `src-tauri/icons/icon-small.svg`：
 
@@ -84,7 +84,7 @@ for name in ("icon.svg", "icon-small.svg"):
 </svg>
 ```
 
-- [ ] **步骤 4：运行最小结构检查**
+- [x] **步骤 4：运行最小结构检查**
 
 运行：
 
@@ -111,7 +111,7 @@ print("SVG structure OK")
 
 预期：输出 `SVG structure OK`。
 
-- [ ] **步骤 5：提交 SVG 源文件**
+- [x] **步骤 5：提交 SVG 源文件**
 
 ```powershell
 git add src-tauri/icons/icon.svg src-tauri/icons/icon-small.svg
@@ -124,7 +124,7 @@ git commit -m "feat(icon): 添加可编辑图标源文件"
 - 创建：`src-tauri/icons/icon-1024.png`
 - 修改：`src-tauri/icons/icon.ico`
 
-- [ ] **步骤 1：确认本地工具可用**
+- [x] **步骤 1：确认本地工具可用**
 
 运行：
 
@@ -136,7 +136,7 @@ Get-Item "$env:WINDIR/Fonts/msyhbd.ttc", "$env:WINDIR/Fonts/segoeuib.ttf" | Sele
 
 预期：Tauri 输出 `tauri-cli 2.11.4`；Pillow 可导入；微软雅黑粗体与 Segoe UI 粗体字体文件均存在。
 
-- [ ] **步骤 2：安全创建临时构建目录**
+- [x] **步骤 2：安全创建临时构建目录**
 
 运行：
 
@@ -150,7 +150,7 @@ New-Item -ItemType Directory -Force -Path (Join-Path $build 'main'), (Join-Path 
 
 预期：`tmp/icon-build/main` 与 `tmp/icon-build/small` 存在。
 
-- [ ] **步骤 3：用 Tauri CLI 从两份 SVG 分别渲染帧**
+- [x] **步骤 3：用 Tauri CLI 从两份 SVG 分别渲染帧**
 
 运行：
 
@@ -161,7 +161,7 @@ npm run tauri -- icon src-tauri/icons/icon-small.svg --output tmp/icon-build/sma
 
 预期：主目录包含 `32x32.png`、`48x48.png`、`64x64.png`、`128x128.png`、`256x256.png`、`1024x1024.png`；小尺寸目录包含 `16x16.png`、`20x20.png`、`24x24.png`。
 
-- [ ] **步骤 4：验证每张 PNG 的像素尺寸与透明通道**
+- [x] **步骤 4：验证每张 PNG 的像素尺寸与透明通道**
 
 运行：
 
@@ -186,7 +186,7 @@ print("PNG frames OK")
 
 预期：输出 `PNG frames OK`。
 
-- [ ] **步骤 5：复制 1024 PNG 并组装最终 ICO**
+- [x] **步骤 5：复制 1024 PNG 并组装最终 ICO**
 
 运行：
 
@@ -214,7 +214,7 @@ frames[-1].save(
 
 预期：`icon-1024.png` 与新的 `icon.ico` 写入成功。
 
-- [ ] **步骤 6：验证 ICO 尺寸集合及帧内容未被二次缩放**
+- [x] **步骤 6：验证 ICO 尺寸集合及帧内容未被二次缩放**
 
 运行：
 
@@ -242,7 +242,7 @@ print("ICO frames OK")
 
 预期：输出 `ICO frames OK`，尺寸集合精确包含 16、20、24、32、48、64、128、256。
 
-- [ ] **步骤 7：生成实际像素 QA 联系表并检查**
+- [x] **步骤 7：生成实际像素 QA 联系表并检查**
 
 运行：
 
@@ -271,7 +271,7 @@ sheet.save(root / "icon-contact-sheet.png")
 
 打开 `tmp/icon-build/icon-contact-sheet.png`，确认：16/20/24 px 无箭头且「文」与 A 分离；32 px 起箭头可辨；所有尺寸圆角和字符均未裁切。
 
-- [ ] **步骤 8：提交最终图标资产**
+- [x] **步骤 8：提交最终图标资产**
 
 ```powershell
 git add src-tauri/icons/icon-1024.png src-tauri/icons/icon.ico
@@ -285,9 +285,9 @@ git commit -m "feat(icon): 生成 Windows 多尺寸应用图标"
 - 修改：`docs/roadmap/progressive-development-plan.md`
 - 修改：`docs/superpowers/specs/2026-07-14-windows-app-icon-design.md`
 - 修改：`docs/superpowers/plans/2026-07-14-windows-app-icon.md`
-- 验证：`src-tauri/tauri.conf.json`
+- 修改：`src-tauri/tauri.conf.json`
 
-- [ ] **步骤 1：验证 Tauri 配置仍引用最终 ICO**
+- [x] **步骤 1：验证 Tauri 应用和 NSIS 安装器均引用最终 ICO**
 
 运行：
 
@@ -297,23 +297,24 @@ import json
 from pathlib import Path
 config = json.loads(Path("src-tauri/tauri.conf.json").read_text(encoding="utf-8"))
 assert config["bundle"]["icon"] == ["icons/icon.ico"]
-print("Tauri icon config OK")
+assert config["bundle"]["windows"]["nsis"]["installerIcon"] == "icons/icon.ico"
+print("Tauri app and NSIS icon config OK")
 '@ | python -
 ```
 
-预期：输出 `Tauri icon config OK`。
+预期：输出 `Tauri app and NSIS icon config OK`。
 
-- [ ] **步骤 2：执行真实 NSIS 打包验证**
+- [x] **步骤 2：执行真实 NSIS 打包验证**
 
 运行：
 
 ```powershell
-npm run tauri build
+npm run tauri -- build --bundles nsis
 ```
 
 预期：退出码 0；`src-tauri/target/release/shizi.exe` 与 `src-tauri/target/release/bundle/nsis/*.exe` 生成成功。
 
-- [ ] **步骤 3：提取应用与安装包图标进行最终目视检查**
+- [x] **步骤 3：提取应用与安装包图标进行最终目视检查**
 
 运行：
 
@@ -328,7 +329,7 @@ $installer = (Get-ChildItem 'src-tauri/target/release/bundle/nsis/*.exe' | Selec
 
 打开 `app-extracted.png` 与 `installer-extracted.png`，确认均为新的柿子成熟色「文 / A」图标。
 
-- [ ] **步骤 4：同步项目文档**
+- [x] **步骤 4：同步项目文档**
 
 在 `README.md` 的「当前能力」中新增：
 
@@ -354,7 +355,7 @@ $installer = (Get-ChildItem 'src-tauri/target/release/bundle/nsis/*.exe' | Selec
 
 将本计划已完成步骤的复选框改为 `[x]`。
 
-- [ ] **步骤 5：运行最终验证**
+- [x] **步骤 5：运行最终验证**
 
 运行：
 
@@ -370,11 +371,11 @@ print("Final icon assets OK")
 git status --short
 ```
 
-预期：`git diff --check` 无输出；脚本输出 `Final icon assets OK`；状态仅包含 README、roadmap、spec 和 plan 的预期文档修改。
+预期：`git diff --check` 无输出；脚本输出 `Final icon assets OK`；状态仅包含 Tauri 配置、README、roadmap、spec 和 plan 的预期修改。
 
-- [ ] **步骤 6：提交文档同步**
+- [x] **步骤 6：提交文档同步**
 
 ```powershell
-git add README.md docs/roadmap/progressive-development-plan.md docs/superpowers/specs/2026-07-14-windows-app-icon-design.md docs/superpowers/plans/2026-07-14-windows-app-icon.md
+git add src-tauri/tauri.conf.json README.md docs/roadmap/progressive-development-plan.md docs/superpowers/specs/2026-07-14-windows-app-icon-design.md docs/superpowers/plans/2026-07-14-windows-app-icon.md
 git commit -m "docs(icon): 回填应用图标实现状态"
 ```
