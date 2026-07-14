@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::env;
 
 use serde::{Deserialize, Serialize};
 
@@ -27,7 +26,6 @@ const DEFAULT_MODEL: &str = "gpt-4o-mini";
 const DEFAULT_TIMEOUT_SECONDS: u32 = 60;
 const DEFAULT_CLAUDE_BASE_URL: &str = "https://api.anthropic.com";
 const DEFAULT_EDGE_TRANSLATE_URL: &str = "https://edge.microsoft.com/translate/translatetext";
-const DEFAULT_CLAUDE_MODEL: &str = "claude-haiku-4-5";
 const DEFAULT_PROTOCOL: &str = "openai_chat";
 
 fn default_true() -> bool {
@@ -156,29 +154,11 @@ impl ServiceInstanceConfig {
 
 fn default_shortcuts() -> HashMap<String, String> {
     HashMap::from([
-        (
-            "translate-selection".to_string(),
-            env::var("SHIZI_SHORTCUT_TRANSLATE_SELECTION")
-                .unwrap_or_else(|_| "Alt+D".to_string()),
-        ),
-        (
-            "translate-screenshot".to_string(),
-            env::var("SHIZI_SHORTCUT_TRANSLATE_SCREENSHOT")
-                .unwrap_or_else(|_| "Alt+S".to_string()),
-        ),
-        (
-            "translate-clipboard".to_string(),
-            env::var("SHIZI_SHORTCUT_TRANSLATE_CLIPBOARD")
-                .unwrap_or_else(|_| "Ctrl+Shift+C".to_string()),
-        ),
-        (
-            "word-lookup".to_string(),
-            env::var("SHIZI_SHORTCUT_WORD_LOOKUP").unwrap_or_else(|_| "".to_string()),
-        ),
-        (
-            "open-settings".to_string(),
-            env::var("SHIZI_SHORTCUT_OPEN_SETTINGS").unwrap_or_else(|_| "Ctrl+,".to_string()),
-        ),
+        ("translate-selection".to_string(), "Alt+D".to_string()),
+        ("translate-screenshot".to_string(), "Alt+S".to_string()),
+        ("translate-clipboard".to_string(), "Ctrl+Shift+C".to_string()),
+        ("word-lookup".to_string(), String::new()),
+        ("open-settings".to_string(), "Ctrl+,".to_string()),
     ])
 }
 
@@ -204,44 +184,19 @@ fn normalize_shortcuts(mut shortcuts: HashMap<String, String>) -> HashMap<String
 }
 
 impl AppConfig {
-    pub fn from_env() -> Self {
-        let protocol = env::var("SHIZI_LLM_PROVIDER")
-            .unwrap_or_else(|_| DEFAULT_PROTOCOL.to_string());
-
-        let (api_key, endpoint, model) = match protocol.as_str() {
-            "claude_messages" => (
-                env::var("SHIZI_CLAUDE_API_KEY").ok(),
-                env::var("SHIZI_CLAUDE_BASE_URL")
-                    .unwrap_or_else(|_| DEFAULT_CLAUDE_BASE_URL.to_string()),
-                env::var("SHIZI_CLAUDE_MODEL")
-                    .unwrap_or_else(|_| DEFAULT_CLAUDE_MODEL.to_string()),
-            ),
-            _ => (
-                env::var("SHIZI_OPENAI_API_KEY").ok(),
-                env::var("SHIZI_OPENAI_BASE_URL")
-                    .unwrap_or_else(|_| DEFAULT_BASE_URL.to_string()),
-                env::var("SHIZI_OPENAI_MODEL")
-                    .unwrap_or_else(|_| DEFAULT_MODEL.to_string()),
-            ),
-        };
-
-        let name = match protocol.as_str() {
-            "claude_messages" => "默认 Claude 服务".to_string(),
-            "mock" => "Mock 服务".to_string(),
-            _ => "默认服务".to_string(),
-        };
-
+    /// 首次安装 / 配置缺失时的默认值。Key、endpoint、模型等均由设置页写入 config.json。
+    pub fn default() -> Self {
         Self {
             shortcuts: default_shortcuts(),
             services: vec![ServiceInstanceConfig {
                 id: "default".to_string(),
                 service_type: "openai".to_string(),
-                name,
+                name: "默认服务".to_string(),
                 enabled: true,
-                protocol,
-                api_key,
-                endpoint,
-                model,
+                protocol: DEFAULT_PROTOCOL.to_string(),
+                api_key: None,
+                endpoint: DEFAULT_BASE_URL.to_string(),
+                model: DEFAULT_MODEL.to_string(),
                 timeout_seconds: DEFAULT_TIMEOUT_SECONDS,
                 system_prompt: String::new(),
                 translation_prompt: String::new(),
@@ -249,10 +204,7 @@ impl AppConfig {
                 reflection_enabled: false,
                 chain_of_thought: default_chain_of_thought(),
             }],
-            target_lang: env::var("SHIZI_TARGET_LANG")
-                .ok()
-                .filter(|s| !s.trim().is_empty())
-                .unwrap_or_else(default_target_lang_from_os),
+            target_lang: default_target_lang_from_os(),
             interface_language: default_interface_language(),
             default_source_lang: default_source_lang(),
             auto_copy: true,
@@ -260,9 +212,7 @@ impl AppConfig {
             history_limit: default_history_limit(),
             popup_precreate: true,
             overlay_precreate: true,
-            collect_usage: env::var("SHIZI_COLLECT_USAGE")
-                .map(|v| v.eq_ignore_ascii_case("true"))
-                .unwrap_or(true),
+            collect_usage: true,
             log_level: default_log_level(),
         }
         .normalized()
@@ -333,7 +283,7 @@ mod tests {
 
     #[test]
     fn interface_language_defaults_to_auto_and_serializes_camel_case() {
-        let config = AppConfig::from_env();
+        let config = AppConfig::default();
         assert_eq!(config.interface_language, "auto");
         let json = serde_json::to_value(config).unwrap();
         assert_eq!(json["interfaceLanguage"], "auto");
@@ -341,7 +291,7 @@ mod tests {
 
     #[test]
     fn normalized_rejects_old_translation_codes_without_aliasing() {
-        let mut config = AppConfig::from_env();
+        let mut config = AppConfig::default();
         config.default_source_lang = "en-US".into();
         config.target_lang = "ja-JP".into();
         let normalized = config.normalized();
@@ -351,7 +301,7 @@ mod tests {
 
     #[test]
     fn normalized_keeps_valid_translation_codes() {
-        let mut config = AppConfig::from_env();
+        let mut config = AppConfig::default();
         config.default_source_lang = "en".into();
         config.target_lang = "ja".into();
         let normalized = config.normalized();
@@ -374,8 +324,8 @@ mod tests {
     }
 
     #[test]
-    fn from_env_creates_default_service() {
-        let config = AppConfig::from_env();
+    fn default_creates_default_service() {
+        let config = AppConfig::default();
         assert_eq!(config.services.len(), 1);
         assert_eq!(config.services[0].id, "default");
         assert!(config.services[0].enabled);
@@ -407,7 +357,7 @@ mod tests {
 
     #[test]
     fn normalized_fills_ui_runtime_defaults() {
-        let mut config = AppConfig::from_env();
+        let mut config = AppConfig::default();
         config.default_source_lang = "".to_string();
         config.auto_copy = false;
         config.restore_clipboard = false;
@@ -427,7 +377,7 @@ mod tests {
 
     #[test]
     fn normalized_fills_empty_history_limit() {
-        let mut config = AppConfig::from_env();
+        let mut config = AppConfig::default();
         config.history_limit = 0;
 
         let normalized = config.normalized();
@@ -437,20 +387,20 @@ mod tests {
 
     #[test]
     fn is_configured_true_with_enabled_service_and_key() {
-        let mut config = AppConfig::from_env();
+        let mut config = AppConfig::default();
         config.services[0].api_key = Some("sk-test".to_string());
         assert!(config.is_configured());
     }
 
     #[test]
     fn is_configured_false_without_key() {
-        let config = AppConfig::from_env();
+        let config = AppConfig::default();
         assert!(!config.is_configured());
     }
 
     #[test]
     fn is_configured_true_with_mock_protocol() {
-        let mut config = AppConfig::from_env();
+        let mut config = AppConfig::default();
         config.services[0].protocol = "mock".to_string();
         config.services[0].api_key = None;
         assert!(config.is_configured());
@@ -458,7 +408,7 @@ mod tests {
 
     #[test]
     fn is_configured_true_with_microsoft_edge_no_key() {
-        let mut config = AppConfig::from_env();
+        let mut config = AppConfig::default();
         config.services[0].protocol = "microsoft_edge".to_string();
         config.services[0].api_key = None;
         config.services[0].model = String::new();
@@ -467,7 +417,7 @@ mod tests {
 
     #[test]
     fn is_configured_true_with_second_service() {
-        let mut config = AppConfig::from_env();
+        let mut config = AppConfig::default();
         config.services[0].api_key = None;
         config.services.push(ServiceInstanceConfig {
             id: "svc-2".to_string(),
@@ -490,7 +440,7 @@ mod tests {
 
     #[test]
     fn is_configured_false_when_only_disabled_service_has_key() {
-        let mut config = AppConfig::from_env();
+        let mut config = AppConfig::default();
         config.services[0].api_key = None;
         config.services.push(ServiceInstanceConfig {
             id: "disabled".to_string(),
@@ -512,11 +462,11 @@ mod tests {
     }
 
     #[test]
-    fn from_env_target_lang_uses_os_or_fallback() {
-        let config = AppConfig::from_env();
+    fn default_target_lang_uses_os_or_fallback() {
+        let config = AppConfig::default();
         assert!(
             TRANSLATION_LANGS.contains(&config.target_lang.as_str()),
-            "from_env target_lang 应是 OS 映射结果（列表 code 之一），实际: {}",
+            "default target_lang 应是 OS 映射结果（列表 code 之一），实际: {}",
             config.target_lang
         );
     }
@@ -556,7 +506,7 @@ mod tests {
 
     #[test]
     fn serializes_camel_case() {
-        let config = AppConfig::from_env();
+        let config = AppConfig::default();
         let json = serde_json::to_string(&config).expect("序列化");
         assert!(json.contains("\"targetLang\""), "应输出 camelCase: {json}");
         assert!(json.contains("\"popupPrecreate\""), "应输出 camelCase: {json}");
@@ -635,20 +585,20 @@ mod tests {
 
     #[test]
     fn defaults_precreate_window_strategies() {
-        let config = AppConfig::from_env();
+        let config = AppConfig::default();
         assert!(config.popup_precreate);
         assert!(config.overlay_precreate);
     }
 
     #[test]
     fn defaults_collect_usage_true() {
-        let config = AppConfig::from_env();
+        let config = AppConfig::default();
         assert!(config.collect_usage);
     }
 
     #[test]
-    fn from_env_default_protocol_is_openai_chat() {
-        let config = AppConfig::from_env();
+    fn default_protocol_is_openai_chat() {
+        let config = AppConfig::default();
         assert_eq!(config.services[0].protocol, "openai_chat");
         assert_eq!(config.services[0].service_type, "openai");
     }
@@ -723,7 +673,7 @@ mod tests {
 
     #[test]
     fn defaults_shortcuts_use_bob_style_keys() {
-        let config = AppConfig::from_env();
+        let config = AppConfig::default();
 
         assert_eq!(config.shortcuts.get("translate-selection").map(String::as_str), Some("Alt+D"));
         assert_eq!(config.shortcuts.get("translate-screenshot").map(String::as_str), Some("Alt+S"));
@@ -742,7 +692,7 @@ mod tests {
 
     #[test]
     fn normalized_migrates_old_default_shortcuts() {
-        let mut config = AppConfig::from_env();
+        let mut config = AppConfig::default();
         config.shortcuts.insert("translate-selection".to_string(), "Alt+T".to_string());
         config.shortcuts.insert("translate-screenshot".to_string(), "Alt+O".to_string());
 
@@ -751,7 +701,7 @@ mod tests {
         assert_eq!(config.shortcuts.get("translate-selection").map(String::as_str), Some("Alt+D"));
         assert_eq!(config.shortcuts.get("translate-screenshot").map(String::as_str), Some("Alt+S"));
 
-        let mut config = AppConfig::from_env();
+        let mut config = AppConfig::default();
         config.shortcuts.insert("translate-screenshot".to_string(), "Alt+E".to_string());
         let config = config.normalized();
         assert_eq!(config.shortcuts.get("translate-screenshot").map(String::as_str), Some("Alt+S"));
@@ -759,7 +709,7 @@ mod tests {
 
     #[test]
     fn normalized_keeps_custom_shortcuts_and_empty_disabled_bindings() {
-        let mut config = AppConfig::from_env();
+        let mut config = AppConfig::default();
         config.shortcuts.insert("translate-selection".to_string(), "Ctrl+Alt+T".to_string());
         config.shortcuts.insert("translate-screenshot".to_string(), "".to_string());
 
@@ -774,7 +724,7 @@ mod tests {
 
     #[test]
     fn normalized_log_level_falls_back_to_info_for_invalid() {
-        let mut config = AppConfig::from_env();
+        let mut config = AppConfig::default();
         config.log_level = "trace".to_string();
         let normalized = config.normalized();
         assert_eq!(normalized.log_level, "info");
@@ -783,21 +733,21 @@ mod tests {
     #[test]
     fn normalized_log_level_keeps_valid_values() {
         for level in ["error", "warn", "info", "debug"] {
-            let mut config = AppConfig::from_env();
+            let mut config = AppConfig::default();
             config.log_level = level.to_string();
             assert_eq!(config.normalized().log_level, level);
         }
     }
 
     #[test]
-    fn from_env_default_log_level_is_info() {
-        let config = AppConfig::from_env();
+    fn default_log_level_is_info() {
+        let config = AppConfig::default();
         assert_eq!(config.log_level, "info");
     }
 
     #[test]
     fn serializes_log_level_camel_case() {
-        let config = AppConfig::from_env();
+        let config = AppConfig::default();
         let json = serde_json::to_string(&config).expect("序列化");
         assert!(json.contains("\"logLevel\""), "应输出 logLevel: {json}");
     }

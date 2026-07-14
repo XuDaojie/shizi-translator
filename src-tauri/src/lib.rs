@@ -142,7 +142,7 @@ pub fn run() {
                 .state::<AppState>()
                 .config_store
                 .get()
-                .unwrap_or_else(|_| AppConfig::from_env());
+                .unwrap_or_else(|_| AppConfig::default());
             let shortcut_conflicts = register_global_shortcuts_at_startup(app.handle(), &config);
             let _ = app
                 .state::<AppState>()

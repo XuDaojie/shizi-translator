@@ -109,27 +109,7 @@
 
 > 注意：API Key 当前会明文保存到本机配置文件。后续版本计划迁移到 Windows Credential Manager / macOS Keychain / Linux Secret Service 等系统安全存储。
 
-首次没有本地配置文件时，会从以下环境变量读取默认值：
-
-```bash
-SHIZI_LLM_PROVIDER=mock | openai_chat | claude_messages
-SHIZI_TARGET_LANG=中文
-SHIZI_OPENAI_API_KEY=...
-SHIZI_OPENAI_BASE_URL=https://api.openai.com/v1
-SHIZI_OPENAI_MODEL=gpt-4o-mini
-SHIZI_OPENAI_TIMEOUT_SECS=60
-SHIZI_CLAUDE_API_KEY=...
-SHIZI_CLAUDE_BASE_URL=https://api.anthropic.com
-SHIZI_CLAUDE_MODEL=claude-haiku-4-5
-SHIZI_CLAUDE_TIMEOUT_SECS=60
-SHIZI_CLAUDE_ENABLE_THINKING=false
-```
-
-本地 mock 模式示例：
-
-```bash
-SHIZI_LLM_PROVIDER=mock npm run tauri dev
-```
+首次没有本地配置文件时，使用内置默认值（目标语言跟随 OS locale，服务协议 `openai_chat`、模型 `gpt-4o-mini`，API Key 为空）。Key、endpoint、模型等均在设置页配置后写入 `config.json`。
 
 ## 当前限制
 

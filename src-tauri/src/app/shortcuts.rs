@@ -414,7 +414,7 @@ mod tests {
     use crate::core::config::AppConfig;
 
     fn config_with(bindings: &[(&str, &str)]) -> AppConfig {
-        let mut config = AppConfig::from_env();
+        let mut config = AppConfig::default();
         for (id, keys) in bindings {
             config
                 .shortcuts

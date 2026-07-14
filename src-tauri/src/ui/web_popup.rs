@@ -389,7 +389,7 @@ mod tests {
     fn app_state() -> AppState {
         AppState::new_for_test(ConfigStore::from_parts_for_test(
             PathBuf::from("unused-config.json"),
-            Arc::new(RwLock::new(AppConfig::from_env())),
+            Arc::new(RwLock::new(AppConfig::default())),
         ))
     }
 

@@ -254,7 +254,7 @@ mod tests {
     #[test]
     fn config_snapshot_redacts_api_keys() {
         use crate::core::config::AppConfig;
-        let mut config = AppConfig::from_env();
+        let mut config = AppConfig::default();
         config.services[0].api_key = Some("sk-abcdef12345678".to_string());
         let json = config_snapshot_json(&config);
         assert!(json.contains("sk-a...5678"), "apiKey 应脱敏: {json}");
@@ -264,7 +264,7 @@ mod tests {
     #[test]
     fn config_snapshot_preserves_other_fields() {
         use crate::core::config::AppConfig;
-        let config = AppConfig::from_env();
+        let config = AppConfig::default();
         let json = config_snapshot_json(&config);
         assert!(json.contains("\"targetLang\""));
         assert!(json.contains("\"logLevel\""));
@@ -273,7 +273,7 @@ mod tests {
     #[test]
     fn system_info_includes_version_os_and_level() {
         use crate::core::config::AppConfig;
-        let config = AppConfig::from_env();
+        let config = AppConfig::default();
         let info = system_info(&config);
         assert!(info.contains("Version:"));
         assert!(info.contains("OS:"));
@@ -294,7 +294,7 @@ mod tests {
         fs::write(dir.path().join("config.json"), "{}").unwrap(); // 非日志，应被忽略
 
         let zip_path = dir.path().join("export.zip");
-        let config = AppConfig::from_env();
+        let config = AppConfig::default();
         write_export_zip(&zip_path, dir.path(), &config).unwrap();
 
         let mut archive = ZipArchive::new(fs::File::open(&zip_path).unwrap()).unwrap();

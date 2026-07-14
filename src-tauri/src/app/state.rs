@@ -356,7 +356,7 @@ mod tests {
     fn app_state() -> AppState {
         AppState::new_for_test(ConfigStore::from_parts_for_test(
             PathBuf::from("unused-config.json"),
-            Arc::new(RwLock::new(AppConfig::from_env())),
+            Arc::new(RwLock::new(AppConfig::default())),
         ))
     }
 
@@ -613,7 +613,7 @@ mod tests {
 
     #[test]
     fn session_languages_init_from_config() {
-        let mut config = AppConfig::from_env();
+        let mut config = AppConfig::default();
         config.default_source_lang = "en-US".to_string();
         config.target_lang = "ja-JP".to_string();
         let state = AppState::new_for_test(ConfigStore::from_parts_for_test(
@@ -638,7 +638,7 @@ mod tests {
 
     #[test]
     fn set_session_languages_persists_until_reset() {
-        let mut config = AppConfig::from_env();
+        let mut config = AppConfig::default();
         config.target_lang = "zh-CN".to_string();
         let store = Arc::new(RwLock::new(config));
         let state = AppState::new_for_test(ConfigStore::from_parts_for_test(

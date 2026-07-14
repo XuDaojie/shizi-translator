@@ -54,11 +54,11 @@ impl ConfigStore {
                 Ok(config) => config.normalized(),
                 Err(err) => {
                     log::warn!("配置文件解析失败，使用默认配置：{err}");
-                    AppConfig::from_env()
+                    AppConfig::default()
                 }
             }
         } else {
-            AppConfig::from_env()
+            AppConfig::default()
         };
 
         Ok(Self {
