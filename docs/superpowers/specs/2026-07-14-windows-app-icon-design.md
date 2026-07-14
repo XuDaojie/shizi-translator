@@ -76,3 +76,4 @@
 - [x] 完整构图与小尺寸构图 SVG 已保存。
 - [x] 1024 px PNG 与多帧 ICO 已生成。
 - [x] Tauri NSIS 打包及应用/安装包图标已验证。
+- [x] Windows 托盘显式加载 16 px 专用 PNG，不复用 ICO 的 256 px 首帧。

@@ -1,5 +1,6 @@
 use std::sync::{Arc, RwLock};
 use tauri::{
+    image::Image,
     menu::{Menu, MenuItem},
     tray::{TrayIcon, TrayIconBuilder, TrayIconEvent},
     Manager,
@@ -8,6 +9,10 @@ use tauri::{
 use crate::app::state::AppState;
 use crate::app::window::{show_settings_window, show_window};
 use crate::ui::web_popup::{show_translation_error, show_translation_popup};
+
+fn tray_icon_image() -> tauri::Result<Image<'static>> {
+    Image::from_bytes(include_bytes!("../../icons/tray-icon.png"))
+}
 
 #[derive(Clone)]
 pub struct TrayI18nHandles {
@@ -25,7 +30,7 @@ pub fn setup_tray(app: &tauri::App) -> tauri::Result<TrayI18nHandles> {
     let menu = Menu::with_items(app, &[&translate_item, &settings_item, &quit_item])?;
 
     let tray = TrayIconBuilder::new()
-        .icon(app.default_window_icon().unwrap().clone())
+        .icon(tray_icon_image()?)
         .tooltip("Shizi - 翻译助手")
         .menu(&menu)
         .on_menu_event(|app, event| match event.id.as_ref() {
@@ -60,4 +65,16 @@ pub fn setup_tray(app: &tauri::App) -> tauri::Result<TrayI18nHandles> {
         quit: quit_item,
         settings_title: Arc::new(RwLock::new("Shizi 设置".into())),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::tray_icon_image;
+
+    #[test]
+    fn dedicated_tray_icon_is_16px() {
+        let icon = tray_icon_image().expect("专用托盘图标应可解码");
+
+        assert_eq!((icon.width(), icon.height()), (16, 16));
+    }
 }
