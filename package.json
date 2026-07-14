@@ -1,6 +1,7 @@
 {
   "name": "shizi",
   "private": true,
+  "license": "GPL-3.0-only",
   "scripts": {
     "tauri": "tauri",
     "dev": "vite --config frontend/vite.config.ts",

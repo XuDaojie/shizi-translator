@@ -2,8 +2,9 @@
 name = "shizi"
 version = "0.6.1"
 description = "A desktop translation app powered by LLM"
-authors = ["you"]
+authors = ["XuDaojie"]
 edition = "2021"
+license = "GPL-3.0-only"
 
 [lib]
 name = "shizi_lib"
