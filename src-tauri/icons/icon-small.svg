@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="persimmon" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#73852E"/>
+      <stop offset="0.24" stop-color="#D99624"/>
+      <stop offset="0.62" stop-color="#E75B25"/>
+      <stop offset="1" stop-color="#BD371D"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="26" fill="url(#persimmon)"/>
+  <text x="3" y="84" fill="#FFF" font-family="Microsoft YaHei" font-size="71" font-weight="700">文</text>
+  <text x="83" y="106" fill="#FFF" font-family="Segoe UI" font-size="56" font-weight="700">A</text>
+</svg>
