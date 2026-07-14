@@ -9,7 +9,7 @@
 
 > An open-source Windows translation app powered by LLMs and OCR, built with Tauri, Rust and Vue.
 
-Shizi 是一款开源的 Windows 桌面翻译软件，支持手动输入、划词翻译和截图 OCR 翻译，可接入 OpenAI-compatible、Claude 与 Microsoft Edge 等翻译服务。项目灵感来自 macOS 平台的 [Bob](https://bobtranslate.com/)，基于 Tauri 2、Rust 和 Vue 3 构建。
+柿子翻译 是一款开源的 Windows 桌面翻译软件，支持手动输入、划词翻译和截图 OCR 翻译，可接入 OpenAI-compatible、Claude 与 Microsoft Edge 等翻译服务。项目灵感来自 macOS 平台的 [Bob](https://bobtranslate.com/)，基于 Tauri 2、Rust 和 Vue 3 构建。
 
 ## 核心功能
 
