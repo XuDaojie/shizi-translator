@@ -66,14 +66,27 @@ jobs:
       - name: Install frontend deps
         run: npm ci
 
-      # 读 tauri.conf.json → npm run build → cargo tauri build → 上传 NSIS 到 Release
-      - uses: tauri-apps/tauri-action@v1
+      # 与本地一致：npm run tauri build；显式 --bundles nsis，避免只产出 exe
+      - name: Build NSIS installer
+        run: npm run tauri -- build --bundles nsis
+
+      - name: List bundle artifacts
+        shell: bash
+        run: |
+          ls -la src-tauri/target/release/bundle/nsis/ || true
+          if ! ls src-tauri/target/release/bundle/nsis/*-setup.exe >/dev/null 2>&1; then
+            echo "NSIS 安装包未生成" >&2
+            find src-tauri/target/release -maxdepth 3 -type f \( -name '*.exe' -o -name '*.msi' \) -print || true
+            exit 1
+          fi
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: ${{ steps.meta.outputs.tag }}
+          prerelease: ${{ steps.meta.outputs.prerelease }}
+          files: src-tauri/target/release/bundle/nsis/*-setup.exe
+          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: ${{ steps.meta.outputs.tag }}
-          releaseName: ${{ steps.meta.outputs.tag }}
-          releaseDraft: false
-          prerelease: ${{ steps.meta.outputs.prerelease }}
-          # 项目未接 updater，不上传无用 json
-          uploadUpdaterJson: false
