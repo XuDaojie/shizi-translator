@@ -131,6 +131,58 @@ impl OcrServiceInstanceConfig {
     }
 }
 
+/// 磁盘为空时 seed 用的默认 Windows OCR 实例（固定 id 便于前端 merge）。
+fn default_windows_ocr_service() -> OcrServiceInstanceConfig {
+    OcrServiceInstanceConfig {
+        id: "windows-media-ocr".into(),
+        service_type: "windows-media-ocr".into(),
+        name: "Windows 媒体 OCR".into(),
+        enabled: true,
+        api_key: None,
+        endpoint: String::new(),
+        model: String::new(),
+        preferred_lang: String::new(),
+        ocr_prompt: String::new(),
+    }
+}
+
+/// OCR 服务列表归一化（规格 5.3）：
+/// 1. 空 → seed 单条 Windows（enabled）
+/// 2. 多个 enabled → 仅保留列表顺序第一个，其余关闭
+/// 3. 零 enabled → 打开已有 Windows 行；若无则插入默认 Windows
+/// 不删除视觉实例；不改 apiKey/model 等字段。
+fn normalize_ocr_services(mut list: Vec<OcrServiceInstanceConfig>) -> Vec<OcrServiceInstanceConfig> {
+    if list.is_empty() {
+        return vec![default_windows_ocr_service()];
+    }
+
+    // 多 enabled → 只留列表顺序第一个
+    let mut seen_enabled = false;
+    for item in &mut list {
+        if item.enabled {
+            if seen_enabled {
+                item.enabled = false;
+            } else {
+                seen_enabled = true;
+            }
+        }
+    }
+
+    // 零 enabled → 打开已有 windows-media-ocr，否则插入默认
+    if !list.iter().any(|s| s.enabled) {
+        if let Some(win) = list
+            .iter_mut()
+            .find(|s| s.service_type == "windows-media-ocr")
+        {
+            win.enabled = true;
+        } else {
+            list.insert(0, default_windows_ocr_service());
+        }
+    }
+
+    list
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppConfig {
@@ -262,6 +314,7 @@ impl AppConfig {
             .into_iter()
             .map(|s| s.normalized())
             .collect();
+        self.ocr_services = normalize_ocr_services(self.ocr_services);
         if !TRANSLATION_LANGS.contains(&self.target_lang.as_str()) {
             self.target_lang = FALLBACK_TARGET_LANG.to_string();
         }
@@ -803,13 +856,15 @@ mod tests {
     }
 
     #[test]
-    fn ocr_services_default_empty_and_deserializes_missing_as_empty() {
+    fn ocr_services_default_seeds_windows_and_missing_field_deserializes_empty() {
         let config = AppConfig::default();
-        assert!(config.ocr_services.is_empty());
+        assert_eq!(config.ocr_services.len(), 1);
+        assert_eq!(config.ocr_services[0].service_type, "windows-media-ocr");
 
         let json = r#"{"targetLang":"zh-CN","services":[]}"#;
         let parsed: AppConfig = serde_json::from_str(json).expect("parse");
-        assert!(parsed.ocr_services.is_empty());
+        assert!(parsed.ocr_services.is_empty()); // 未 normalized
+        assert_eq!(parsed.normalized().ocr_services.len(), 1);
     }
 
     #[test]
@@ -859,5 +914,98 @@ mod tests {
         assert_eq!(n.ocr_services[0].model, "gpt-4o");
         assert_eq!(n.ocr_services[0].preferred_lang, "en");
         assert_eq!(n.ocr_services[0].ocr_prompt, "hello");
+    }
+
+    #[test]
+    fn normalized_seeds_windows_ocr_when_empty() {
+        let config = AppConfig::default(); // 走 normalized
+        assert_eq!(config.ocr_services.len(), 1);
+        assert_eq!(config.ocr_services[0].service_type, "windows-media-ocr");
+        assert!(config.ocr_services[0].enabled);
+    }
+
+    #[test]
+    fn normalized_enables_windows_when_all_ocr_disabled() {
+        let mut config = AppConfig::default();
+        config.ocr_services = vec![
+            OcrServiceInstanceConfig {
+                id: "win".into(),
+                service_type: "windows-media-ocr".into(),
+                name: "W".into(),
+                enabled: false,
+                api_key: None,
+                endpoint: String::new(),
+                model: String::new(),
+                preferred_lang: String::new(),
+                ocr_prompt: String::new(),
+            },
+            OcrServiceInstanceConfig {
+                id: "v".into(),
+                service_type: "openai-vision".into(),
+                name: "V".into(),
+                enabled: false,
+                api_key: Some("sk".into()),
+                endpoint: "https://api.openai.com/v1".into(),
+                model: "gpt-4o".into(),
+                preferred_lang: String::new(),
+                ocr_prompt: String::new(),
+            },
+        ];
+        let n = config.normalized();
+        assert!(n.ocr_services.iter().find(|s| s.id == "win").unwrap().enabled);
+        assert!(!n.ocr_services.iter().find(|s| s.id == "v").unwrap().enabled);
+    }
+
+    #[test]
+    fn normalized_keeps_only_first_enabled_ocr() {
+        let mut config = AppConfig::default();
+        config.ocr_services = vec![
+            OcrServiceInstanceConfig {
+                id: "v1".into(),
+                service_type: "openai-vision".into(),
+                name: "V1".into(),
+                enabled: true,
+                api_key: Some("sk".into()),
+                endpoint: "https://a".into(),
+                model: "m".into(),
+                preferred_lang: String::new(),
+                ocr_prompt: String::new(),
+            },
+            OcrServiceInstanceConfig {
+                id: "win".into(),
+                service_type: "windows-media-ocr".into(),
+                name: "W".into(),
+                enabled: true,
+                api_key: None,
+                endpoint: String::new(),
+                model: String::new(),
+                preferred_lang: String::new(),
+                ocr_prompt: String::new(),
+            },
+        ];
+        let n = config.normalized();
+        assert!(n.ocr_services[0].enabled);
+        assert!(!n.ocr_services[1].enabled);
+    }
+
+    #[test]
+    fn normalized_inserts_windows_when_all_disabled_and_no_windows_row() {
+        let mut config = AppConfig::default();
+        config.ocr_services = vec![OcrServiceInstanceConfig {
+            id: "v".into(),
+            service_type: "openai-vision".into(),
+            name: "V".into(),
+            enabled: false,
+            api_key: None,
+            endpoint: "https://a".into(),
+            model: "m".into(),
+            preferred_lang: String::new(),
+            ocr_prompt: String::new(),
+        }];
+        let n = config.normalized();
+        assert!(n
+            .ocr_services
+            .iter()
+            .any(|s| s.service_type == "windows-media-ocr" && s.enabled));
     }
 }
