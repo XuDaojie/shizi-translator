@@ -643,7 +643,7 @@ const nextDefaultName = (type: ServiceId): string => {
   return sameType === 0 ? base : `${base} ${sameType + 1}`
 }
 
-/** OCR 同 type 多实例命名：`OpenAI 视觉`、`OpenAI 视觉 2` ... */
+/** OCR 同 type 多实例命名：与翻译渠道同名（如 `OpenAI`、`OpenAI 2`） */
 const nextOcrDefaultName = (type: OcrServiceId): string => {
   const meta = ocrServiceById(type)
   const base = meta?.name ?? type

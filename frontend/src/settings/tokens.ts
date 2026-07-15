@@ -343,9 +343,10 @@ export const BUILTIN_OCR_SERVICES: OcrServiceMeta[] = [
     group: 'system',
     runtimeSupported: true,
   },
+  // 渠道展示名与翻译服务 BUILTIN_SERVICES 对齐（不加「视觉」后缀；上下文已是文字识别）
   {
     id: 'openai-vision',
-    name: 'OpenAI 视觉',
+    name: 'OpenAI',
     description: 'GPT-4o 等多模态模型识图。与翻译实例独立，需单独添加。',
     builtin: true,
     keyRequired: true,
@@ -366,7 +367,7 @@ export const BUILTIN_OCR_SERVICES: OcrServiceMeta[] = [
   },
   {
     id: 'claude-vision',
-    name: 'Claude 视觉',
+    name: 'Claude',
     description: 'Anthropic Claude 多模态识图。与翻译实例独立，需单独添加。',
     builtin: true,
     keyRequired: true,
@@ -387,7 +388,7 @@ export const BUILTIN_OCR_SERVICES: OcrServiceMeta[] = [
   },
   {
     id: 'gemini-vision',
-    name: 'Gemini 视觉',
+    name: 'Gemini',
     description: 'Google Gemini 多模态识图。与翻译实例独立，需单独添加。',
     builtin: true,
     keyRequired: true,
@@ -409,7 +410,7 @@ export const BUILTIN_OCR_SERVICES: OcrServiceMeta[] = [
   },
   {
     id: 'zhipu-vl',
-    name: '智谱视觉',
+    name: '智谱 AI',
     description: '智谱 GLM-4V 等多模态模型识图。与翻译实例独立，需单独添加。',
     builtin: true,
     keyRequired: true,
@@ -429,7 +430,7 @@ export const BUILTIN_OCR_SERVICES: OcrServiceMeta[] = [
   },
   {
     id: 'siliconflow-vision',
-    name: '硅基流动视觉',
+    name: '硅基流动',
     description: '硅基流动多模态开源模型识图。与翻译实例独立，需单独添加。',
     builtin: true,
     keyRequired: true,
@@ -454,7 +455,7 @@ export const BUILTIN_OCR_SERVICES: OcrServiceMeta[] = [
   {
     // moonshot 视觉能力以官方文档为准；保留条目供用户接入，以 tokens 为唯一源
     id: 'moonshot-vision',
-    name: '月之暗面视觉',
+    name: '月之暗面',
     description: 'Moonshot 多模态识图。与翻译实例独立，需单独添加。',
     builtin: true,
     keyRequired: true,
@@ -475,7 +476,7 @@ export const BUILTIN_OCR_SERVICES: OcrServiceMeta[] = [
   },
   {
     id: 'openai-compatible-vision',
-    name: 'OpenAI 兼容视觉',
+    name: '自定义 OpenAI 兼容',
     description: '接入任意 OpenAI 兼容多模态端点。与翻译实例独立，需单独添加。',
     builtin: true,
     keyRequired: true,
@@ -496,6 +497,31 @@ export const BUILTIN_OCR_SERVICES: OcrServiceMeta[] = [
 
 export const ocrServiceById = (id: OcrServiceId): OcrServiceMeta | undefined =>
   BUILTIN_OCR_SERVICES.find((s) => s.id === id)
+
+/**
+ * OCR type → 翻译侧 ServiceId，用于列表/添加器图标与翻译渠道一致。
+ * Windows 系统 OCR 无对应翻译渠道，返回 undefined（UI 用 ScanText）。
+ */
+export const ocrTypeToTranslationServiceId = (type: OcrServiceId): ServiceId | undefined => {
+  switch (type) {
+    case 'openai-vision':
+      return 'openai'
+    case 'claude-vision':
+      return 'claude'
+    case 'gemini-vision':
+      return 'gemini'
+    case 'zhipu-vl':
+      return 'zhipu'
+    case 'siliconflow-vision':
+      return 'siliconflow'
+    case 'moonshot-vision':
+      return 'moonshot'
+    case 'openai-compatible-vision':
+      return 'custom'
+    default:
+      return undefined
+  }
+}
 
 /** 添加 OCR 服务 picker：仅 vision 组（不含 system / 专用 OCR）。 */
 export const OCR_PICKER_SERVICES = BUILTIN_OCR_SERVICES.filter((s) => s.group === 'vision')

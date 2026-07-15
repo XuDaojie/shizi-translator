@@ -39,6 +39,7 @@ import {
   DEFAULT_PROMPTS,
   OCR_PICKER_SERVICES,
   ocrServiceById,
+  ocrTypeToTranslationServiceId,
   serviceById,
 } from '../tokens'
 import { isPromptDefault } from '../components/setting-textarea-logic'
@@ -764,7 +765,12 @@ const onDragEnd = (): void => {
                       inst.enabled ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground',
                     ]"
                   >
-                    <ScanText class="h-3.5 w-3.5" />
+                    <ServiceIcon
+                      v-if="ocrTypeToTranslationServiceId(inst.type)"
+                      :service-id="ocrTypeToTranslationServiceId(inst.type)!"
+                      class-name="h-3.5 w-3.5"
+                    />
+                    <ScanText v-else class="h-3.5 w-3.5" />
                   </span>
                   <span class="flex-1 min-w-0">
                     <span class="block truncate text-[13px] font-medium text-foreground">
@@ -836,7 +842,12 @@ const onDragEnd = (): void => {
                   @click="onAddOcrService(svc.id)"
                 >
                   <span class="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10 text-primary group-hover:bg-primary/15">
-                    <ScanText class="h-3.5 w-3.5" />
+                    <ServiceIcon
+                      v-if="ocrTypeToTranslationServiceId(svc.id)"
+                      :service-id="ocrTypeToTranslationServiceId(svc.id)!"
+                      class-name="h-3.5 w-3.5"
+                    />
+                    <ScanText v-else class="h-3.5 w-3.5" />
                   </span>
                   <span class="text-xs font-medium text-foreground">{{ svc.name }}</span>
                   <span class="line-clamp-2 text-[10px] text-muted-foreground leading-snug">
@@ -859,18 +870,15 @@ const onDragEnd = (): void => {
         v-if="activeOcrInstance && activeOcrService"
         class="flex flex-col gap-2.5"
       >
-        <!-- Header：system 不可重命名/删除；vision 可重命名 + 外链 + 删除走危险区 -->
+        <!-- Header：与翻译详情一致，无渠道图标；system 不可重命名/删除；vision 可重命名 + 外链 -->
         <header class="flex items-start gap-3">
-          <span
-            class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary"
-            :title="activeOcrService.runtimeSupported === false ? t(msgKey('settings.ocr.claudeUnsupported')) : undefined"
-          >
-            <ScanText class="h-[18px] w-[18px]" />
-          </span>
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-2">
               <template v-if="!editingName || activeOcrService.detailKind === 'system'">
-                <h2 class="truncate text-sm font-semibold text-foreground">
+                <h2
+                  class="truncate text-sm font-semibold text-foreground"
+                  :title="activeOcrService.runtimeSupported === false ? t(msgKey('settings.ocr.claudeUnsupported')) : undefined"
+                >
                   {{ activeOcrInstance.name }}
                 </h2>
                 <Button
