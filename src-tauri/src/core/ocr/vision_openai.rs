@@ -153,17 +153,21 @@ impl OcrEngine for VisionOcrEngine {
             self.config.ocr_prompt.as_str()
         };
         let endpoint = self.endpoint();
-        log::debug!(
-            "Vision OCR 请求: endpoint={} model={} prompt_len={}",
-            endpoint,
-            self.config.model,
-            system.chars().count()
-        );
-        log::debug!("Vision OCR system prompt: {system}");
         let body = Self::build_request_body(&self.config.model, system, &data_url);
+        log::debug!("Vision OCR 请求诊断: POST {endpoint}");
+        log::debug!(
+            "Vision OCR 请求头: Authorization={}, Content-Type=application/json",
+            format_auth_header_for_log(&self.config.api_key)
+        );
+        log::debug!(
+            "Vision OCR 请求体: {}",
+            sanitize_request_body_for_log(&body)
+        );
+        // 保留 system 全文 debug（配置非 secret，与现状一致）
+        log::debug!("Vision OCR system prompt: {system}");
         let resp = self
             .client
-            .post(endpoint)
+            .post(&endpoint)
             .header("Authorization", format!("Bearer {}", self.config.api_key))
             .header("Content-Type", "application/json")
             .json(&body)
@@ -177,6 +181,13 @@ impl OcrEngine for VisionOcrEngine {
             .map_err(|e| OcrError::Http(e.to_string()))?;
         if !(200..300).contains(&status) {
             return Err(Self::map_http_error(status, &text));
+        }
+        let body_len = text.len();
+        log::debug!("Vision OCR 响应: status={status} body_len={body_len}");
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
+            if let Some(usage) = v.get("usage") {
+                log::debug!("Vision OCR usage: {usage}");
+            }
         }
         let content = Self::parse_success_content(&text)?;
         log::info!(
