@@ -25,6 +25,9 @@ use ui::{
     },
     logging::{export_logs, write_frontend_log},
     ocr_popup::trigger_ocr_translation,
+    ocr_window::{
+        open_ocr_window, pick_and_recognize_image, recognize_clipboard_image, start_ocr_capture,
+    },
     overlay::{
         cancel_capture, ensure_overlay, get_capture_frame_bytes, get_capture_frame_meta,
         show_overlay, submit_capture_region,
@@ -80,6 +83,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             start_translation,
             trigger_ocr_translation,
+            open_ocr_window,
+            start_ocr_capture,
+            recognize_clipboard_image,
+            pick_and_recognize_image,
             cancel_translation,
             retry_translation,
             get_session_languages,

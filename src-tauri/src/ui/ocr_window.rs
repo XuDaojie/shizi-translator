@@ -1,15 +1,187 @@
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter, Manager, State};
+use tauri_plugin_dialog::DialogExt;
 
-use crate::app::state::AppState;
-use crate::app::window::show_ocr_window;
+use crate::{
+    app::{
+        state::{AppState, CapturePurpose},
+        window::show_ocr_window,
+    },
+    core::{
+        capture::{CapturedImage, CapturedImageFormat},
+        ocr::{meta::RecognizeImageResponse, OcrError, OcrHints},
+        ocr_translation::OcrTranslationError,
+        selection::read_clipboard_image,
+    },
+    platform::{capture_screen, recognize_image_full},
+    ui::{ocr_popup::friendly_ocr_error, overlay},
+};
 
-pub fn open_ocr_window(app: &AppHandle) -> Result<(), String> {
-    show_ocr_window(app)
+/// 前端 invoke：打开文字识别窗口。
+#[tauri::command]
+pub fn open_ocr_window(app: AppHandle) -> Result<(), String> {
+    show_ocr_window(&app)
 }
 
-/// 任务 9 完整实现：截图 + RecognizeOnly purpose + overlay
-pub async fn start_ocr_capture(app: AppHandle, state: AppState) {
-    // 本任务 stub：后续任务 9 填充。可 log::debug 占位。
-    log::debug!("start_ocr_capture stub（任务 9 实现）");
-    let _ = (app, state);
+/// 将内存中的图片字节解码为 RGBA8 `CapturedImage`。
+pub fn load_image_file_bytes(bytes: &[u8]) -> Result<CapturedImage, OcrError> {
+    let dyn_img = image::load_from_memory(bytes)
+        .map_err(|e| OcrError::ImageConversionFailed(e.to_string()))?;
+    let rgba = dyn_img.to_rgba8();
+    let (w, h) = rgba.dimensions();
+    Ok(CapturedImage {
+        bytes: rgba.into_raw(),
+        width: w,
+        height: h,
+        format: CapturedImageFormat::Rgba8,
+    })
+}
+
+fn emit_ocr_recognize_failed(app: &AppHandle, message: String) {
+    log::warn!("OCR 纯识别失败: {message}");
+    if let Err(e) = show_ocr_window(app) {
+        log::warn!("打开文字识别窗口失败: {e}");
+    }
+    if let Err(e) = app.emit("ocr:recognize-failed", message) {
+        log::warn!("emit ocr:recognize-failed 失败: {e}");
+    }
+}
+
+/// 截图纯识别核心流程：不检查 translation_busy，purpose=RecognizeOnly。
+/// 失败时 emit `ocr:recognize-failed` 并尽量 show OCR 窗，不用翻译错误 toast。
+pub async fn start_ocr_capture_flow(app: AppHandle, state: AppState) {
+    if let Err(message) = state.try_begin_capture() {
+        emit_ocr_recognize_failed(&app, message);
+        return;
+    }
+    let _ = state.set_capture_purpose(CapturePurpose::RecognizeOnly);
+
+    let frame = match capture_screen().await {
+        Ok(frame) => frame,
+        Err(error) => {
+            let _ = state.finish_capture();
+            emit_ocr_recognize_failed(
+                &app,
+                friendly_ocr_error(OcrTranslationError::Capture(error)),
+            );
+            return;
+        }
+    };
+
+    let scale = app
+        .get_webview_window("main")
+        .and_then(|w| w.scale_factor().ok())
+        .unwrap_or(1.0);
+
+    if let Err(error) = state.set_pending_capture(frame, scale) {
+        let _ = state.finish_capture();
+        emit_ocr_recognize_failed(&app, error);
+        return;
+    }
+
+    let config = match state.config_store.get() {
+        Ok(c) => c,
+        Err(e) => {
+            let _ = state.take_pending_capture();
+            let _ = state.finish_capture();
+            emit_ocr_recognize_failed(&app, format!("读取配置失败: {e}"));
+            return;
+        }
+    };
+
+    if let Err(error) = overlay::open_overlay(&app, &config) {
+        let _ = state.take_pending_capture();
+        let _ = state.finish_capture();
+        emit_ocr_recognize_failed(&app, format!("无法打开截图窗口：{error}"));
+    }
+}
+
+/// 前端 invoke：启动截图框选纯识别。
+#[tauri::command]
+pub async fn start_ocr_capture(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    start_ocr_capture_flow(app, state.inner().clone()).await;
+    Ok(())
+}
+
+/// 前端 invoke：识别剪贴板中的图片。
+#[tauri::command]
+pub async fn recognize_clipboard_image(
+    state: State<'_, AppState>,
+) -> Result<RecognizeImageResponse, String> {
+    let image = read_clipboard_image()?
+        .ok_or_else(|| "剪贴板中没有图片".to_string())?;
+    log::info!(
+        "OCR 剪贴板读图: {}x{}",
+        image.width,
+        image.height
+    );
+    let config = state.config_store.get().map_err(|e| e.to_string())?;
+    recognize_image_full(image, OcrHints::default(), &config.ocr_services, None)
+        .await
+        .map_err(|e| friendly_ocr_error(OcrTranslationError::from(e)))
+}
+
+/// 前端 invoke：文件选择器选图并识别；用户取消返回 `Ok(None)`。
+#[tauri::command]
+pub async fn pick_and_recognize_image(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<RecognizeImageResponse>, String> {
+    let app2 = app.clone();
+    let path = tauri::async_runtime::spawn_blocking(move || {
+        app2.dialog()
+            .file()
+            .add_filter("Images", &["png", "jpg", "jpeg", "webp", "bmp"])
+            .blocking_pick_file()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let Some(file_path) = path else {
+        return Ok(None);
+    };
+    let path = file_path.into_path().map_err(|e| e.to_string())?;
+    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+    // 禁止 log 文件内容 / base64；仅记路径与尺寸
+    log::info!("OCR 文件读图: path={}", path.display());
+
+    let image = load_image_file_bytes(&bytes).map_err(|e| e.to_string())?;
+    log::info!("OCR 文件尺寸: {}x{}", image.width, image.height);
+
+    let config = state.config_store.get().map_err(|e| e.to_string())?;
+    let resp = recognize_image_full(image, OcrHints::default(), &config.ocr_services, None)
+        .await
+        .map_err(|e| friendly_ocr_error(OcrTranslationError::from(e)))?;
+    Ok(Some(resp))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use image::{ImageBuffer, ImageFormat, Rgba};
+
+    #[test]
+    fn load_image_file_bytes_decodes_minimal_png() {
+        let mut png = Vec::new();
+        {
+            let img: ImageBuffer<Rgba<u8>, Vec<u8>> =
+                ImageBuffer::from_pixel(2, 3, Rgba([10, 20, 30, 255]));
+            img.write_to(&mut std::io::Cursor::new(&mut png), ImageFormat::Png)
+                .expect("encode png");
+        }
+        let captured = load_image_file_bytes(&png).expect("decode png");
+        assert_eq!(captured.width, 2);
+        assert_eq!(captured.height, 3);
+        assert_eq!(captured.format, CapturedImageFormat::Rgba8);
+        assert_eq!(captured.bytes.len(), 2 * 3 * 4);
+        assert_eq!(&captured.bytes[0..4], &[10, 20, 30, 255]);
+    }
+
+    #[test]
+    fn load_image_file_bytes_rejects_garbage() {
+        let err = load_image_file_bytes(b"not-an-image").expect_err("garbage");
+        assert!(matches!(err, OcrError::ImageConversionFailed(_)));
+    }
 }

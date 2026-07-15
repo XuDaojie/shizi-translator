@@ -346,11 +346,11 @@ pub fn handle_global_shortcut(
         Some(ShortcutAction::OcrRecognize) => {
             let app_handle = app.clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(e) = crate::ui::ocr_window::open_ocr_window(&app_handle) {
+                if let Err(e) = crate::app::window::show_ocr_window(&app_handle) {
                     log::warn!("打开文字识别窗口失败: {e}");
                 }
                 let state = app_handle.state::<AppState>().inner().clone();
-                crate::ui::ocr_window::start_ocr_capture(app_handle, state).await;
+                crate::ui::ocr_window::start_ocr_capture_flow(app_handle, state).await;
             });
         }
         Some(ShortcutAction::OpenSettings) => {

@@ -4,7 +4,10 @@ use std::{
 };
 
 mod clipboard;
+mod clipboard_image;
 mod keyboard;
+
+pub use clipboard_image::read_clipboard_image;
 
 #[derive(Debug, thiserror::Error)]
 pub enum SelectionError {
