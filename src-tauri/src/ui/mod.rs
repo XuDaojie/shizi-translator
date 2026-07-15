@@ -3,6 +3,7 @@ pub mod history;
 pub mod i18n;
 pub mod logging;
 pub mod ocr_popup;
+pub mod ocr_window;
 pub mod overlay;
 pub mod service_probe;
 pub mod web_popup;

@@ -7,7 +7,7 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use crate::{
     app::{
         state::AppState,
-        window::{show_settings_window, SETTINGS_LABEL},
+        window::{show_settings_window, OCR_LABEL, SETTINGS_LABEL},
     },
     core::{
         config::AppConfig,
@@ -154,7 +154,7 @@ pub fn attach_app_shortcut_focus_listener(window: &WebviewWindow, app: &tauri::A
 }
 
 fn any_app_window_focused(app: &tauri::AppHandle) -> bool {
-    for label in ["main", SETTINGS_LABEL] {
+    for label in ["main", SETTINGS_LABEL, OCR_LABEL] {
         if let Some(window) = app.get_webview_window(label) {
             if window.is_focused().unwrap_or(false) {
                 return true;
@@ -178,6 +178,7 @@ enum ShortcutKind {
 enum ShortcutAction {
     ClipboardTranslate,
     OcrTranslate,
+    OcrRecognize,
     SelectionTranslate,
     OpenSettings,
 }
@@ -214,9 +215,10 @@ struct ConfiguredShortcut {
 
 fn kind_for_id(id: &str) -> ShortcutKind {
     match id {
-        "translate-selection" | "translate-clipboard" | "translate-screenshot" => {
-            ShortcutKind::Global
-        }
+        "translate-selection"
+        | "translate-clipboard"
+        | "translate-screenshot"
+        | "ocr-recognize" => ShortcutKind::Global,
         "open-settings" => ShortcutKind::AppLocal,
         _ => ShortcutKind::Unimplemented,
     }
@@ -227,6 +229,7 @@ fn action_for_id(id: &str) -> Option<ShortcutAction> {
         "translate-selection" => Some(ShortcutAction::SelectionTranslate),
         "translate-clipboard" => Some(ShortcutAction::ClipboardTranslate),
         "translate-screenshot" => Some(ShortcutAction::OcrTranslate),
+        "ocr-recognize" => Some(ShortcutAction::OcrRecognize),
         "open-settings" => Some(ShortcutAction::OpenSettings),
         // word-lookup：保留配置用于去重与 UI，本阶段不触发
         _ => None,
@@ -238,6 +241,7 @@ fn label_for_id(id: &str) -> &'static str {
         "translate-selection" => "划词翻译",
         "translate-clipboard" => "剪贴板翻译",
         "translate-screenshot" => "截图翻译",
+        "ocr-recognize" => "文字识别",
         "word-lookup" => "取词翻译",
         "open-settings" => "打开设置",
         _ => "未知动作",
@@ -337,6 +341,16 @@ pub fn handle_global_shortcut(
             let state = state.inner().clone();
             tauri::async_runtime::spawn(async move {
                 start_translation_from_ocr(app_handle, state).await;
+            });
+        }
+        Some(ShortcutAction::OcrRecognize) => {
+            let app_handle = app.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = crate::ui::ocr_window::open_ocr_window(&app_handle) {
+                    log::warn!("打开文字识别窗口失败: {e}");
+                }
+                let state = app_handle.state::<AppState>().inner().clone();
+                crate::ui::ocr_window::start_ocr_capture(app_handle, state).await;
             });
         }
         Some(ShortcutAction::OpenSettings) => {
@@ -446,6 +460,16 @@ mod tests {
         assert_eq!(
             classify_shortcut(&shortcut, &config),
             Some(ShortcutAction::OcrTranslate)
+        );
+    }
+
+    #[test]
+    fn classifies_ocr_recognize_shortcut() {
+        let config = config_with(&[("ocr-recognize", "Alt+O")]);
+        let shortcut = "Alt+O".parse::<Shortcut>().unwrap();
+        assert_eq!(
+            classify_shortcut(&shortcut, &config),
+            Some(ShortcutAction::OcrRecognize)
         );
     }
 
