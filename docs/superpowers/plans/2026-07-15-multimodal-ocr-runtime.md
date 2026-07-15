@@ -1,6 +1,6 @@
 # 多模态 OCR 运行时接通 实现计划
 
-> **面向 AI 代理的工作者：** 必需子技能：使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans 逐任务实现此计划。步骤使用复选框（`- [ ]`）语法来跟踪进度。
+> **面向 AI 代理的工作者：** 必需子技能：使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans 逐任务实现此计划。步骤使用复选框（`- [x]`）语法来跟踪进度。
 
 **目标：** 将设置页已有 `ocrServices` 接到截图 OCR 运行时，使唯一启用的 Windows 或 OpenAI 兼容视觉引擎完成纯文字识别后进入现有翻译链路。
 
@@ -48,7 +48,7 @@
 - 修改：`src-tauri/src/core/ocr/mod.rs`
 - 修改：`src-tauri/src/ui/ocr_popup.rs`（本任务只加 match 臂占位，完整文案在任务 7 可再调；**本任务必须让编译通过**）
 
-- [ ] **步骤 1：编写失败的测试（在 `ocr/mod.rs` 底部或临时 `#[cfg(test)]`）**
+- [x] **步骤 1：编写失败的测试（在 `ocr/mod.rs` 底部或临时 `#[cfg(test)]`）**
 
 在 `mod.rs` 末尾增加：
 
@@ -80,7 +80,7 @@ mod error_tests {
 }
 ```
 
-- [ ] **步骤 2：运行测试验证失败**
+- [x] **步骤 2：运行测试验证失败**
 
 ```powershell
 cd src-tauri; cargo test --lib ocr::error_tests -- --nocapture
@@ -88,7 +88,7 @@ cd src-tauri; cargo test --lib ocr::error_tests -- --nocapture
 
 预期：FAIL（变体不存在）。
 
-- [ ] **步骤 3：扩展 `OcrError`**
+- [x] **步骤 3：扩展 `OcrError`**
 
 在现有变体后增加（保持 `PartialEq, Eq`）：
 
@@ -107,7 +107,7 @@ Http(String),
 
 `Api` 的 `retryable` 参与 `PartialEq` 即可；本轮 UI 可不区分重试按钮。
 
-- [ ] **步骤 4：更新 `friendly_ocr_error` 穷尽 match**
+- [x] **步骤 4：更新 `friendly_ocr_error` 穷尽 match**
 
 在 `ocr_popup.rs` 的 `friendly_ocr_error` 增加：
 
@@ -131,7 +131,7 @@ OcrTranslationError::Ocr(OcrError::Http(ref d)) => {
 
 同步在 `ocr_popup` 测试模块为新变体各加一条 `friendly_error_maps_*` 断言（至少 `NoEngineConfigured`、`UnsupportedProtocol`、`Auth`）。
 
-- [ ] **步骤 5：运行测试验证通过**
+- [x] **步骤 5：运行测试验证通过**
 
 ```powershell
 cd src-tauri; cargo test --lib ocr::error_tests; cargo test --lib ui::ocr_popup
@@ -139,7 +139,7 @@ cd src-tauri; cargo test --lib ocr::error_tests; cargo test --lib ui::ocr_popup
 
 预期：PASS。
 
-- [ ] **步骤 6：Commit**
+- [x] **步骤 6：Commit**
 
 ```powershell
 git add src-tauri/src/core/ocr/mod.rs src-tauri/src/ui/ocr_popup.rs
@@ -188,7 +188,7 @@ fn normalize_ocr_services(mut list: Vec<OcrServiceInstanceConfig>) -> Vec<OcrSer
 
 注意：前端 seed 的 Windows 实例 id 是随机 `newInstanceId()`，后端 seed 用固定 `"windows-media-ocr"` 仅在**磁盘为空**时出现；merge 按 id 对齐，空后端时前端保留本地 id——与现行为一致。
 
-- [ ] **步骤 1：编写失败的测试**
+- [x] **步骤 1：编写失败的测试**
 
 在 `types.rs` 测试模块追加：
 
@@ -284,7 +284,7 @@ fn normalized_inserts_windows_when_all_disabled_and_no_windows_row() {
 }
 ```
 
-- [ ] **步骤 2：运行测试验证失败**
+- [x] **步骤 2：运行测试验证失败**
 
 ```powershell
 cd src-tauri; cargo test --lib config::types::tests::normalized_seeds_windows -- --nocapture
@@ -292,7 +292,7 @@ cd src-tauri; cargo test --lib config::types::tests::normalized_seeds_windows --
 
 预期：FAIL（当前 default 空列表或 Windows 不强制）。
 
-- [ ] **步骤 3：实现 `normalize_ocr_services` 并接入 `AppConfig::normalized`**
+- [x] **步骤 3：实现 `normalize_ocr_services` 并接入 `AppConfig::normalized`**
 
 在现有 `ocr_services` map `normalized()` 之后调用：
 
@@ -300,7 +300,7 @@ cd src-tauri; cargo test --lib config::types::tests::normalized_seeds_windows --
 self.ocr_services = normalize_ocr_services(self.ocr_services);
 ```
 
-- [ ] **步骤 4：修正既有测试**
+- [x] **步骤 4：修正既有测试**
 
 `ocr_services_default_empty_and_deserializes_missing_as_empty`：
 
@@ -323,7 +323,7 @@ fn ocr_services_default_seeds_windows_and_missing_field_deserializes_empty() {
 }
 ```
 
-- [ ] **步骤 5：运行测试验证通过**
+- [x] **步骤 5：运行测试验证通过**
 
 ```powershell
 cd src-tauri; cargo test --lib config::types
@@ -331,7 +331,7 @@ cd src-tauri; cargo test --lib config::types
 
 预期：PASS。
 
-- [ ] **步骤 6：Commit**
+- [x] **步骤 6：Commit**
 
 ```powershell
 git add src-tauri/src/core/config/types.rs
@@ -400,7 +400,7 @@ fn is_openai_compatible_vision(service_type: &str) -> bool {
 
 缺 Key：`api_key` 为 `None` 或 trim 后空 → `OcrError::Auth("请填写 API Key".into())`。
 
-- [ ] **步骤 1：编写失败的测试（`resolve.rs` 内 `#[cfg(test)]`）**
+- [x] **步骤 1：编写失败的测试（`resolve.rs` 内 `#[cfg(test)]`）**
 
 ```rust
 fn svc(id: &str, ty: &str, enabled: bool, key: Option<&str>) -> OcrServiceInstanceConfig {
@@ -466,7 +466,7 @@ fn resolve_vision_missing_key_is_auth() {
 }
 ```
 
-- [ ] **步骤 2：运行测试验证失败**
+- [x] **步骤 2：运行测试验证失败**
 
 ```powershell
 cd src-tauri; cargo test --lib ocr::resolve -- --nocapture
@@ -474,9 +474,9 @@ cd src-tauri; cargo test --lib ocr::resolve -- --nocapture
 
 预期：FAIL（模块不存在）。
 
-- [ ] **步骤 3：实现 `resolve_ocr_engine`**
+- [x] **步骤 3：实现 `resolve_ocr_engine`**
 
-- [ ] **步骤 4：运行测试验证通过**
+- [x] **步骤 4：运行测试验证通过**
 
 ```powershell
 cd src-tauri; cargo test --lib ocr::resolve
@@ -484,7 +484,7 @@ cd src-tauri; cargo test --lib ocr::resolve
 
 预期：PASS。
 
-- [ ] **步骤 5：Commit**
+- [x] **步骤 5：Commit**
 
 ```powershell
 git add src-tauri/src/core/ocr/mod.rs src-tauri/src/core/ocr/resolve.rs
@@ -531,7 +531,7 @@ pub fn png_to_data_url(png: &[u8]) -> String { ... }
 5. 错误 → `OcrError::ImageConversionFailed`
 6. **禁止**在 info 日志打印 base64；debug 可记 `width/height/png_len`
 
-- [ ] **步骤 1：添加依赖并写失败测试**
+- [x] **步骤 1：添加依赖并写失败测试**
 
 ```rust
 #[test]
@@ -568,13 +568,13 @@ fn scales_down_when_long_edge_exceeds_2048() {
 
 解码校验需 `image` 的 `png` decode（`load_from_memory` 默认需要 png feature，已启用）。
 
-- [ ] **步骤 2：运行测试验证失败 → 实现 → 通过**
+- [x] **步骤 2：运行测试验证失败 → 实现 → 通过**
 
 ```powershell
 cd src-tauri; cargo test --lib ocr::image_encode
 ```
 
-- [ ] **步骤 3：Commit**
+- [x] **步骤 3：Commit**
 
 ```powershell
 git add src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/src/core/ocr/mod.rs src-tauri/src/core/ocr/image_encode.rs
@@ -667,7 +667,7 @@ system = `ocr_prompt` 非空则用其，否则 `DEFAULT_OCR_PROMPT`。
 
 **错误解析可参考** `OpenAiCompatibleProvider::message_from_error_body` 思路，但**复制最小逻辑到 vision 模块**，不要改翻译 provider 签名。
 
-- [ ] **步骤 1：编写失败的纯函数测试**
+- [x] **步骤 1：编写失败的纯函数测试**
 
 ```rust
 #[test]
@@ -719,9 +719,9 @@ fn map_401_to_auth() {
 }
 ```
 
-- [ ] **步骤 2：实现纯函数 → 测试通过**
+- [x] **步骤 2：实现纯函数 → 测试通过**
 
-- [ ] **步骤 3：实现 `recognize` HTTP 路径**
+- [x] **步骤 3：实现 `recognize` HTTP 路径**
 
 伪代码：
 
@@ -764,9 +764,9 @@ async fn recognize(&self, image: CapturedImage, _hints: OcrHints) -> Result<OcrR
 
 本轮**不**强制 wiremock；HTTP 路径靠纯函数 + 手工验收覆盖。
 
-- [ ] **步骤 4：`cargo test --lib ocr::vision_openai` 通过**
+- [x] **步骤 4：`cargo test --lib ocr::vision_openai` 通过**
 
-- [ ] **步骤 5：Commit**
+- [x] **步骤 5：Commit**
 
 ```powershell
 git add src-tauri/src/core/ocr/mod.rs src-tauri/src/core/ocr/vision_openai.rs
@@ -824,7 +824,7 @@ let result = recognize_region(&frame, region, OcrHints::default(), &config.ocr_s
 
 注意：当前 `submit` 在 recognize **之后**才读 config 用于 show popup；改为 recognize **前**读 config（一份即可复用 show）。
 
-- [ ] **步骤 1：改签名并编译**
+- [x] **步骤 1：改签名并编译**
 
 ```powershell
 cd src-tauri; cargo test --lib
@@ -832,15 +832,15 @@ cd src-tauri; cargo test --lib
 
 修复所有调用点（`recognize_region` 仅 overlay + unsupported 测试）。
 
-- [ ] **步骤 2：更新 unsupported 测试传 `&[]` 或假列表**
+- [x] **步骤 2：更新 unsupported 测试传 `&[]` 或假列表**
 
-- [ ] **步骤 3：确认 `recognize_cropped_for_translation` 回归测试仍绿**
+- [x] **步骤 3：确认 `recognize_cropped_for_translation` 回归测试仍绿**
 
 ```powershell
 cd src-tauri; cargo test --lib ocr_translation
 ```
 
-- [ ] **步骤 4：Commit**
+- [x] **步骤 4：Commit**
 
 ```powershell
 git add src-tauri/src/platform/windows/mod.rs src-tauri/src/platform/unsupported.rs src-tauri/src/ui/overlay.rs
@@ -1000,15 +1000,15 @@ it('merge 后全关则 normalize 强制 Windows on', () => {
 
 若 `mergeBackendIntoOcrServices` 内部已 normalize，测试直接 assert merge 结果。
 
-- [ ] **步骤 1：先改测试为新语义 → 运行失败**
+- [x] **步骤 1：先改测试为新语义 → 运行失败**
 
 ```powershell
 npm run test -- frontend/src/settings/stores/settings.test.ts
 ```
 
-- [ ] **步骤 2：实现 store + tokens**
+- [x] **步骤 2：实现 store + tokens**
 
-- [ ] **步骤 3：ServicesPanel UI**
+- [x] **步骤 3：ServicesPanel UI**
 
 1. 列表开关：去掉 `canDisable === false` 永开分支；统一：
 
@@ -1054,14 +1054,14 @@ function onOcrToggle(inst: OcrServiceInstance, enabled: boolean): void {
 
 4. Windows 详情 `canDisable` 行：文案改为「可与视觉渠道互斥切换；不允许全部关闭。」
 
-- [ ] **步骤 4：测试与 typecheck**
+- [x] **步骤 4：测试与 typecheck**
 
 ```powershell
 npm run test -- frontend/src/settings/stores/settings.test.ts
 npm run typecheck
 ```
 
-- [ ] **步骤 5：Commit**
+- [x] **步骤 5：Commit**
 
 ```powershell
 git add frontend/src/settings/types.ts frontend/src/settings/tokens.ts frontend/src/settings/stores/settings.ts frontend/src/settings/stores/settings.test.ts frontend/src/settings/panels/ServicesPanel.vue
@@ -1100,16 +1100,16 @@ README 改：
 - 文字识别：设置页「服务 → 文字识别」管理 OCR 实例；截图识别使用**当前唯一启用**的引擎（Windows.Media.Ocr 或 OpenAI 兼容视觉模型，只识别文字后再走翻译批次）。Claude 视觉本版本不可启用。
 ```
 
-- [ ] **步骤 1：改文案与文档**
+- [x] **步骤 1：改文案与文档**
 
-- [ ] **步骤 2：验证**
+- [x] **步骤 2：验证**
 
 ```powershell
 npm run typecheck
 npm run test
 ```
 
-- [ ] **步骤 3：Commit**
+- [x] **步骤 3：Commit**
 
 ```powershell
 git add frontend/src/i18n/locales/zh-CN.json frontend/src/i18n/locales/en-US.json README.md docs/architecture/screenshot-ocr-architecture.md
@@ -1120,7 +1120,7 @@ git commit -m "docs(ocr): 同步 OCR 运行时文案与 README"
 
 ## 任务 9：全量验证与规格回填
 
-- [ ] **步骤 1：后端全测**
+- [x] **步骤 1：后端全测**
 
 ```powershell
 cd src-tauri; cargo test
@@ -1128,7 +1128,7 @@ cd src-tauri; cargo test
 
 预期：全部 PASS（忽略带 `#[ignore]` 的 Windows 真机 OCR）。
 
-- [ ] **步骤 2：前端**
+- [x] **步骤 2：前端**
 
 ```powershell
 npm run test
@@ -1137,7 +1137,7 @@ npm run typecheck
 
 预期：PASS。
 
-- [ ] **步骤 3：手工验收清单（WebView2 / `npm run tauri dev`）**
+- [x] **步骤 3：手工验收清单（WebView2 / `npm run tauri dev`）**
 
 | # | 步骤 | 期望 |
 |---|---|---|
@@ -1148,11 +1148,11 @@ npm run typecheck
 | 5 | 错误 Key | 可读 OCR 错误，**不**静默变 Windows |
 | 6 | 翻译多服务批次与设置保存 | 无回归 |
 
-- [ ] **步骤 4：规格状态回填**
+- [x] **步骤 4：规格状态回填**
 
 `docs/superpowers/specs/2026-07-15-multimodal-ocr-runtime-design.md` 状态改为「已实现」；计划本文件任务复选框在编码过程中勾选。
 
-- [ ] **步骤 5：文档 commit（若有未提交回填）**
+- [x] **步骤 5：文档 commit（若有未提交回填）**
 
 ```powershell
 git add docs/superpowers/specs/2026-07-15-multimodal-ocr-runtime-design.md docs/superpowers/plans/2026-07-15-multimodal-ocr-runtime.md
