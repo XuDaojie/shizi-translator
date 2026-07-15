@@ -22,6 +22,7 @@ export default defineConfig({
       input: {
         settings: resolve(frontendDir, 'settings.html'),
         translate: resolve(frontendDir, 'translate.html'),
+        ocr: resolve(frontendDir, 'ocr.html'),
       },
     },
   },
