@@ -7,7 +7,7 @@ use tauri::{
 };
 
 use crate::app::state::AppState;
-use crate::app::window::{show_settings_window, show_window};
+use crate::app::window::{show_ocr_window, show_settings_window, show_window};
 use crate::ui::web_popup::{show_translation_error, show_translation_popup};
 
 fn tray_icon_size(scale_factor: f64) -> u32 {
@@ -56,9 +56,11 @@ pub struct TrayI18nHandles {
 
 pub fn setup_tray(app: &tauri::App) -> tauri::Result<TrayI18nHandles> {
     let translate_item = MenuItem::with_id(app, "translate", "翻译", true, None::<&str>)?;
+    // 不做完整 i18n：固定中文，不接入 TrayI18nHandles / apply_interface_language
+    let ocr_item = MenuItem::with_id(app, "ocr", "文字识别", true, None::<&str>)?;
     let settings_item = MenuItem::with_id(app, "settings", "设置", true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&translate_item, &settings_item, &quit_item])?;
+    let menu = Menu::with_items(app, &[&translate_item, &ocr_item, &settings_item, &quit_item])?;
 
     let tray = TrayIconBuilder::new()
         .icon(tray_icon_image(app)?)
@@ -74,6 +76,12 @@ pub fn setup_tray(app: &tauri::App) -> tauri::Result<TrayI18nHandles> {
                         }
                     }
                     Err(e) => show_translation_error(app, e.to_string()),
+                }
+            }
+            "ocr" => {
+                // 仅打开文字识别窗口，不启动截图
+                if let Err(e) = show_ocr_window(app) {
+                    log::warn!("打开文字识别窗口失败: {e}");
                 }
             }
             "settings" => {
