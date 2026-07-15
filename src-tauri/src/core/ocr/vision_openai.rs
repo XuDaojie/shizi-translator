@@ -56,7 +56,8 @@ impl VisionOcrEngine {
                         {
                             "type": "image_url",
                             "image_url": {
-                                "url": data_url
+                                "url": data_url,
+                                "detail": "high"
                             }
                         }
                     ]
@@ -254,6 +255,20 @@ mod tests {
         assert_eq!(
             user_content[1]["image_url"]["url"],
             "data:image/png;base64,AAA"
+        );
+        assert_eq!(user_content[1]["image_url"]["detail"], "high");
+    }
+
+    #[test]
+    fn request_body_sets_image_url_detail_high() {
+        let body = VisionOcrEngine::build_request_body(
+            "gpt-4o",
+            "sys",
+            "data:image/png;base64,AAA",
+        );
+        assert_eq!(
+            body["messages"][1]["content"][1]["image_url"]["detail"],
+            "high"
         );
     }
 
