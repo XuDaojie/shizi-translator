@@ -34,6 +34,8 @@ tauri-plugin-mcp-bridge = "0.2"
 zip = "2"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 sys-locale = "0.3"
+image = { version = "0.25", default-features = false, features = ["png"] }
+base64 = "0.22"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.58", features = [

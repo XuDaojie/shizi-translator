@@ -3925,10 +3925,12 @@ version = "0.7.0-beta.2"
 dependencies = [
  "arboard",
  "async-trait",
+ "base64 0.22.1",
  "chrono",
  "enigo",
  "filetime",
  "futures-util",
+ "image",
  "log",
  "reqwest 0.12.28",
  "rusqlite",
