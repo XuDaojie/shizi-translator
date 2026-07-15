@@ -142,8 +142,18 @@ pub async fn submit_capture_region(
         return Ok(());
     }
 
+    // recognize 前读配置：解析 ocrServices 引擎，并复用于后续 show。
+    // take 已成功：读配置失败也须释放 capture 锁。
+    let config = match state.config_store.get() {
+        Ok(c) => c,
+        Err(e) => {
+            let _ = state.finish_capture();
+            return Err(e.to_string());
+        }
+    };
     // recognize 期间持锁，挡住二次 Alt+O 覆盖新帧。
-    let result = recognize_region(&frame, region, OcrHints::default()).await;
+    let result =
+        recognize_region(&frame, region, OcrHints::default(), &config.ocr_services).await;
     // recognize 完成，释放 capture 锁；后续 start_translation_from_input 由 translation_busy 接管。
     let _ = state.finish_capture();
 
@@ -153,10 +163,7 @@ pub async fn submit_capture_region(
         // 此分支若被触达即契约违反，报错而非静默吞掉。
         Ok(None) => show_translation_error(&app, "未识别到文本"),
         Ok(Some(input)) => {
-            let config = app_state.config_store.get().ok();
-            if let Some(config) = config {
-                let _ = show_translation_popup(&app, &config);
-            }
+            let _ = show_translation_popup(&app, &config);
             if let Err(error) = start_translation_from_input(input, app.clone(), app_state) {
                 show_translation_error(&app, error);
             }
