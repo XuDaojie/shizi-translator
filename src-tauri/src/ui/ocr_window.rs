@@ -16,6 +16,10 @@ use crate::{
     ui::{ocr_popup::friendly_ocr_error, overlay},
 };
 
+/// 无缓存图时重新识别的固定错误文案（前端可依赖此字面量）。
+pub(crate) const RERECOGNIZE_NO_IMAGE_MSG: &str =
+    "没有可重新识别的图像，请先截图、打开文件或从剪贴板识别。";
+
 /// 前端 invoke：打开文字识别窗口。
 #[tauri::command]
 pub fn open_ocr_window(app: AppHandle) -> Result<(), String> {
@@ -121,7 +125,9 @@ pub async fn recognize_clipboard_image(
     let full = recognize_image_full(image, OcrHints::default(), &config.ocr_services, None)
         .await
         .map_err(|e| friendly_ocr_error(OcrTranslationError::from(e)))?;
-    // 缓存 last_ocr_image 留待后续任务；IPC 只序列化 response
+    if let Err(e) = state.set_last_ocr_image(full.source_image) {
+        log::warn!("写入 last_ocr_image 失败: {e}");
+    }
     Ok(full.response)
 }
 
@@ -156,14 +162,44 @@ pub async fn pick_and_recognize_image(
     let full = recognize_image_full(image, OcrHints::default(), &config.ocr_services, None)
         .await
         .map_err(|e| friendly_ocr_error(OcrTranslationError::from(e)))?;
-    // 缓存 last_ocr_image 留待后续任务；IPC 只序列化 response
+    if let Err(e) = state.set_last_ocr_image(full.source_image) {
+        log::warn!("写入 last_ocr_image 失败: {e}");
+    }
     Ok(Some(full.response))
+}
+
+/// 对最近一次纯识别成功的源图再跑一遍 OCR。
+/// 不占 capture 锁、不查 translation_busy；无缓存时返回固定文案错误。
+#[tauri::command]
+pub async fn rerecognize_last_image(
+    state: State<'_, AppState>,
+) -> Result<RecognizeImageResponse, String> {
+    let image = state
+        .clone_last_ocr_image()?
+        .ok_or_else(|| RERECOGNIZE_NO_IMAGE_MSG.to_string())?;
+    log::info!("OCR 重新识别: {}x{}", image.width, image.height);
+    let config = state.config_store.get().map_err(|e| e.to_string())?;
+    let full = recognize_image_full(image, OcrHints::default(), &config.ocr_services, None)
+        .await
+        .map_err(|e| friendly_ocr_error(OcrTranslationError::from(e)))?;
+    if let Err(e) = state.set_last_ocr_image(full.source_image) {
+        log::warn!("写入 last_ocr_image 失败: {e}");
+    }
+    Ok(full.response)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use image::{ImageBuffer, ImageFormat, Rgba};
+
+    #[test]
+    fn rerecognize_no_image_error_message() {
+        assert_eq!(
+            RERECOGNIZE_NO_IMAGE_MSG,
+            "没有可重新识别的图像，请先截图、打开文件或从剪贴板识别。"
+        );
+    }
 
     #[test]
     fn load_image_file_bytes_decodes_minimal_png() {

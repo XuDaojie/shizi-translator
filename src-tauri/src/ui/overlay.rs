@@ -187,13 +187,16 @@ pub async fn submit_capture_region(
             let _ = state.finish_capture();
             match result {
                 Ok(full) => {
+                    if let Err(e) = state.set_last_ocr_image(full.source_image) {
+                        log::warn!("写入 last_ocr_image 失败: {e}");
+                    }
                     let _ = crate::app::window::show_ocr_window(&app);
-                    // 缓存 last_ocr_image 留待后续任务；IPC 只 emit response
                     if let Err(e) = app.emit("ocr:recognize-result", &full.response) {
                         log::warn!("emit ocr:recognize-result 失败: {e}");
                     }
                 }
                 Err(error) => {
+                    // 失败不清除 last_ocr_image，保留上次成功源图供重新识别
                     let msg = crate::ui::ocr_popup::friendly_ocr_error(error);
                     let _ = crate::app::window::show_ocr_window(&app);
                     if let Err(e) = app.emit("ocr:recognize-failed", msg) {

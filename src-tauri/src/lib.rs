@@ -26,7 +26,8 @@ use ui::{
     logging::{export_logs, write_frontend_log},
     ocr_popup::trigger_ocr_translation,
     ocr_window::{
-        open_ocr_window, pick_and_recognize_image, recognize_clipboard_image, start_ocr_capture,
+        open_ocr_window, pick_and_recognize_image, recognize_clipboard_image,
+        rerecognize_last_image, start_ocr_capture,
     },
     overlay::{
         cancel_capture, ensure_overlay, get_capture_frame_bytes, get_capture_frame_meta,
@@ -87,6 +88,7 @@ pub fn run() {
             start_ocr_capture,
             recognize_clipboard_image,
             pick_and_recognize_image,
+            rerecognize_last_image,
             cancel_translation,
             retry_translation,
             get_session_languages,
