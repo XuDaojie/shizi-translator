@@ -191,4 +191,8 @@ export type ServiceMeta = {
   keyRequired: boolean
   officialEndpoint?: string
   protocols: ServiceProtocolMeta[]
+  /** 官方文档外链；有则详情 Header 显示「查看文档」。 */
+  docsUrl?: string
+  /** API Key 申请页；有则 Header / 缺 Key 警告显示「申请 API Key」。 */
+  apiKeyUrl?: string
 }

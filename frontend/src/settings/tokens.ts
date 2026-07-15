@@ -58,6 +58,8 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     category: 'llm',
     keyRequired: true,
     protocols: [OPENAI_CHAT('https://api.openai.com/v1', 'gpt-4o-mini')],
+    docsUrl: 'https://developers.openai.com/api/docs',
+    apiKeyUrl: 'https://platform.openai.com/api-keys',
   },
   {
     id: 'deepseek',
@@ -71,6 +73,8 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     category: 'llm',
     keyRequired: true,
     protocols: [OPENAI_CHAT('https://api.deepseek.com', 'deepseek-chat')],
+    docsUrl: 'https://platform.deepseek.com/api-docs',
+    apiKeyUrl: 'https://platform.deepseek.com/api_keys',
   },
   {
     id: 'claude',
@@ -84,6 +88,8 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     category: 'llm',
     keyRequired: true,
     protocols: [CLAUDE_MESSAGES],
+    docsUrl: 'https://docs.anthropic.com',
+    apiKeyUrl: 'https://console.anthropic.com/settings/keys',
   },
   {
     id: 'microsoft',
@@ -95,6 +101,7 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     category: 'ml',
     keyRequired: false,
     protocols: [MICROSOFT_EDGE],
+    docsUrl: 'https://learn.microsoft.com/azure/ai-services/translator',
   },
   {
     id: 'gemini',
@@ -114,6 +121,8 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
         'gemini-1.5-flash',
       ),
     ],
+    docsUrl: 'https://ai.google.dev/docs',
+    apiKeyUrl: 'https://aistudio.google.com/apikey',
   },
   {
     id: 'deepl',
@@ -200,6 +209,8 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     category: 'llm',
     keyRequired: true,
     protocols: [OPENAI_CHAT('https://open.bigmodel.cn/api/paas/v4', 'glm-4-flash')],
+    docsUrl: 'https://open.bigmodel.cn/dev/api',
+    apiKeyUrl: 'https://open.bigmodel.cn/usercenter/apikeys',
   },
   {
     id: 'moonshot',
@@ -213,6 +224,8 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     category: 'llm',
     keyRequired: true,
     protocols: [OPENAI_CHAT('https://api.moonshot.cn/v1', 'moonshot-v1-128k')],
+    docsUrl: 'https://platform.moonshot.cn/docs',
+    apiKeyUrl: 'https://platform.moonshot.cn/console/api-keys',
   },
   {
     id: 'siliconflow',
@@ -233,6 +246,8 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     category: 'llm',
     keyRequired: true,
     protocols: [OPENAI_CHAT('https://api.siliconflow.cn/v1', 'Qwen/Qwen2.5-7B-Instruct')],
+    docsUrl: 'https://docs.siliconflow.cn',
+    apiKeyUrl: 'https://cloud.siliconflow.cn/account/ak',
   },
   {
     id: 'custom',
@@ -246,6 +261,7 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     keyRequired: true,
     // 与 openai/deepseek/zhipu 共用 openai_chat 后端路径，用户自填 endpoint/model/key。
     protocols: [OPENAI_CHAT('http://localhost:11434/v1', '')],
+    docsUrl: 'https://developers.openai.com/api/docs',
   },
 ]
 
