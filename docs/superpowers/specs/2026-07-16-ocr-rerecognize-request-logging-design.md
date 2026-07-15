@@ -1,7 +1,7 @@
 # 文字识别 · 重新识别 · Vision 请求诊断日志
 
 - 日期：2026-07-16
-- 状态：已确认设计，待实现
+- 状态：已实现（分支 `feat/ocr-rerecognize-request-logging`，自动化测试通过；UI/日志手验见 plan 任务 7 清单）
 - 前置：`2026-07-15-ocr-window-logging-quality-design.md`（独立 OCR 窗、meta、detail=high 已实现）
 
 ## 1. 背景与问题
