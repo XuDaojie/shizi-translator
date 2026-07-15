@@ -370,10 +370,13 @@ const onDragEnd = (): void => {
                 @drop="(e: DragEvent) => onDrop(e, inst.id)"
                 @dragend="onDragEnd"
               >
-                <button
-                  type="button"
-                  class="flex flex-1 items-start gap-2.5 text-left min-w-0 self-center"
+                <div
+                  role="button"
+                  tabindex="0"
+                  class="flex flex-1 items-start gap-2.5 text-left min-w-0 self-center cursor-pointer"
                   @click="onServiceSelect(inst.id)"
+                  @keydown.enter.prevent="onServiceSelect(inst.id)"
+                  @keydown.space.prevent="onServiceSelect(inst.id)"
                 >
                   <span
                     :class="[
@@ -391,7 +394,7 @@ const onDragEnd = (): void => {
                       {{ inst.model || '—' }}
                     </span>
                   </span>
-                </button>
+                </div>
                 <div
                   class="flex shrink-0 self-center items-center gap-1.5"
                   @click.stop
