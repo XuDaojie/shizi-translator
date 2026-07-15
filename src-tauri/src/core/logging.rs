@@ -24,6 +24,21 @@ pub fn redact_text(text: &dyn std::fmt::Display, level: &str) -> String {
     format!("[len={len}] {head}...")
 }
 
+/// 纯映射：给定 LevelFilter 返回 redact 用的 level 字符串。
+/// `Debug`/`Trace` → `"debug"`（全文）；其余 → `"info"`（摘要）。
+pub fn redact_level_for_filter(filter: log::LevelFilter) -> &'static str {
+    if filter >= log::LevelFilter::Debug {
+        "debug"
+    } else {
+        "info"
+    }
+}
+
+/// 按当前进程全局 `log::max_level()` 决定脱敏粒度。
+pub fn effective_redact_level() -> &'static str {
+    redact_level_for_filter(log::max_level())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -83,5 +98,19 @@ mod tests {
     fn redact_text_non_string_normalizes() {
         let redacted = redact_text(&42u32, "info");
         assert!(redacted.starts_with("[len=2]"));
+    }
+
+    #[test]
+    fn redact_level_for_filter_debug_and_trace_are_full() {
+        assert_eq!(redact_level_for_filter(log::LevelFilter::Debug), "debug");
+        assert_eq!(redact_level_for_filter(log::LevelFilter::Trace), "debug");
+    }
+
+    #[test]
+    fn redact_level_for_filter_info_and_below_are_summary() {
+        assert_eq!(redact_level_for_filter(log::LevelFilter::Info), "info");
+        assert_eq!(redact_level_for_filter(log::LevelFilter::Warn), "info");
+        assert_eq!(redact_level_for_filter(log::LevelFilter::Error), "info");
+        assert_eq!(redact_level_for_filter(log::LevelFilter::Off), "info");
     }
 }

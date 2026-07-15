@@ -45,8 +45,12 @@ where
     }
 
     log::info!(
-        "OCR 翻译入口: {}",
-        crate::core::logging::redact_text(&text, "info")
+        "OCR 翻译入口: engine={} text={}",
+        result.engine,
+        crate::core::logging::redact_text(
+            &text,
+            crate::core::logging::effective_redact_level()
+        )
     );
     Ok(Some(TranslationInput::OcrText {
         text,
