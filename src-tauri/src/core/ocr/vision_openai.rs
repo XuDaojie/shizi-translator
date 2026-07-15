@@ -250,6 +250,55 @@ fn extract_error_message(body: &str) -> Option<String> {
     }
 }
 
+/// 将请求体中的 image_url 替换为长度占位，供 debug 日志使用。禁止 dump 原始 base64。
+pub(crate) fn sanitize_request_body_for_log(body: &serde_json::Value) -> serde_json::Value {
+    let mut out = body.clone();
+    if let Some(messages) = out.get_mut("messages").and_then(|m| m.as_array_mut()) {
+        for msg in messages.iter_mut() {
+            if let Some(content) = msg.get_mut("content").and_then(|c| c.as_array_mut()) {
+                for part in content.iter_mut() {
+                    if part.get("type").and_then(|t| t.as_str()) == Some("image_url") {
+                        if let Some(url_val) = part
+                            .pointer_mut("/image_url/url")
+                            .filter(|v| v.is_string())
+                        {
+                            let original = url_val.as_str().unwrap_or("").to_string();
+                            *url_val =
+                                serde_json::Value::String(sanitize_image_url_for_log(&original));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+fn sanitize_image_url_for_log(url: &str) -> String {
+    const PREFIX: &str = "data:image/png;base64,";
+    if let Some(rest) = url.strip_prefix(PREFIX) {
+        return format!("{PREFIX}[len={}]", rest.len());
+    }
+    if let Some(rest) = url.strip_prefix("data:") {
+        // 其它 data URL：保留 media type 前缀到第一个逗号后的 len
+        if let Some((meta, payload)) = rest.split_once(',') {
+            return format!("data:{meta},[len={}]", payload.len());
+        }
+        return format!("data:[len={}]", rest.len());
+    }
+    // 非 data URL：仅 scheme + 总长度，避免 query 明文
+    let scheme = url.split(':').next().unwrap_or("unknown");
+    format!("{scheme}:[len={}]", url.len())
+}
+
+/// Authorization 头日志：`Bearer {redact_api_key}`。
+pub(crate) fn format_auth_header_for_log(api_key: &str) -> String {
+    format!(
+        "Bearer {}",
+        crate::core::logging::redact_api_key(api_key)
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -327,5 +376,53 @@ mod tests {
         if let OcrError::Auth(msg) = err {
             assert!(msg.contains("bad key"));
         }
+    }
+
+    #[test]
+    fn sanitize_request_body_redacts_data_url_keeps_structure() {
+        let long_b64 = "A".repeat(200);
+        let data_url = format!("data:image/png;base64,{long_b64}");
+        let body = VisionOcrEngine::build_request_body("gpt-4o", "sys-prompt-full", &data_url);
+        let sanitized = sanitize_request_body_for_log(&body);
+        let s = sanitized.to_string();
+
+        assert!(s.contains("[len="), "应含长度占位: {s}");
+        assert!(!s.contains(&long_b64), "不得含原始 base64 片段");
+        assert_eq!(sanitized["model"], "gpt-4o");
+        assert_eq!(sanitized["stream"], false);
+        assert_eq!(sanitized["max_tokens"], 2048);
+        assert_eq!(sanitized["messages"][0]["content"], "sys-prompt-full");
+        assert_eq!(sanitized["messages"][1]["content"][0]["text"], USER_HINT);
+        assert_eq!(
+            sanitized["messages"][1]["content"][1]["image_url"]["detail"],
+            "high"
+        );
+        let url = sanitized["messages"][1]["content"][1]["image_url"]["url"]
+            .as_str()
+            .expect("url string");
+        assert!(url.starts_with("data:image/png;base64,[len="));
+        assert!(url.contains(&format!("[len={}]", long_b64.len())));
+    }
+
+    #[test]
+    fn sanitize_request_body_non_data_url_records_scheme_and_len() {
+        let url = "https://example.com/img.png?token=secret";
+        let body = VisionOcrEngine::build_request_body("m", "s", url);
+        let sanitized = sanitize_request_body_for_log(&body);
+        let out = sanitized["messages"][1]["content"][1]["image_url"]["url"]
+            .as_str()
+            .unwrap();
+        assert!(out.contains("https"), "应含 scheme: {out}");
+        assert!(out.contains(&format!("len={}", url.len())), "应含 len: {out}");
+        assert!(!out.contains("secret"), "不得含 query 明文 token");
+    }
+
+    #[test]
+    fn format_auth_header_redacts_api_key() {
+        let key = "sk-abcdef12345678";
+        let header = format_auth_header_for_log(key);
+        assert_eq!(header, format!("Bearer {}", crate::core::logging::redact_api_key(key)));
+        assert!(!header.contains("abcdef12345678"));
+        assert!(!header.contains(key));
     }
 }
