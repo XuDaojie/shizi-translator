@@ -33,8 +33,13 @@ import {
   ModelCombobox,
   DevOnly,
 } from '../components'
-import type { AppSettings, ServiceId, ServiceInstance } from '../types'
-import { DEFAULT_PROMPTS, serviceById } from '../tokens'
+import type { AppSettings, ServiceId, ServiceInstance, OcrServiceId, OcrServiceInstance } from '../types'
+import {
+  DEFAULT_PROMPTS,
+  OCR_PICKER_SERVICES,
+  ocrServiceById,
+  serviceById,
+} from '../tokens'
 import { isPromptDefault } from '../components/setting-textarea-logic'
 import {
   invokeValidateServiceCredential,
@@ -80,6 +85,9 @@ const firstVisibleInstanceId = (): string =>
 const activeInstanceId = ref<string>(firstVisibleInstanceId())
 const search = ref('')
 const pickerOpen = ref(false)
+/** OCR 左列表当前选中实例。 */
+const activeOcrInstanceId = ref(props.state.ocrServices[0]?.id ?? '')
+const ocrPickerOpen = ref(false)
 /** 正在拉取模型的实例 id；用单值 ref 保证模板 loading 能可靠刷新。 */
 const pullingId = ref<string | null>(null)
 const keyStatusById = ref<Record<string, ServiceInstance['keyStatus']>>({})
@@ -112,6 +120,42 @@ const activeInstance = computed<ServiceInstance | undefined>(() =>
 const activeService = computed(() =>
   activeInstance.value ? serviceById(activeInstance.value.type) : undefined,
 )
+
+const activeOcrInstance = computed(() =>
+  props.state.ocrServices.find((s) => s.id === activeOcrInstanceId.value),
+)
+const activeOcrService = computed(() =>
+  activeOcrInstance.value ? ocrServiceById(activeOcrInstance.value.type) : undefined,
+)
+
+watch(
+  () => props.state.ocrServices.map((s) => s.id).join(','),
+  () => {
+    if (!props.state.ocrServices.some((s) => s.id === activeOcrInstanceId.value)) {
+      activeOcrInstanceId.value = props.state.ocrServices[0]?.id ?? ''
+    }
+  },
+)
+
+const ocrSubtitle = (inst: OcrServiceInstance): string => {
+  const meta = ocrServiceById(inst.type)
+  if (meta?.detailKind === 'system') return t(msgKey('settings.ocr.systemSubtitle'))
+  return t(msgKey('settings.ocr.visionSubtitle'), { model: inst.model || '—' })
+}
+
+const onAddOcrService = (type: OcrServiceId): void => {
+  const inst = settings.addOcrService(type)
+  activeOcrInstanceId.value = inst.id
+  ocrPickerOpen.value = false
+}
+
+const onOcrSelect = (id: string): void => {
+  activeOcrInstanceId.value = id
+}
+
+const onOcrToggle = (inst: OcrServiceInstance, enabled: boolean): void => {
+  settings.setOcrEnabled(inst.id, enabled)
+}
 
 /** 高级区折叠摘要：默认/自定义提示词 · 反思开启。 */
 const advancedSummary = computed(() => {
@@ -378,7 +422,7 @@ const onDragEnd = (): void => {
           @click="tab = 'ocr'"
         >
             {{ t('settings.group.ocr') }}
-          <span class="text-[10px] text-muted-foreground">1</span>
+          <span class="text-[10px] text-muted-foreground">{{ props.state.ocrServices.length }}</span>
           <span
             v-if="tab === 'ocr'"
             class="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-primary"
@@ -540,41 +584,120 @@ const onDragEnd = (): void => {
         </div>
       </template>
 
-      <!-- 文字识别 (OCR) Tab -->
+      <!-- 文字识别 (OCR) Tab：system + 视觉实例列表；添加仅 vision picker -->
       <template v-else>
         <div class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card">
           <ul class="min-h-0 flex-1 overflow-y-auto overscroll-contain divide-y divide-border scrollbar-thin">
-            <li>
-              <div class="flex items-center gap-3 px-3 py-2.5">
-                <span
-                  class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary"
-                :title="t('settings.tooltip.ocrAlwaysEnabled')"
+            <li v-for="inst in props.state.ocrServices" :key="inst.id">
+              <div
+                :class="[
+                  'group relative flex items-center gap-2 px-2.5 py-2 transition-all duration-150',
+                  'hover:bg-accent/40',
+                  activeOcrInstanceId === inst.id && 'bg-accent/60',
+                ]"
+              >
+                <div
+                  role="button"
+                  tabindex="0"
+                  class="flex flex-1 items-start gap-2.5 text-left min-w-0 self-center cursor-pointer"
+                  @click="onOcrSelect(inst.id)"
+                  @keydown.enter.prevent="onOcrSelect(inst.id)"
+                  @keydown.space.prevent="onOcrSelect(inst.id)"
                 >
-                  <ScanText class="h-3.5 w-3.5" />
-                </span>
-                <span class="flex-1 min-w-0">
-                  <span class="truncate text-[13px] font-medium text-foreground">
-                    Windows 媒体 OCR
+                  <span
+                    :class="[
+                      'flex h-6 w-6 shrink-0 items-center justify-center rounded-md',
+                      inst.enabled ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground',
+                    ]"
+                  >
+                    <ScanText class="h-3.5 w-3.5" />
                   </span>
-                  <span class="mt-0.5 block truncate text-[11px] text-muted-foreground">
-                {{ t('settings.description.ocrBuiltin') }}
+                  <span class="flex-1 min-w-0">
+                    <span class="block truncate text-[13px] font-medium text-foreground">
+                      {{ inst.name }}
+                    </span>
+                    <span class="mt-0.5 block truncate text-[11px] leading-snug text-muted-foreground">
+                      {{ ocrSubtitle(inst) }}
+                    </span>
                   </span>
-                </span>
+                </div>
+                <div
+                  class="flex shrink-0 self-center items-center gap-1.5"
+                  @click.stop
+                  @mousedown.stop
+                >
+                  <Badge
+                    v-if="ocrServiceById(inst.type)?.keyRequired === false"
+                    variant="success"
+                    class="h-4 px-1.5 text-[10px]"
+                    :title="t('settings.tooltip.noApiKeyRequired')"
+                  >
+                    {{ t('settings.status.builtin') }}
+                  </Badge>
+                  <Badge
+                    v-else
+                    variant="warning"
+                    class="h-4 px-1.5 text-[10px]"
+                    :title="t('settings.tooltip.apiKeyRequired')"
+                  >
+                    {{ t('settings.status.keyRequired') }}
+                  </Badge>
+                  <!-- canDisable=false（Windows 系统 OCR）：始终 on 且不可关 -->
+                  <SettingSwitch
+                    v-if="ocrServiceById(inst.type)?.canDisable === false"
+                    :model-value="true"
+                    disabled
+                    :aria-label="t('settings.aria.enableNamedService', { name: inst.name })"
+                    :title="t('settings.tooltip.ocrAlwaysEnabled')"
+                  />
+                  <SettingSwitch
+                    v-else
+                    :model-value="inst.enabled"
+                    :aria-label="t(inst.enabled ? 'settings.aria.disableNamedService' : 'settings.aria.enableNamedService', { name: inst.name })"
+                    @update:model-value="(v) => onOcrToggle(inst, v)"
+                  />
+                </div>
               </div>
+            </li>
+            <li
+              v-if="props.state.ocrServices.length === 0"
+              class="px-3 py-6 text-center text-xs text-muted-foreground"
+            >
+              {{ t('settings.empty.noMatchingServices') }}
             </li>
           </ul>
           <div class="shrink-0 border-t border-border p-2">
-            <div :title="t('settings.tooltip.customOcrUnavailable')">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled
-                class="w-full"
-              >
-                <Lock class="h-3.5 w-3.5" />
-                {{ t('settings.button.addOcrService') }}
-              </Button>
-            </div>
+            <Dialog
+              v-model:open="ocrPickerOpen"
+              :title="t('settings.button.addOcrService')"
+              :description="t(msgKey('settings.description.addOcrService'))"
+              width="640px"
+            >
+              <template #trigger>
+                <Button variant="outline" size="sm" class="w-full">
+                  <Plus class="h-3.5 w-3.5" />
+                  {{ t('settings.button.addOcrService') }}
+                </Button>
+              </template>
+
+              <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                <button
+                  v-for="svc in OCR_PICKER_SERVICES"
+                  :key="svc.id"
+                  type="button"
+                  class="group relative flex flex-col items-start gap-1.5 rounded-md border border-border bg-card p-2.5 text-left transition-colors hover:border-primary/40 hover:bg-accent/40"
+                  @click="onAddOcrService(svc.id)"
+                >
+                  <span class="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10 text-primary group-hover:bg-primary/15">
+                    <ScanText class="h-3.5 w-3.5" />
+                  </span>
+                  <span class="text-xs font-medium text-foreground">{{ svc.name }}</span>
+                  <span class="line-clamp-2 text-[10px] text-muted-foreground leading-snug">
+                    {{ svc.description }}
+                  </span>
+                </button>
+              </div>
+            </Dialog>
           </div>
         </div>
       </template>
@@ -589,20 +712,24 @@ const onDragEnd = (): void => {
       <header class="flex items-start gap-3">
         <span
           class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary"
-                :title="t('settings.tooltip.ocrAlwaysEnabled')"
+          :title="activeOcrService?.detailKind === 'system' ? t('settings.tooltip.ocrAlwaysEnabled') : undefined"
         >
           <ScanText class="h-[18px] w-[18px]" />
         </span>
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2 flex-wrap">
-            <h2 class="text-base font-semibold text-foreground">Windows 媒体 OCR</h2>
+            <h2 class="text-base font-semibold text-foreground">
+              {{ activeOcrInstance?.name ?? 'Windows 媒体 OCR' }}
+            </h2>
           </div>
           <p class="mt-1 text-xs text-muted-foreground leading-snug">
-                {{ t('settings.description.ocrEngine') }}
+            {{ activeOcrService?.description ?? t('settings.description.ocrEngine') }}
           </p>
         </div>
       </header>
 
+      <!-- system：保留 Windows 静态说明；vision：任务 11 前仅配置预留提示 -->
+      <template v-if="!activeOcrService || activeOcrService.detailKind === 'system'">
             <SettingGroup :title="t('settings.group.aboutService')">
         <SettingRow
                 :title="t('settings.field.ocrEngine')"
@@ -670,6 +797,14 @@ const onDragEnd = (): void => {
       >
         <ScanText class="h-3.5 w-3.5 shrink-0" />
         <span>{{ t('settings.ocr.footer') }}</span>
+      </div>
+      </template>
+      <div
+        v-else
+        class="flex items-start gap-2 rounded-md border border-border bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground"
+      >
+        <CircleAlert class="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <span>{{ t(msgKey('settings.ocr.configReserved')) }}</span>
       </div>
       </div>
     </div>
