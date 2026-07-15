@@ -575,7 +575,7 @@ const onDragEnd = (): void => {
             <li v-for="inst in filteredInstances" :key="inst.id">
               <div
                 :class="[
-                  'group relative flex items-center gap-2 px-2.5 py-2 transition-all duration-150',
+                  'group relative flex items-center gap-2 px-2.5 py-2 transition-all duration-150 select-none',
                   'hover:bg-accent/40',
                   activeInstanceId === inst.id && 'bg-accent/60',
                   draggedId === inst.id && 'opacity-40',

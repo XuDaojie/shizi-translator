@@ -30,6 +30,9 @@ pub fn ensure_settings_window(app: &tauri::AppHandle) -> Result<WebviewWindow, S
         return Ok(window);
     }
 
+    // Windows/WebView2：Tauri 默认启用原生文件拖放处理器，会劫持 DOM 的
+    // HTML5 drag&drop，导致设置页服务列表重排无效。关闭后前端 draggable 才可用。
+    // 见 WebviewWindowBuilder::disable_drag_drop_handler 文档。
     let window =
         WebviewWindowBuilder::new(app, SETTINGS_LABEL, WebviewUrl::App(SETTINGS_URL.into()))
             .title(
@@ -45,6 +48,7 @@ pub fn ensure_settings_window(app: &tauri::AppHandle) -> Result<WebviewWindow, S
             .maximizable(false)
             .center()
             .visible(SETTINGS_INITIAL_VISIBLE)
+            .disable_drag_drop_handler()
             .build()
             .map_err(|error| format!("创建设置窗口失败: {error}"))?;
     close_to_hide(&window);
