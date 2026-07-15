@@ -1,6 +1,6 @@
 use crate::core::{
     capture::{CaptureError, CapturedImage},
-    ocr::{meta::RecognizeImageResponse, OcrError, OcrHints},
+    ocr::{meta::RecognizeImageFullResult, OcrError, OcrHints},
     ocr_translation::OcrTranslationError,
     translation::TranslationInput,
 };
@@ -23,7 +23,7 @@ pub async fn recognize_image_full(
     _hints: OcrHints,
     _ocr_services: &[crate::core::config::types::OcrServiceInstanceConfig],
     _model_hint: Option<String>,
-) -> Result<RecognizeImageResponse, OcrError> {
+) -> Result<RecognizeImageFullResult, OcrError> {
     Err(OcrError::UnsupportedPlatform)
 }
 
@@ -32,7 +32,7 @@ pub async fn recognize_cropped_full(
     _region: (u32, u32, u32, u32),
     _hints: OcrHints,
     _ocr_services: &[crate::core::config::types::OcrServiceInstanceConfig],
-) -> Result<RecognizeImageResponse, OcrTranslationError> {
+) -> Result<RecognizeImageFullResult, OcrTranslationError> {
     Err(OcrTranslationError::Ocr(OcrError::UnsupportedPlatform))
 }
 

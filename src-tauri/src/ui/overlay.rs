@@ -186,9 +186,10 @@ pub async fn submit_capture_region(
             .await;
             let _ = state.finish_capture();
             match result {
-                Ok(payload) => {
+                Ok(full) => {
                     let _ = crate::app::window::show_ocr_window(&app);
-                    if let Err(e) = app.emit("ocr:recognize-result", &payload) {
+                    // 缓存 last_ocr_image 留待后续任务；IPC 只 emit response
+                    if let Err(e) = app.emit("ocr:recognize-result", &full.response) {
                         log::warn!("emit ocr:recognize-result 失败: {e}");
                     }
                 }

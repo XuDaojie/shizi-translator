@@ -118,9 +118,11 @@ pub async fn recognize_clipboard_image(
         image.height
     );
     let config = state.config_store.get().map_err(|e| e.to_string())?;
-    recognize_image_full(image, OcrHints::default(), &config.ocr_services, None)
+    let full = recognize_image_full(image, OcrHints::default(), &config.ocr_services, None)
         .await
-        .map_err(|e| friendly_ocr_error(OcrTranslationError::from(e)))
+        .map_err(|e| friendly_ocr_error(OcrTranslationError::from(e)))?;
+    // 缓存 last_ocr_image 留待后续任务；IPC 只序列化 response
+    Ok(full.response)
 }
 
 /// 前端 invoke：文件选择器选图并识别；用户取消返回 `Ok(None)`。
@@ -151,10 +153,11 @@ pub async fn pick_and_recognize_image(
     log::info!("OCR 文件尺寸: {}x{}", image.width, image.height);
 
     let config = state.config_store.get().map_err(|e| e.to_string())?;
-    let resp = recognize_image_full(image, OcrHints::default(), &config.ocr_services, None)
+    let full = recognize_image_full(image, OcrHints::default(), &config.ocr_services, None)
         .await
         .map_err(|e| friendly_ocr_error(OcrTranslationError::from(e)))?;
-    Ok(Some(resp))
+    // 缓存 last_ocr_image 留待后续任务；IPC 只序列化 response
+    Ok(Some(full.response))
 }
 
 #[cfg(test)]

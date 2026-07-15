@@ -10,7 +10,7 @@ use crate::core::{
     capture::{CaptureError, CapturedImage},
     ocr::{
         image_encode::{encode_captured_image_png_info, encode_png_unscaled},
-        meta::{OcrRunMeta, RecognizeImageResponse},
+        meta::{OcrRunMeta, RecognizeImageFullResult, RecognizeImageResponse},
         resolve::{resolve_ocr_engine, ResolvedOcrEngine},
         vision_openai::VisionOcrEngine,
         OcrEngine, OcrError, OcrHints,
@@ -50,13 +50,15 @@ pub async fn recognize_region(
 
 /// 纯识别编排：OCR 正文 + 运行元信息 + 预览 PNG base64（不进入翻译链路）。
 /// `model_hint` 保留签名兼容，实际 model 从 resolve 结果取。
+/// 成功时携带源图拷贝，供 ui 层写 last_ocr_image（本函数不碰 AppState）。
 pub async fn recognize_image_full(
     image: CapturedImage,
     hints: OcrHints,
     ocr_services: &[crate::core::config::types::OcrServiceInstanceConfig],
     _model_hint: Option<String>,
-) -> Result<RecognizeImageResponse, OcrError> {
+) -> Result<RecognizeImageFullResult, OcrError> {
     let start = Instant::now();
+    let source_image = image.clone(); // 入口缓存用
     let source_width = image.width;
     let source_height = image.height;
     let preview_png = encode_png_unscaled(&image)?;
@@ -119,12 +121,15 @@ pub async fn recognize_image_full(
             crate::core::logging::effective_redact_level()
         )
     );
-    // 禁止 log preview_b64 / API Key
+    // 禁止 log preview_b64 / API Key / source_image
 
-    Ok(RecognizeImageResponse {
-        text,
-        meta,
-        preview_png_base64: preview_b64,
+    Ok(RecognizeImageFullResult {
+        response: RecognizeImageResponse {
+            text,
+            meta,
+            preview_png_base64: preview_b64,
+        },
+        source_image,
     })
 }
 
@@ -134,7 +139,7 @@ pub async fn recognize_cropped_full(
     region: (u32, u32, u32, u32),
     hints: OcrHints,
     ocr_services: &[crate::core::config::types::OcrServiceInstanceConfig],
-) -> Result<RecognizeImageResponse, OcrTranslationError> {
+) -> Result<RecognizeImageFullResult, OcrTranslationError> {
     let cropped = frame.crop(region.0, region.1, region.2, region.3)?;
     log::debug!(
         "OCR 裁剪物理矩形: x={} y={} w={} h={}",

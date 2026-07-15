@@ -9,7 +9,7 @@ pub use image_encode::{
     encode_captured_image_png, encode_captured_image_png_info, encode_png_unscaled, EncodePngInfo,
 };
 #[allow(unused_imports)]
-pub use meta::{OcrRunMeta, RecognizeImageResponse};
+pub use meta::{OcrRunMeta, RecognizeImageFullResult, RecognizeImageResponse};
 #[allow(unused_imports)]
 pub use resolve::{resolve_ocr_engine, ResolvedOcrEngine, VisionOcrConfig};
 
