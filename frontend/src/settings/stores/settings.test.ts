@@ -278,6 +278,7 @@ describe('settings defaults', () => {
     expect(Object.fromEntries(state.shortcut.bindings.map((b) => [b.id, b.keys]))).toMatchObject({
       'translate-selection': 'Alt+D',
       'translate-screenshot': 'Alt+S',
+      'ocr-recognize': 'Alt+O',
     });
   });
 

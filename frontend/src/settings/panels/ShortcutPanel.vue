@@ -13,6 +13,7 @@ const GLOBAL_IDS = new Set([
   'translate-selection',
   'translate-clipboard',
   'translate-screenshot',
+  'ocr-recognize',
 ])
 
 /** 程序快捷键：仅应用窗口聚焦时由前端处理。 */
