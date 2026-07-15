@@ -8,12 +8,24 @@ use super::OcrError;
 /// 视觉模型输入图像最长边上限（像素）。
 pub const VISION_MAX_LONG_EDGE: u32 = 2048;
 
-/// 将截图编码为 PNG 字节；最长边 > 2048 时等比缩小。
-pub fn encode_captured_image_png(image: &CapturedImage) -> Result<Vec<u8>, OcrError> {
+/// PNG 编码结果及源图/发送尺寸元信息。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EncodePngInfo {
+    pub png: Vec<u8>,
+    pub source_width: u32,
+    pub source_height: u32,
+    pub sent_width: u32,
+    pub sent_height: u32,
+    pub scaled: bool,
+}
+
+/// 将截图编码为 PNG，并返回尺寸元信息；最长边 > 2048 时等比缩小。
+pub fn encode_captured_image_png_info(image: &CapturedImage) -> Result<EncodePngInfo, OcrError> {
     let rgba = captured_to_rgba(image)?;
-    let (src_w, src_h) = rgba.dimensions();
+    let (source_width, source_height) = rgba.dimensions();
     let rgba = maybe_scale(rgba);
-    let (out_w, out_h) = rgba.dimensions();
+    let (sent_width, sent_height) = rgba.dimensions();
+    let scaled = sent_width != source_width || sent_height != source_height;
 
     let mut png = Vec::new();
     {
@@ -23,16 +35,29 @@ pub fn encode_captured_image_png(image: &CapturedImage) -> Result<Vec<u8>, OcrEr
     }
 
     log::debug!(
-        "encode_captured_image_png: {}x{} format={:?} -> {}x{} png_len={}",
-        src_w,
-        src_h,
+        "encode_captured_image_png: {}x{} format={:?} -> {}x{} scaled={} png_len={}",
+        source_width,
+        source_height,
         image.format,
-        out_w,
-        out_h,
+        sent_width,
+        sent_height,
+        scaled,
         png.len()
     );
 
-    Ok(png)
+    Ok(EncodePngInfo {
+        png,
+        source_width,
+        source_height,
+        sent_width,
+        sent_height,
+        scaled,
+    })
+}
+
+/// 兼容旧调用点：仅返回 PNG 字节。
+pub fn encode_captured_image_png(image: &CapturedImage) -> Result<Vec<u8>, OcrError> {
+    Ok(encode_captured_image_png_info(image)?.png)
 }
 
 /// `data:image/png;base64,...`
@@ -135,5 +160,38 @@ mod tests {
         let decoded = image::load_from_memory(&png).unwrap();
         assert!(decoded.width() <= VISION_MAX_LONG_EDGE);
         assert!(decoded.height() <= VISION_MAX_LONG_EDGE);
+    }
+
+    #[test]
+    fn encode_info_marks_scaled_when_long_edge_exceeds_2048() {
+        let w = 3000u32;
+        let h = 10u32;
+        let img = CapturedImage {
+            bytes: vec![0u8; (w * h * 4) as usize],
+            width: w,
+            height: h,
+            format: CapturedImageFormat::Rgba8,
+        };
+        let info = encode_captured_image_png_info(&img).unwrap();
+        assert!(info.scaled);
+        assert_eq!(info.source_width, w);
+        assert_eq!(info.source_height, h);
+        assert!(info.sent_width <= VISION_MAX_LONG_EDGE);
+        assert!(info.sent_height <= VISION_MAX_LONG_EDGE);
+        assert!(info.png.starts_with(&[0x89, b'P', b'N', b'G']));
+    }
+
+    #[test]
+    fn encode_info_not_scaled_when_within_limit() {
+        let img = CapturedImage {
+            bytes: vec![0u8; 4],
+            width: 1,
+            height: 1,
+            format: CapturedImageFormat::Rgba8,
+        };
+        let info = encode_captured_image_png_info(&img).unwrap();
+        assert!(!info.scaled);
+        assert_eq!(info.source_width, 1);
+        assert_eq!(info.sent_width, 1);
     }
 }

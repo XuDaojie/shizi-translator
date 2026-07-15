@@ -4,7 +4,7 @@ use serde::Deserialize;
 
 use crate::core::capture::CapturedImage;
 
-use super::image_encode::{encode_captured_image_png, png_to_data_url};
+use super::image_encode::{encode_captured_image_png_info, png_to_data_url};
 use super::resolve::VisionOcrConfig;
 use super::{OcrEngine, OcrError, OcrHints, OcrResult};
 
@@ -135,23 +135,35 @@ impl OcrEngine for VisionOcrEngine {
         image: CapturedImage,
         _hints: OcrHints,
     ) -> Result<OcrResult, OcrError> {
-        let png = encode_captured_image_png(&image)?;
+        let start = std::time::Instant::now();
+        let encoded = encode_captured_image_png_info(&image)?;
         log::debug!(
-            "Vision OCR 编码: {}x{} png_bytes={}",
-            image.width,
-            image.height,
-            png.len()
+            "Vision OCR 编码: src={}x{} sent={}x{} scaled={} png_bytes={}",
+            encoded.source_width,
+            encoded.source_height,
+            encoded.sent_width,
+            encoded.sent_height,
+            encoded.scaled,
+            encoded.png.len()
         );
-        let data_url = png_to_data_url(&png);
+        let data_url = png_to_data_url(&encoded.png);
         let system = if self.config.ocr_prompt.trim().is_empty() {
             DEFAULT_OCR_PROMPT
         } else {
             self.config.ocr_prompt.as_str()
         };
+        let endpoint = self.endpoint();
+        log::debug!(
+            "Vision OCR 请求: endpoint={} model={} prompt_len={}",
+            endpoint,
+            self.config.model,
+            system.chars().count()
+        );
+        log::debug!("Vision OCR system prompt: {system}");
         let body = Self::build_request_body(&self.config.model, system, &data_url);
         let resp = self
             .client
-            .post(self.endpoint())
+            .post(endpoint)
             .header("Authorization", format!("Bearer {}", self.config.api_key))
             .header("Content-Type", "application/json")
             .json(&body)
@@ -167,6 +179,15 @@ impl OcrEngine for VisionOcrEngine {
             return Err(Self::map_http_error(status, &text));
         }
         let content = Self::parse_success_content(&text)?;
+        log::info!(
+            "Vision OCR 完成: status={} latency_ms={} text={}",
+            status,
+            start.elapsed().as_millis(),
+            crate::core::logging::redact_text(
+                &content,
+                crate::core::logging::effective_redact_level()
+            )
+        );
         Ok(OcrResult {
             text: content,
             lines: vec![],
