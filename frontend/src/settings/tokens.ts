@@ -325,21 +325,23 @@ export const DEFAULT_OCR_PROMPT = '提取图中全部文字，保持阅读顺序
 
 /**
  * 内置 OCR 服务元数据。
- * - system：Windows 媒体 OCR（不可关、不可删）
+ * - system：Windows 媒体 OCR（可与视觉互斥切换；不可全关、不可删）
  * - vision：对应翻译侧已对接且具备多模态能力的 LLM（不含 DeepSeek / Edge / ML / 专用 OCR）
+ * - runtimeSupported=false：本版本不可作为截图 OCR 引擎启用（如 Claude 视觉）
  */
 export const BUILTIN_OCR_SERVICES: OcrServiceMeta[] = [
   {
     id: 'windows-media-ocr',
     name: 'Windows 媒体 OCR',
     description: 'Windows 10+ 系统自带 OCR，无需 API Key。',
-    detail: '配置预留；当前截图识别固定使用 Windows.Media.Ocr，与下方视觉实例启用状态无关。',
+    detail: '截图识别使用当前启用的文字识别服务；与视觉渠道互斥，仅一项生效。',
     builtin: true,
     keyRequired: false,
-    canDisable: false,
+    canDisable: true,
     canDelete: false,
     detailKind: 'system',
     group: 'system',
+    runtimeSupported: true,
   },
   {
     id: 'openai-vision',
@@ -360,6 +362,7 @@ export const BUILTIN_OCR_SERVICES: OcrServiceMeta[] = [
     iconifyId: 'simple-icons:openai',
     docsUrl: 'https://developers.openai.com/api/docs',
     apiKeyUrl: 'https://platform.openai.com/api-keys',
+    runtimeSupported: true,
   },
   {
     id: 'claude-vision',
@@ -380,6 +383,7 @@ export const BUILTIN_OCR_SERVICES: OcrServiceMeta[] = [
     iconifyId: 'simple-icons:anthropic',
     docsUrl: 'https://docs.anthropic.com',
     apiKeyUrl: 'https://console.anthropic.com/settings/keys',
+    runtimeSupported: false,
   },
   {
     id: 'gemini-vision',
@@ -401,6 +405,7 @@ export const BUILTIN_OCR_SERVICES: OcrServiceMeta[] = [
     iconifyId: 'simple-icons:google',
     docsUrl: 'https://ai.google.dev/docs',
     apiKeyUrl: 'https://aistudio.google.com/apikey',
+    runtimeSupported: true,
   },
   {
     id: 'zhipu-vl',
@@ -420,6 +425,7 @@ export const BUILTIN_OCR_SERVICES: OcrServiceMeta[] = [
     group: 'vision',
     docsUrl: 'https://open.bigmodel.cn/dev/api',
     apiKeyUrl: 'https://open.bigmodel.cn/usercenter/apikeys',
+    runtimeSupported: true,
   },
   {
     id: 'siliconflow-vision',
@@ -443,6 +449,7 @@ export const BUILTIN_OCR_SERVICES: OcrServiceMeta[] = [
     group: 'vision',
     docsUrl: 'https://docs.siliconflow.cn',
     apiKeyUrl: 'https://cloud.siliconflow.cn/account/ak',
+    runtimeSupported: true,
   },
   {
     // moonshot 视觉能力以官方文档为准；保留条目供用户接入，以 tokens 为唯一源
@@ -464,6 +471,7 @@ export const BUILTIN_OCR_SERVICES: OcrServiceMeta[] = [
     iconifyId: 'simple-icons:moonshotai',
     docsUrl: 'https://platform.moonshot.cn/docs',
     apiKeyUrl: 'https://platform.moonshot.cn/console/api-keys',
+    runtimeSupported: true,
   },
   {
     id: 'openai-compatible-vision',
@@ -482,6 +490,7 @@ export const BUILTIN_OCR_SERVICES: OcrServiceMeta[] = [
     detailKind: 'vision-llm',
     group: 'vision',
     docsUrl: 'https://developers.openai.com/api/docs',
+    runtimeSupported: true,
   },
 ]
 

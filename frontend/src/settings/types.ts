@@ -191,6 +191,11 @@ export type OcrServiceMeta = {
   iconifyId?: string
   detailKind: OcrDetailKind
   group: 'system' | 'vision'
+  /**
+   * 运行时是否支持作为截图 OCR 引擎启用。
+   * 缺省视为 true；false 时 UI/store 拒绝启用（如 Claude 视觉本版本不支持）。
+   */
+  runtimeSupported?: boolean
 }
 
 export type OcrServiceInstance = {

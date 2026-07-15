@@ -113,13 +113,44 @@ const seedOcrInstances = (): OcrServiceInstance[] => {
   return [defaultOcrInstanceFor(win.id, win.name, true)]
 }
 
-/** 保证列表含 Windows；缺失时 unshift seed。Windows 始终 enabled。 */
-const ensureWindowsOcr = (list: OcrServiceInstance[]): OcrServiceInstance[] => {
-  const normalized = list.map((s) =>
-    s.type === 'windows-media-ocr' ? { ...s, enabled: true } : s,
-  )
-  if (normalized.some((s) => s.type === 'windows-media-ocr')) return normalized
-  return [...seedOcrInstances(), ...normalized]
+/**
+ * 保证含 Windows 行；零 enabled → 开 Windows；多 enabled → 只留第一个。
+ * 若唯一 enabled 为 runtimeSupported===false → 关它并开 Windows。
+ */
+export const normalizeOcrList = (list: OcrServiceInstance[]): OcrServiceInstance[] => {
+  let next = [...list]
+  // 缺 Windows 时补行；enabled 先 false，由下方「零 enabled → 开 Windows」分支决定是否打开，
+  // 避免 seed 的 true 与已有视觉 enabled 形成「多开」后误删视觉。
+  if (!next.some((s) => s.type === 'windows-media-ocr')) {
+    next = [
+      ...seedOcrInstances().map((s) => ({ ...s, enabled: false })),
+      ...next,
+    ]
+  }
+  let enabledIdxs = next
+    .map((s, i) => (s.enabled ? i : -1))
+    .filter((i) => i >= 0)
+  if (enabledIdxs.length === 0) {
+    return next.map((s) =>
+      s.type === 'windows-media-ocr' ? { ...s, enabled: true } : { ...s, enabled: false },
+    )
+  }
+  if (enabledIdxs.length > 1) {
+    const keep = enabledIdxs[0]
+    next = next.map((s, i) => ({ ...s, enabled: i === keep }))
+    enabledIdxs = [keep]
+  }
+  if (enabledIdxs.length === 1) {
+    const only = next[enabledIdxs[0]]
+    const meta = ocrServiceById(only.type)
+    if (meta?.runtimeSupported === false) {
+      return next.map((s) => ({
+        ...s,
+        enabled: s.type === 'windows-media-ocr',
+      }))
+    }
+  }
+  return next
 }
 
 const buildDefaults = (): AppSettings => {
@@ -293,7 +324,7 @@ export const mergeBackendIntoServices = (
   })
 }
 
-/** 后端 OCR 配置合并：核心字段以后端为准；keyStatus/pulledModels/note 保留前端。 */
+/** 后端 OCR 配置合并：核心字段以后端为准；keyStatus/pulledModels/note 保留前端；末尾 normalize。 */
 export const mergeBackendIntoOcrServices = (
   local: OcrServiceInstance[],
   backend: OcrServiceInstanceConfig[],
@@ -302,19 +333,18 @@ export const mergeBackendIntoOcrServices = (
     return local.length ? local : seedOcrInstances()
   }
   const localById = new Map(local.map((s) => [s.id, s]))
-  return backend.map((b) => {
+  const merged: OcrServiceInstance[] = backend.map((b) => {
     const existing = localById.get(b.id)
-    const isWindows = b.serviceType === 'windows-media-ocr'
     if (!existing) {
       return {
         id: b.id,
         type: b.serviceType as OcrServiceId,
         name: b.name,
-        enabled: isWindows ? true : b.enabled,
+        enabled: b.enabled,
         apiKey: b.apiKey ?? '',
         endpoint: b.endpoint,
         note: '',
-        keyStatus: 'idle',
+        keyStatus: 'idle' as const,
         preferredLang: b.preferredLang ?? '',
         model: b.model,
         pulledModels: [],
@@ -324,7 +354,7 @@ export const mergeBackendIntoOcrServices = (
     return {
       ...existing,
       name: b.name,
-      enabled: isWindows ? true : b.enabled,
+      enabled: b.enabled,
       apiKey: b.apiKey ?? '',
       endpoint: b.endpoint,
       model: b.model,
@@ -333,6 +363,7 @@ export const mergeBackendIntoOcrServices = (
       type: b.serviceType as OcrServiceId,
     }
   })
+  return normalizeOcrList(merged)
 }
 
 const mergeBackendIntoShortcuts = (
@@ -439,7 +470,7 @@ const loadFromStorage = (): AppSettings => {
           apiKey: s.apiKey ?? '',
           endpoint: s.endpoint ?? '',
         }))
-        return ensureWindowsOcr(hydrated)
+        return normalizeOcrList(hydrated)
       })(),
       customServiceTypes: parsed.customServiceTypes ?? [],
       advanced: { ...defaults.advanced, ...parsed.advanced },
@@ -702,8 +733,9 @@ export const useSettings = () => ({
         return
       }
       state.services = mergeBackendIntoServices(state.services, backend.services)
-      state.ocrServices = ensureWindowsOcr(
-        mergeBackendIntoOcrServices(state.ocrServices, backend.ocrServices ?? []),
+      state.ocrServices = mergeBackendIntoOcrServices(
+        state.ocrServices,
+        backend.ocrServices ?? [],
       )
       state.general.language = backend.interfaceLanguage
       applyInterfaceLanguageSnapshot(languageSnapshot)
@@ -825,23 +857,49 @@ export const useSettings = () => ({
     state.ocrServices.push(inst)
     return inst
   },
-  /** Windows 媒体 OCR 不可删除；其它实例按 id 删除。 */
+  /** Windows 媒体 OCR 不可删除；其它实例按 id 删除。删除后无 enabled 则 normalize 开 Windows。 */
   removeOcrService(instanceId: string): void {
     const inst = state.ocrServices.find((s) => s.id === instanceId)
     if (!inst || inst.type === 'windows-media-ocr') return
     const idx = state.ocrServices.findIndex((s) => s.id === instanceId)
     if (idx < 0) return
     state.ocrServices.splice(idx, 1)
+    if (!state.ocrServices.some((s) => s.enabled)) {
+      state.ocrServices = normalizeOcrList(state.ocrServices)
+    }
   },
-  /** Windows 强制 enabled=true；视觉自由开关，不互斥。 */
+  /**
+   * OCR 互斥开关：启用时仅该项 on；runtimeSupported===false 拒绝启用；
+   * 关闭唯一项时：Windows 拒绝；视觉则关视觉并开 Windows。
+   */
   setOcrEnabled(instanceId: string, enabled: boolean): void {
     const inst = state.ocrServices.find((s) => s.id === instanceId)
     if (!inst) return
+    const meta = ocrServiceById(inst.type)
+    if (enabled && meta?.runtimeSupported === false) {
+      return
+    }
+    if (enabled) {
+      state.ocrServices = state.ocrServices.map((s) => ({
+        ...s,
+        enabled: s.id === instanceId,
+      }))
+      return
+    }
+    const enabledCount = state.ocrServices.filter((s) => s.enabled).length
+    const isOnly = inst.enabled && enabledCount === 1
+    if (!isOnly) {
+      inst.enabled = false
+      return
+    }
     if (inst.type === 'windows-media-ocr') {
       inst.enabled = true
       return
     }
-    inst.enabled = enabled
+    inst.enabled = false
+    const win = state.ocrServices.find((s) => s.type === 'windows-media-ocr')
+    if (win) win.enabled = true
+    else state.ocrServices = normalizeOcrList(state.ocrServices)
   },
   /** Windows 不可重命名；其它实例改名。 */
   renameOcrService(instanceId: string, name: string): void {

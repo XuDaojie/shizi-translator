@@ -1197,22 +1197,49 @@ describe('ocrServices store', () => {
     expect(s.state.ocrServices).toHaveLength(2);
   });
 
-  it('Windows 不可删不可关；视觉可关可删且不互斥', () => {
+  it('Windows 不可删除', () => {
     const s = useSettings();
     const winId = s.state.ocrServices[0].id;
     s.removeOcrService(winId);
     expect(s.state.ocrServices).toHaveLength(1);
-    s.setOcrEnabled(winId, false);
-    expect(s.state.ocrServices[0].enabled).toBe(true);
+    expect(s.state.ocrServices[0].id).toBe(winId);
+  });
 
-    const a = s.addOcrService('openai-vision');
-    const b = s.addOcrService('claude-vision');
-    s.setOcrEnabled(a.id, true);
-    s.setOcrEnabled(b.id, true);
-    expect(s.state.ocrServices.find((x) => x.id === a.id)!.enabled).toBe(true);
-    expect(s.state.ocrServices.find((x) => x.id === b.id)!.enabled).toBe(true);
-    s.removeOcrService(a.id);
-    expect(s.state.ocrServices.some((x) => x.id === a.id)).toBe(false);
+  it('OCR 开关互斥；关唯一视觉自动回 Windows', () => {
+    const s = useSettings();
+    const winId = s.state.ocrServices[0].id;
+    const v = s.addOcrService('openai-vision');
+    s.setOcrEnabled(v.id, true);
+    expect(s.state.ocrServices.find((x) => x.id === v.id)!.enabled).toBe(true);
+    expect(s.state.ocrServices.find((x) => x.id === winId)!.enabled).toBe(false);
+
+    s.setOcrEnabled(v.id, false);
+    expect(s.state.ocrServices.find((x) => x.id === v.id)!.enabled).toBe(false);
+    expect(s.state.ocrServices.find((x) => x.id === winId)!.enabled).toBe(true);
+  });
+
+  it('不能关闭唯一的 Windows', () => {
+    const s = useSettings();
+    const winId = s.state.ocrServices[0].id;
+    s.setOcrEnabled(winId, false);
+    expect(s.state.ocrServices.find((x) => x.id === winId)!.enabled).toBe(true);
+  });
+
+  it('Claude 视觉不可启用', () => {
+    const s = useSettings();
+    const c = s.addOcrService('claude-vision');
+    s.setOcrEnabled(c.id, true);
+    expect(s.state.ocrServices.find((x) => x.id === c.id)!.enabled).toBe(false);
+    expect(s.state.ocrServices.some((x) => x.enabled && x.type === 'windows-media-ocr')).toBe(true);
+  });
+
+  it('删除唯一启用的视觉后回 Windows', () => {
+    const s = useSettings();
+    const v = s.addOcrService('openai-vision');
+    s.setOcrEnabled(v.id, true);
+    s.removeOcrService(v.id);
+    expect(s.state.ocrServices.every((x) => x.type !== 'openai-vision' || !x.enabled)).toBe(true);
+    expect(s.state.ocrServices.find((x) => x.type === 'windows-media-ocr')!.enabled).toBe(true);
   });
 
   it('mergeBackendIntoOcrServices 保留 keyStatus/pulledModels/note', () => {
@@ -1247,17 +1274,22 @@ describe('ocrServices store', () => {
 
     const result = mergeBackendIntoOcrServices(local, backend);
 
-    expect(result).toHaveLength(1);
-    expect(result[0].apiKey).toBe('new-key');
-    expect(result[0].model).toBe('new-model');
-    expect(result[0].endpoint).toBe('https://new');
-    expect(result[0].preferredLang).toBe('zh-CN');
-    expect(result[0].ocrPrompt).toBe('backend prompt');
-    expect(result[0].name).toBe('OpenAI 视觉改名');
-    expect(result[0].enabled).toBe(true);
-    expect(result[0].note).toBe('我的备注');
-    expect(result[0].keyStatus).toBe('valid');
-    expect(result[0].pulledModels).toEqual(['gpt-4o', 'gpt-4o-mini']);
+    // normalize 保证含 Windows 行；视觉实例字段以后端为准，前端独有字段保留
+    const vision = result.find((s) => s.id === 'a')!;
+    expect(vision).toBeDefined();
+    expect(result.some((s) => s.type === 'windows-media-ocr')).toBe(true);
+    expect(vision.apiKey).toBe('new-key');
+    expect(vision.model).toBe('new-model');
+    expect(vision.endpoint).toBe('https://new');
+    expect(vision.preferredLang).toBe('zh-CN');
+    expect(vision.ocrPrompt).toBe('backend prompt');
+    expect(vision.name).toBe('OpenAI 视觉改名');
+    expect(vision.enabled).toBe(true);
+    expect(vision.note).toBe('我的备注');
+    expect(vision.keyStatus).toBe('valid');
+    expect(vision.pulledModels).toEqual(['gpt-4o', 'gpt-4o-mini']);
+    // 互斥：视觉 enabled 时 Windows 关闭
+    expect(result.find((s) => s.type === 'windows-media-ocr')!.enabled).toBe(false);
   });
 
   it('merge 空后端保留本地；无本地则 seed Windows', () => {
@@ -1270,7 +1302,7 @@ describe('ocrServices store', () => {
     expect(seeded[0].enabled).toBe(true);
   });
 
-  it('Windows 合并时强制 enabled=true', () => {
+  it('merge 后全关则 normalize 强制 Windows on', () => {
     const local = [
       makeLocalOcr({
         id: 'win',
@@ -1293,7 +1325,7 @@ describe('ocrServices store', () => {
       }),
     ];
     const result = mergeBackendIntoOcrServices(local, backend);
-    expect(result[0].enabled).toBe(true);
+    expect(result.find((s) => s.type === 'windows-media-ocr')!.enabled).toBe(true);
   });
 
   it('renameOcrService 对 Windows no-op；视觉可改名', () => {
@@ -1356,7 +1388,9 @@ describe('ocrServices store', () => {
     await s.syncFromBackend();
 
     expect(s.state.ocrServices.map((x) => x.id)).toEqual([winId, 'vision-1']);
-    expect(s.state.ocrServices[0].enabled).toBe(true);
+    // 互斥：后端 vision enabled，Windows 关闭；不再强制 Windows 永开
+    expect(s.state.ocrServices[0].enabled).toBe(false);
+    expect(s.state.ocrServices[1].enabled).toBe(true);
     expect(s.state.ocrServices[0].note).toBe('本地备注');
     expect(s.state.ocrServices[1].apiKey).toBe('sk-backend');
     expect(s.state.ocrServices[1].model).toBe('gpt-4o-mini');

@@ -156,7 +156,36 @@ const onOcrSelect = (id: string): void => {
   activeOcrInstanceId.value = id
 }
 
+/** 任务 8 补全 i18n；此处中文硬编码避免缺键回落为 key 字符串。 */
+const OCR_RUNTIME_ACTIVE_HINT = '当前启用的文字识别服务用于截图框选识别。'
+const OCR_CLAUDE_UNSUPPORTED = '本版本截图识别不支持 Claude 视觉，请使用 OpenAI 兼容渠道或 Windows。'
+const OCR_UNSUPPORTED_TITLE = '无法启用'
+const OCR_CANNOT_DISABLE_LAST = '至少保留一项文字识别服务启用'
+
+/** runtimeSupported===false（如 Claude）禁用开关；其余可切换（关唯一 Windows 由 store 拒绝）。 */
+const isOcrSwitchDisabled = (inst: OcrServiceInstance): boolean => {
+  const meta = ocrServiceById(inst.type)
+  return meta?.runtimeSupported === false
+}
+
+const ocrSwitchTitle = (inst: OcrServiceInstance): string | undefined => {
+  const meta = ocrServiceById(inst.type)
+  if (meta?.runtimeSupported === false) return OCR_CLAUDE_UNSUPPORTED
+  return undefined
+}
+
 const onOcrToggle = (inst: OcrServiceInstance, enabled: boolean): void => {
+  if (enabled && ocrServiceById(inst.type)?.runtimeSupported === false) {
+    toast.error(OCR_UNSUPPORTED_TITLE, OCR_CLAUDE_UNSUPPORTED)
+    return
+  }
+  if (!enabled) {
+    const only = inst.enabled && props.state.ocrServices.filter((s) => s.enabled).length === 1
+    if (only && inst.type === 'windows-media-ocr') {
+      toast.error(OCR_CANNOT_DISABLE_LAST)
+      return
+    }
+  }
   settings.setOcrEnabled(inst.id, enabled)
 }
 
@@ -770,17 +799,10 @@ const onDragEnd = (): void => {
                   >
                     {{ t('settings.status.keyRequired') }}
                   </Badge>
-                  <!-- canDisable=false（Windows 系统 OCR）：始终 on 且不可关 -->
                   <SettingSwitch
-                    v-if="ocrServiceById(inst.type)?.canDisable === false"
-                    :model-value="true"
-                    disabled
-                    :aria-label="t('settings.aria.enableNamedService', { name: inst.name })"
-                    :title="t('settings.tooltip.ocrAlwaysEnabled')"
-                  />
-                  <SettingSwitch
-                    v-else
                     :model-value="inst.enabled"
+                    :disabled="isOcrSwitchDisabled(inst)"
+                    :title="ocrSwitchTitle(inst)"
                     :aria-label="t(inst.enabled ? 'settings.aria.disableNamedService' : 'settings.aria.enableNamedService', { name: inst.name })"
                     @update:model-value="(v) => onOcrToggle(inst, v)"
                   />
@@ -844,7 +866,7 @@ const onDragEnd = (): void => {
         <header class="flex items-start gap-3">
           <span
             class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary"
-            :title="activeOcrService.detailKind === 'system' ? t('settings.tooltip.ocrAlwaysEnabled') : undefined"
+            :title="activeOcrService.runtimeSupported === false ? OCR_CLAUDE_UNSUPPORTED : undefined"
           >
             <ScanText class="h-[18px] w-[18px]" />
           </span>
@@ -930,13 +952,13 @@ const onDragEnd = (): void => {
           </div>
         </header>
 
-        <!-- system：关于 + 三栏能力 + 状态条；醒目 configReserved -->
+        <!-- system：关于 + 三栏能力 + 状态条；runtime 提示 -->
         <template v-if="activeOcrService.detailKind === 'system'">
           <div
-            class="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+            class="flex items-start gap-2 rounded-md border border-border bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground"
           >
             <CircleAlert class="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            <span>{{ t(msgKey('settings.ocr.configReserved')) }}</span>
+            <span>{{ OCR_RUNTIME_ACTIVE_HINT }}</span>
           </div>
 
           <SettingGroup :title="t('settings.group.aboutService')">
@@ -963,7 +985,7 @@ const onDragEnd = (): void => {
             </SettingRow>
             <SettingRow
               :title="t('settings.field.canDisable')"
-              :description="t('settings.description.canDisable')"
+              description="可与视觉渠道互斥切换；不允许全部关闭。"
             >
               <span class="text-xs text-muted-foreground">{{ t('settings.status.systemService') }}</span>
             </SettingRow>
@@ -1012,8 +1034,16 @@ const onDragEnd = (): void => {
           </div>
         </template>
 
-        <!-- vision-llm：缺 Key + 基础配置 + 高级提示词 + 删除 + 预留提示 -->
+        <!-- vision-llm：缺 Key + 基础配置 + 高级提示词 + 删除 + runtime 提示 -->
         <template v-else-if="activeOcrService.detailKind === 'vision-llm'">
+          <div
+            v-if="activeOcrService.runtimeSupported === false"
+            class="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+          >
+            <CircleAlert class="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>{{ OCR_CLAUDE_UNSUPPORTED }}</span>
+          </div>
+
           <div
             v-if="!activeOcrInstance.apiKey"
             class="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
@@ -1139,10 +1169,11 @@ const onDragEnd = (): void => {
           </SettingGroup>
 
           <div
+            v-if="activeOcrService.runtimeSupported !== false"
             class="flex items-start gap-2 rounded-md border border-border bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground"
           >
             <CircleAlert class="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            <span>{{ t(msgKey('settings.ocr.configReserved')) }}</span>
+            <span>{{ OCR_RUNTIME_ACTIVE_HINT }}</span>
           </div>
         </template>
       </div>
