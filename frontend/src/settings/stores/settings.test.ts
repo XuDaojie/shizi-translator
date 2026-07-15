@@ -1,10 +1,10 @@
 import { nextTick } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { applyBackendLogLevel, applyShortcutConflicts, mergeBackendIntoServices, useSettings } from './settings';
+import { applyBackendLogLevel, applyShortcutConflicts, mergeBackendIntoOcrServices, mergeBackendIntoServices, useSettings } from './settings';
 import { DEFAULT_PROMPTS } from '../tokens';
-import type { AppConfig, ServiceInstanceConfig } from '@/types/config';
+import type { AppConfig, OcrServiceInstanceConfig, ServiceInstanceConfig } from '@/types/config';
 import { invokeGetAppConfig, invokeGetInterfaceLanguageSnapshot, invokeGetShortcutConflicts, invokeRefreshInterfaceLanguages, invokeSaveAppConfig, isTauriReady } from '@/lib/tauri';
-import type { AppSettings, ServiceInstance } from '../types';
+import type { AppSettings, OcrServiceInstance, ServiceInstance } from '../types';
 import type { InterfaceLanguageSnapshot } from '@/lib/tauri';
 
 // Mock tauri module so tests don't need window.__TAURI__
@@ -30,12 +30,19 @@ const fakeLocalStorage = (() => {
     key: (i: number) => Object.keys(store)[i] ?? null,
   };
 })();
+let uuidSeq = 0;
 vi.stubGlobal('window', { localStorage: fakeLocalStorage, __TAURI__: undefined });
-vi.stubGlobal('crypto', { randomUUID: () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx' });
+vi.stubGlobal('crypto', {
+  randomUUID: () => {
+    uuidSeq += 1;
+    return `00000000-0000-4000-8000-${String(uuidSeq).padStart(12, '0')}`;
+  },
+});
 
 beforeEach(() => {
   vi.useRealTimers();
   vi.resetAllMocks();
+  uuidSeq = 0;
   vi.mocked(invokeGetShortcutConflicts).mockResolvedValue([]);
   vi.mocked(invokeGetInterfaceLanguageSnapshot).mockResolvedValue(languageSnapshot());
   vi.mocked(isTauriReady).mockReturnValue(false);
@@ -1138,5 +1145,220 @@ describe('defaultTargetLang', () => {
     const settings = useSettings();
     await settings.syncFromBackend();
     expect(settings.state.translation.defaultTargetLang).toBe('en-US');
+  });
+});
+
+const makeLocalOcr = (over: Partial<OcrServiceInstance> = {}): OcrServiceInstance => ({
+  id: 'ocr-local-1',
+  type: 'openai-vision',
+  name: 'OpenAI 视觉',
+  enabled: false,
+  apiKey: '',
+  endpoint: 'https://api.openai.com/v1',
+  note: '',
+  keyStatus: 'idle',
+  preferredLang: '',
+  model: 'gpt-4o',
+  pulledModels: [],
+  ocrPrompt: '',
+  ...over,
+});
+
+const makeBackendOcr = (over: Partial<OcrServiceInstanceConfig> = {}): OcrServiceInstanceConfig => ({
+  id: 'ocr-b-1',
+  serviceType: 'openai-vision',
+  name: 'OpenAI 视觉',
+  enabled: true,
+  apiKey: 'sk-x',
+  endpoint: 'https://api.openai.com/v1',
+  model: 'gpt-4o',
+  preferredLang: '',
+  ocrPrompt: '',
+  ...over,
+});
+
+describe('ocrServices store', () => {
+  it('默认 seed 仅 Windows 且启用', () => {
+    const s = useSettings();
+    expect(s.state.ocrServices).toHaveLength(1);
+    expect(s.state.ocrServices[0].type).toBe('windows-media-ocr');
+    expect(s.state.ocrServices[0].enabled).toBe(true);
+  });
+
+  it('添加视觉实例；不可添加重复 Windows', () => {
+    const s = useSettings();
+    const win = s.addOcrService('windows-media-ocr');
+    expect(s.state.ocrServices.filter((x) => x.type === 'windows-media-ocr')).toHaveLength(1);
+    expect(win.id).toBe(s.state.ocrServices[0].id);
+
+    const v = s.addOcrService('openai-vision');
+    expect(v.enabled).toBe(false);
+    expect(v.ocrPrompt).toBe('');
+    expect(s.state.ocrServices).toHaveLength(2);
+  });
+
+  it('Windows 不可删不可关；视觉可关可删且不互斥', () => {
+    const s = useSettings();
+    const winId = s.state.ocrServices[0].id;
+    s.removeOcrService(winId);
+    expect(s.state.ocrServices).toHaveLength(1);
+    s.setOcrEnabled(winId, false);
+    expect(s.state.ocrServices[0].enabled).toBe(true);
+
+    const a = s.addOcrService('openai-vision');
+    const b = s.addOcrService('claude-vision');
+    s.setOcrEnabled(a.id, true);
+    s.setOcrEnabled(b.id, true);
+    expect(s.state.ocrServices.find((x) => x.id === a.id)!.enabled).toBe(true);
+    expect(s.state.ocrServices.find((x) => x.id === b.id)!.enabled).toBe(true);
+    s.removeOcrService(a.id);
+    expect(s.state.ocrServices.some((x) => x.id === a.id)).toBe(false);
+  });
+
+  it('mergeBackendIntoOcrServices 保留 keyStatus/pulledModels/note', () => {
+    const local = [
+      makeLocalOcr({
+        id: 'a',
+        type: 'openai-vision',
+        apiKey: 'old-key',
+        model: 'old-model',
+        endpoint: 'https://old',
+        note: '我的备注',
+        keyStatus: 'valid',
+        pulledModels: ['gpt-4o', 'gpt-4o-mini'],
+        ocrPrompt: 'local prompt',
+        preferredLang: '',
+        enabled: false,
+      }),
+    ];
+    const backend = [
+      makeBackendOcr({
+        id: 'a',
+        serviceType: 'openai-vision',
+        apiKey: 'new-key',
+        model: 'new-model',
+        endpoint: 'https://new',
+        preferredLang: 'zh-CN',
+        ocrPrompt: 'backend prompt',
+        enabled: true,
+        name: 'OpenAI 视觉改名',
+      }),
+    ];
+
+    const result = mergeBackendIntoOcrServices(local, backend);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].apiKey).toBe('new-key');
+    expect(result[0].model).toBe('new-model');
+    expect(result[0].endpoint).toBe('https://new');
+    expect(result[0].preferredLang).toBe('zh-CN');
+    expect(result[0].ocrPrompt).toBe('backend prompt');
+    expect(result[0].name).toBe('OpenAI 视觉改名');
+    expect(result[0].enabled).toBe(true);
+    expect(result[0].note).toBe('我的备注');
+    expect(result[0].keyStatus).toBe('valid');
+    expect(result[0].pulledModels).toEqual(['gpt-4o', 'gpt-4o-mini']);
+  });
+
+  it('merge 空后端保留本地；无本地则 seed Windows', () => {
+    const local = [makeLocalOcr({ id: 'keep-me' })];
+    expect(mergeBackendIntoOcrServices(local, []).map((s) => s.id)).toEqual(['keep-me']);
+
+    const seeded = mergeBackendIntoOcrServices([], []);
+    expect(seeded).toHaveLength(1);
+    expect(seeded[0].type).toBe('windows-media-ocr');
+    expect(seeded[0].enabled).toBe(true);
+  });
+
+  it('Windows 合并时强制 enabled=true', () => {
+    const local = [
+      makeLocalOcr({
+        id: 'win',
+        type: 'windows-media-ocr',
+        name: 'Windows 媒体 OCR',
+        enabled: true,
+        endpoint: '',
+        model: '',
+      }),
+    ];
+    const backend = [
+      makeBackendOcr({
+        id: 'win',
+        serviceType: 'windows-media-ocr',
+        name: 'Windows 媒体 OCR',
+        enabled: false,
+        endpoint: '',
+        model: '',
+        apiKey: null,
+      }),
+    ];
+    const result = mergeBackendIntoOcrServices(local, backend);
+    expect(result[0].enabled).toBe(true);
+  });
+
+  it('renameOcrService 对 Windows no-op；视觉可改名', () => {
+    const s = useSettings();
+    const winId = s.state.ocrServices[0].id;
+    const winName = s.state.ocrServices[0].name;
+    s.renameOcrService(winId, '改名');
+    expect(s.state.ocrServices[0].name).toBe(winName);
+
+    const v = s.addOcrService('openai-vision');
+    s.renameOcrService(v.id, '我的视觉');
+    expect(s.state.ocrServices.find((x) => x.id === v.id)!.name).toBe('我的视觉');
+  });
+
+  it('syncFromBackend 后端空 ocr 时保留前端 seed Windows', async () => {
+    vi.mocked(isTauriReady).mockReturnValue(true);
+    const s = useSettings();
+    const localId = s.state.services[0].id;
+    const winId = s.state.ocrServices[0].id;
+    vi.mocked(invokeGetAppConfig).mockResolvedValue(makeAppConfig([
+      makeBackend({ id: localId }),
+    ], { interfaceLanguage: 'auto', ocrServices: [] }));
+
+    await s.syncFromBackend();
+
+    expect(s.state.ocrServices).toHaveLength(1);
+    expect(s.state.ocrServices[0].id).toBe(winId);
+    expect(s.state.ocrServices[0].type).toBe('windows-media-ocr');
+  });
+
+  it('syncFromBackend 后端非空 ocr 时 merge 并补 Windows', async () => {
+    vi.mocked(isTauriReady).mockReturnValue(true);
+    const s = useSettings();
+    const localId = s.state.services[0].id;
+    s.state.ocrServices[0].note = '本地备注';
+    const winId = s.state.ocrServices[0].id;
+    vi.mocked(invokeGetAppConfig).mockResolvedValue(makeAppConfig([
+      makeBackend({ id: localId }),
+    ], {
+      interfaceLanguage: 'auto',
+      ocrServices: [
+        makeBackendOcr({
+          id: winId,
+          serviceType: 'windows-media-ocr',
+          name: 'Windows 媒体 OCR',
+          enabled: false,
+          endpoint: '',
+          model: '',
+          apiKey: null,
+        }),
+        makeBackendOcr({
+          id: 'vision-1',
+          serviceType: 'openai-vision',
+          apiKey: 'sk-backend',
+          model: 'gpt-4o-mini',
+        }),
+      ],
+    }));
+
+    await s.syncFromBackend();
+
+    expect(s.state.ocrServices.map((x) => x.id)).toEqual([winId, 'vision-1']);
+    expect(s.state.ocrServices[0].enabled).toBe(true);
+    expect(s.state.ocrServices[0].note).toBe('本地备注');
+    expect(s.state.ocrServices[1].apiKey).toBe('sk-backend');
+    expect(s.state.ocrServices[1].model).toBe('gpt-4o-mini');
   });
 });

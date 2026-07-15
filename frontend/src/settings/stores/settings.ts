@@ -3,12 +3,21 @@ import type {
   AppSettings,
   CustomServiceType,
   LogLevel,
+  OcrServiceId,
+  OcrServiceInstance,
+  OcrServiceMeta,
   ServiceId,
   ServiceInstance,
   ServiceMeta,
 } from '../types'
-import type { AppConfig, ServiceInstanceConfig } from '@/types/config'
-import { BUILTIN_SERVICES, buildServices, DEFAULT_PROMPTS } from '../tokens'
+import type { AppConfig, OcrServiceInstanceConfig, ServiceInstanceConfig } from '@/types/config'
+import {
+  BUILTIN_OCR_SERVICES,
+  BUILTIN_SERVICES,
+  buildServices,
+  DEFAULT_PROMPTS,
+  ocrServiceById,
+} from '../tokens'
 import { projectToAppConfig, validateConfig } from '@/lib/config'
 import {
   invokeGetAppConfig,
@@ -75,6 +84,44 @@ const seedInstances = (): ServiceInstance[] =>
     .filter((m): m is ServiceMeta => !!m)
     .map((svc) => defaultInstanceFor(svc.id, svc.name, false))
 
+const defaultOcrInstanceFor = (
+  type: OcrServiceId,
+  name: string,
+  enabled = false,
+): OcrServiceInstance => {
+  const meta = ocrServiceById(type)
+  return {
+    id: newInstanceId(),
+    type,
+    name,
+    enabled,
+    apiKey: '',
+    endpoint: meta?.apiBaseUrl ?? '',
+    note: '',
+    keyStatus: 'idle',
+    preferredLang: '',
+    model: meta?.defaultModel ?? '',
+    pulledModels: [],
+    ocrPrompt: '',
+  }
+}
+
+/** 首启仅 seed Windows 媒体 OCR，强制启用。视觉实例由用户添加。 */
+const seedOcrInstances = (): OcrServiceInstance[] => {
+  const win = BUILTIN_OCR_SERVICES.find((s) => s.id === 'windows-media-ocr')
+  if (!win) return []
+  return [defaultOcrInstanceFor(win.id, win.name, true)]
+}
+
+/** 保证列表含 Windows；缺失时 unshift seed。Windows 始终 enabled。 */
+const ensureWindowsOcr = (list: OcrServiceInstance[]): OcrServiceInstance[] => {
+  const normalized = list.map((s) =>
+    s.type === 'windows-media-ocr' ? { ...s, enabled: true } : s,
+  )
+  if (normalized.some((s) => s.type === 'windows-media-ocr')) return normalized
+  return [...seedOcrInstances(), ...normalized]
+}
+
 const buildDefaults = (): AppSettings => {
   const instances = seedInstances()
   return {
@@ -137,8 +184,7 @@ const buildDefaults = (): AppSettings => {
       ],
     },
     services: instances,
-    // 任务 7 最小补丁：空数组保证 AppSettings 类型完整；seed / CRUD 留给任务 8
-    ocrServices: [],
+    ocrServices: seedOcrInstances(),
     customServiceTypes: [],
     advanced: {
       logLevel: 'info',
@@ -247,6 +293,47 @@ export const mergeBackendIntoServices = (
   })
 }
 
+/** 后端 OCR 配置合并：核心字段以后端为准；keyStatus/pulledModels/note 保留前端。 */
+export const mergeBackendIntoOcrServices = (
+  local: OcrServiceInstance[],
+  backend: OcrServiceInstanceConfig[],
+): OcrServiceInstance[] => {
+  if (!backend.length) {
+    return local.length ? local : seedOcrInstances()
+  }
+  const localById = new Map(local.map((s) => [s.id, s]))
+  return backend.map((b) => {
+    const existing = localById.get(b.id)
+    const isWindows = b.serviceType === 'windows-media-ocr'
+    if (!existing) {
+      return {
+        id: b.id,
+        type: b.serviceType as OcrServiceId,
+        name: b.name,
+        enabled: isWindows ? true : b.enabled,
+        apiKey: b.apiKey ?? '',
+        endpoint: b.endpoint,
+        note: '',
+        keyStatus: 'idle',
+        preferredLang: b.preferredLang ?? '',
+        model: b.model,
+        pulledModels: [],
+        ocrPrompt: b.ocrPrompt ?? '',
+      }
+    }
+    return {
+      ...existing,
+      name: b.name,
+      enabled: isWindows ? true : b.enabled,
+      apiKey: b.apiKey ?? '',
+      endpoint: b.endpoint,
+      model: b.model,
+      preferredLang: b.preferredLang ?? '',
+      ocrPrompt: b.ocrPrompt ?? '',
+      type: b.serviceType as OcrServiceId,
+    }
+  })
+}
 
 const mergeBackendIntoShortcuts = (
   local: AppSettings['shortcut']['bindings'],
@@ -338,8 +425,22 @@ const loadFromStorage = (): AppSettings => {
         }),
       },
       services,
-      // 任务 7 最小补丁：旧 localStorage 无字段时回退空数组；完整 seed/merge 留给任务 8
-      ocrServices: parsed.ocrServices ?? defaults.ocrServices,
+      ocrServices: (() => {
+        const incoming = Array.isArray(parsed.ocrServices) ? parsed.ocrServices : []
+        if (incoming.length === 0) return seedOcrInstances()
+        const hydrated = incoming.map((s) => ({
+          ...s,
+          keyStatus: s.keyStatus ?? 'idle',
+          preferredLang: s.preferredLang ?? '',
+          model: s.model ?? '',
+          pulledModels: s.pulledModels ?? [],
+          ocrPrompt: s.ocrPrompt ?? '',
+          note: s.note ?? '',
+          apiKey: s.apiKey ?? '',
+          endpoint: s.endpoint ?? '',
+        }))
+        return ensureWindowsOcr(hydrated)
+      })(),
       customServiceTypes: parsed.customServiceTypes ?? [],
       advanced: { ...defaults.advanced, ...parsed.advanced },
     }
@@ -409,6 +510,7 @@ const serializeForDirty = (s: AppSettings): string =>
   JSON.stringify({
     ...s,
     services: s.services.map((service) => ({ ...service, keyStatus: 'idle' })),
+    ocrServices: s.ocrServices.map((ocr) => ({ ...ocr, keyStatus: 'idle' })),
     // error 是运行时冲突展示状态，不应触发"未保存"标记
     shortcut: {
       bindings: s.shortcut.bindings.map((b) => ({ ...b, error: undefined })),
@@ -510,6 +612,14 @@ const nextDefaultName = (type: ServiceId): string => {
   return sameType === 0 ? base : `${base} ${sameType + 1}`
 }
 
+/** OCR 同 type 多实例命名：`OpenAI 视觉`、`OpenAI 视觉 2` ... */
+const nextOcrDefaultName = (type: OcrServiceId): string => {
+  const meta = ocrServiceById(type)
+  const base = meta?.name ?? type
+  const sameType = state.ocrServices.filter((s) => s.type === type).length
+  return sameType === 0 ? base : `${base} ${sameType + 1}`
+}
+
 export const useSettings = () => ({
   state,
   dirty,
@@ -592,6 +702,9 @@ export const useSettings = () => ({
         return
       }
       state.services = mergeBackendIntoServices(state.services, backend.services)
+      state.ocrServices = ensureWindowsOcr(
+        mergeBackendIntoOcrServices(state.ocrServices, backend.ocrServices ?? []),
+      )
       state.general.language = backend.interfaceLanguage
       applyInterfaceLanguageSnapshot(languageSnapshot)
       state.translation.defaultSourceLang =
@@ -698,5 +811,49 @@ export const useSettings = () => ({
   /** 返回内置 + 用户自定义合并后的 ServiceMeta 列表(只读)。 */
   getMergedServices(): ServiceMeta[] {
     return buildServices(state.customServiceTypes)
+  },
+  /**
+   * 添加 OCR 实例。`windows-media-ocr` 已存在则返回已有；
+   * 视觉实例默认 enabled=false，允许多开且不互斥。
+   */
+  addOcrService(type: OcrServiceId): OcrServiceInstance {
+    if (type === 'windows-media-ocr') {
+      const existing = state.ocrServices.find((s) => s.type === 'windows-media-ocr')
+      if (existing) return existing
+    }
+    const inst = defaultOcrInstanceFor(type, nextOcrDefaultName(type), false)
+    state.ocrServices.push(inst)
+    return inst
+  },
+  /** Windows 媒体 OCR 不可删除；其它实例按 id 删除。 */
+  removeOcrService(instanceId: string): void {
+    const inst = state.ocrServices.find((s) => s.id === instanceId)
+    if (!inst || inst.type === 'windows-media-ocr') return
+    const idx = state.ocrServices.findIndex((s) => s.id === instanceId)
+    if (idx < 0) return
+    state.ocrServices.splice(idx, 1)
+  },
+  /** Windows 强制 enabled=true；视觉自由开关，不互斥。 */
+  setOcrEnabled(instanceId: string, enabled: boolean): void {
+    const inst = state.ocrServices.find((s) => s.id === instanceId)
+    if (!inst) return
+    if (inst.type === 'windows-media-ocr') {
+      inst.enabled = true
+      return
+    }
+    inst.enabled = enabled
+  },
+  /** Windows 不可重命名；其它实例改名。 */
+  renameOcrService(instanceId: string, name: string): void {
+    const inst = state.ocrServices.find((s) => s.id === instanceId)
+    if (!inst || inst.type === 'windows-media-ocr') return
+    inst.name = name.trim() || inst.name
+  },
+  findOcrInstance(instanceId: string): OcrServiceInstance | undefined {
+    return state.ocrServices.find((s) => s.id === instanceId)
+  },
+  /** 内置 OCR 元数据列表（只读）。 */
+  getMergedOcrServices(): OcrServiceMeta[] {
+    return BUILTIN_OCR_SERVICES
   },
 })
