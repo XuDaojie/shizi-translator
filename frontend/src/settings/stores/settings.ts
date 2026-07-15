@@ -137,6 +137,8 @@ const buildDefaults = (): AppSettings => {
       ],
     },
     services: instances,
+    // 任务 7 最小补丁：空数组保证 AppSettings 类型完整；seed / CRUD 留给任务 8
+    ocrServices: [],
     customServiceTypes: [],
     advanced: {
       logLevel: 'info',
@@ -336,6 +338,8 @@ const loadFromStorage = (): AppSettings => {
         }),
       },
       services,
+      // 任务 7 最小补丁：旧 localStorage 无字段时回退空数组；完整 seed/merge 留给任务 8
+      ocrServices: parsed.ocrServices ?? defaults.ocrServices,
       customServiceTypes: parsed.customServiceTypes ?? [],
       advanced: { ...defaults.advanced, ...parsed.advanced },
     }

@@ -153,12 +153,69 @@ export type ServiceProtocolMeta = {
   status: 'available' | 'planned'
 }
 
+export type OcrDetailKind = 'system' | 'vision-llm'
+
+export type BuiltinOcrServiceId =
+  | 'windows-media-ocr'
+  | 'openai-vision'
+  | 'claude-vision'
+  | 'gemini-vision'
+  | 'zhipu-vl'
+  | 'siliconflow-vision'
+  | 'moonshot-vision'
+  | 'openai-compatible-vision'
+
+/** OcrServiceId 联合 = 内置 id + 用户自定义 id（运行时收窄）。 */
+export type OcrServiceId = BuiltinOcrServiceId | (string & {})
+
+export type OcrServiceMeta = {
+  id: OcrServiceId
+  name: string
+  description: string
+  detail?: string
+  builtin: boolean
+  keyRequired: boolean
+  canDisable: boolean
+  canDelete: boolean
+  multiInstance?: boolean
+  protocol?: string
+  /** 配置用协议 id，供 Key 校验 / 拉模型复用翻译 probe。 */
+  protocolId?: 'openai_chat' | 'claude_messages'
+  apiBaseUrl?: string
+  docsUrl?: string
+  apiKeyUrl?: string
+  needsEndpoint?: boolean
+  hasModelApi?: boolean
+  defaultModel?: string
+  models?: string[]
+  iconifyId?: string
+  detailKind: OcrDetailKind
+  group: 'system' | 'vision'
+}
+
+export type OcrServiceInstance = {
+  id: string
+  type: OcrServiceId
+  name: string
+  enabled: boolean
+  apiKey: string
+  endpoint: string
+  note: string
+  keyStatus: 'idle' | 'validating' | 'valid' | 'invalid'
+  preferredLang: string
+  model: string
+  pulledModels: string[]
+  ocrPrompt: string
+}
+
 export type AppSettings = {
   general: GeneralSettings
   translation: TranslationSettings
   shortcut: ShortcutSettings
   /** 服务实例数组,允许同一渠道多个实例。 */
   services: ServiceInstance[]
+  /** OCR 服务实例数组（system + 视觉 LLM）。 */
+  ocrServices: OcrServiceInstance[]
   /** 用户在「服务」面板里手动新建的渠道类型(右侧详情区输入"渠道名"时注册)。 */
   customServiceTypes: CustomServiceType[]
   advanced: AdvancedSettings

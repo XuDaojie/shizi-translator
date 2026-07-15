@@ -50,6 +50,7 @@ const makeState = (services: ServiceInstance[]): AppSettings => ({
   },
   shortcut: { bindings: [] },
   services,
+  ocrServices: [],
   customServiceTypes: [],
   advanced: { logLevel: 'info', betaLookup: false, betaVoice: false, collectUsage: true },
 });
@@ -155,6 +156,57 @@ describe('projectToAppConfig', () => {
       'word-lookup': '',
     });
   });
+
+  it('投影 ocrServices 到后端 camelCase 字段', () => {
+    const state = makeState([])
+    state.ocrServices = [
+      {
+        id: 'ocr-win',
+        type: 'windows-media-ocr',
+        name: 'Windows 媒体 OCR',
+        enabled: true,
+        apiKey: '',
+        endpoint: '',
+        note: '',
+        keyStatus: 'idle',
+        preferredLang: '',
+        model: '',
+        pulledModels: [],
+        ocrPrompt: '',
+      },
+      {
+        id: 'ocr-v',
+        type: 'openai-vision',
+        name: 'OpenAI 视觉',
+        enabled: false,
+        apiKey: 'sk-test',
+        endpoint: 'https://api.openai.com/v1',
+        note: 'n',
+        keyStatus: 'valid',
+        preferredLang: '',
+        model: 'gpt-4o',
+        pulledModels: ['gpt-4o'],
+        ocrPrompt: '读图',
+      },
+    ]
+    const config = projectToAppConfig(state)
+    expect(config.ocrServices).toHaveLength(2)
+    expect(config.ocrServices[0]).toMatchObject({
+      id: 'ocr-win',
+      serviceType: 'windows-media-ocr',
+      enabled: true,
+      apiKey: null,
+    })
+    expect(config.ocrServices[1]).toMatchObject({
+      serviceType: 'openai-vision',
+      apiKey: 'sk-test',
+      model: 'gpt-4o',
+      ocrPrompt: '读图',
+    })
+    expect(config.ocrServices[1]).not.toHaveProperty('note')
+    expect(config.ocrServices[1]).not.toHaveProperty('keyStatus')
+    expect(config.ocrServices[1]).not.toHaveProperty('pulledModels')
+  })
 });
 
 describe('validateConfig', () => {
@@ -166,6 +218,7 @@ describe('validateConfig', () => {
     restoreClipboard: true,
     historyLimit: 500,
     services: [],
+    ocrServices: [],
     popupPrecreate: true,
     overlayPrecreate: true,
     collectUsage: true,

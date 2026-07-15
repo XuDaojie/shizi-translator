@@ -317,6 +317,7 @@ const makeBackend = (over: Partial<ServiceInstanceConfig>): ServiceInstanceConfi
 const makeAppConfig = (services: ServiceInstanceConfig[], over: Partial<AppConfig> = {}): AppConfig => ({
   interfaceLanguage: 'zh-CN', targetLang: 'zh-CN', defaultSourceLang: 'auto',
   autoCopy: true, restoreClipboard: true, historyLimit: 500, services,
+  ocrServices: [],
   popupPrecreate: true, overlayPrecreate: true, collectUsage: true,
   logLevel: 'info', shortcuts: {}, ...over,
 })
@@ -605,14 +606,14 @@ describe('syncFromBackend', () => {
 
     backend.resolve({
       interfaceLanguage: 'auto', targetLang: 'zh-CN', defaultSourceLang: 'auto',
-      autoCopy: true, restoreClipboard: true, historyLimit: 500, services: [],
+      autoCopy: true, restoreClipboard: true, historyLimit: 500, services: [], ocrServices: [],
       popupPrecreate: true, overlayPrecreate: true, collectUsage: true, logLevel: 'info', shortcuts: {},
     })
     await Promise.all([first, second])
 
     vi.mocked(invokeGetAppConfig).mockResolvedValueOnce({
       interfaceLanguage: 'auto', targetLang: 'zh-CN', defaultSourceLang: 'auto',
-      autoCopy: true, restoreClipboard: true, historyLimit: 500, services: [],
+      autoCopy: true, restoreClipboard: true, historyLimit: 500, services: [], ocrServices: [],
       popupPrecreate: true, overlayPrecreate: true, collectUsage: true, logLevel: 'info', shortcuts: {},
     })
     vi.mocked(invokeGetInterfaceLanguageSnapshot).mockResolvedValueOnce(languageSnapshot())
@@ -638,6 +639,7 @@ describe('syncFromBackend', () => {
       restoreClipboard: true,
       historyLimit: 500,
       services: [],
+      ocrServices: [],
       popupPrecreate: true,
       overlayPrecreate: true,
       collectUsage: true,
@@ -661,7 +663,7 @@ describe('syncFromBackend', () => {
     settings.state.general.language = 'it-IT'
     vi.mocked(invokeGetAppConfig).mockResolvedValue({
       interfaceLanguage: 'zh-CN', targetLang: 'zh-CN', defaultSourceLang: 'auto',
-      autoCopy: true, restoreClipboard: true, historyLimit: 500, services: [],
+      autoCopy: true, restoreClipboard: true, historyLimit: 500, services: [], ocrServices: [],
       popupPrecreate: true, overlayPrecreate: true, collectUsage: true, logLevel: 'info', shortcuts: {},
     })
     vi.mocked(invokeGetInterfaceLanguageSnapshot).mockResolvedValue(languageSnapshot({
@@ -692,7 +694,7 @@ describe('syncFromBackend', () => {
     vi.mocked(isTauriReady).mockReturnValue(true)
     vi.mocked(invokeGetAppConfig).mockResolvedValue({
       interfaceLanguage: 'auto', targetLang: 'zh-CN', defaultSourceLang: 'auto',
-      autoCopy: true, restoreClipboard: true, historyLimit: 500, services: [],
+      autoCopy: true, restoreClipboard: true, historyLimit: 500, services: [], ocrServices: [],
       popupPrecreate: true, overlayPrecreate: true, collectUsage: true, logLevel: 'info', shortcuts: {},
     })
     vi.mocked(invokeSaveAppConfig).mockRejectedValueOnce(new Error('write failed'))
@@ -710,7 +712,7 @@ describe('syncFromBackend', () => {
     vi.mocked(isTauriReady).mockReturnValue(true)
     vi.mocked(invokeGetAppConfig).mockResolvedValue({
       interfaceLanguage: 'auto', targetLang: 'zh-CN', defaultSourceLang: 'auto',
-      autoCopy: true, restoreClipboard: true, historyLimit: 500, services: [],
+      autoCopy: true, restoreClipboard: true, historyLimit: 500, services: [], ocrServices: [],
       popupPrecreate: true, overlayPrecreate: true, collectUsage: true, logLevel: 'info', shortcuts: {},
     })
     vi.mocked(invokeGetInterfaceLanguageSnapshot).mockResolvedValue(languageSnapshot())
@@ -788,6 +790,7 @@ describe('syncFromBackend', () => {
           chainOfThought: 'off',
         },
       ],
+      ocrServices: [],
       defaultSourceLang: 'en',
       autoCopy: false,
       restoreClipboard: false,
@@ -827,7 +830,7 @@ describe('syncFromBackend', () => {
       languages: [{ locale: 'zh-CN', name: '简体中文', builtin: true }],
     }));
     vi.mocked(invokeGetAppConfig).mockResolvedValue({
-      interfaceLanguage: 'zh-CN', targetLang: 'zh-CN', services: [makeBackend({ id: localId })],
+      interfaceLanguage: 'zh-CN', targetLang: 'zh-CN', services: [makeBackend({ id: localId })], ocrServices: [],
       defaultSourceLang: 'auto', autoCopy: true, restoreClipboard: true, historyLimit: 500,
       popupPrecreate: true, overlayPrecreate: true, collectUsage: true, logLevel: 'info', shortcuts: {},
     });
@@ -862,6 +865,7 @@ describe('syncFromBackend', () => {
           timeoutSeconds: 60,
         }),
       ],
+      ocrServices: [],
       popupPrecreate: true,
       overlayPrecreate: true,
       collectUsage: true,
@@ -906,6 +910,7 @@ describe('syncFromBackend', () => {
           timeoutSeconds: 60,
         }),
       ],
+      ocrServices: [],
       popupPrecreate: true,
       overlayPrecreate: true,
       collectUsage: true,
@@ -951,6 +956,7 @@ describe('syncFromBackend', () => {
             timeoutSeconds: 60,
           }),
         ],
+        ocrServices: [],
         popupPrecreate: true,
         overlayPrecreate: true,
         collectUsage: true,
@@ -999,6 +1005,7 @@ describe('syncFromBackend', () => {
           timeoutSeconds: 60,
         }),
       ],
+      ocrServices: [],
       popupPrecreate: true,
       overlayPrecreate: true,
       collectUsage: true,
@@ -1038,6 +1045,7 @@ describe('syncFromBackend', () => {
             timeoutSeconds: 60,
           }),
         ],
+        ocrServices: [],
         popupPrecreate: true,
         overlayPrecreate: true,
         collectUsage: true,
@@ -1120,6 +1128,7 @@ describe('defaultTargetLang', () => {
       restoreClipboard: true,
       historyLimit: 500,
       services: [{ id: 'svc-1', serviceType: 'llm', name: 'A', enabled: true, protocol: 'openai_chat', apiKey: 'k', endpoint: 'e', model: 'm', timeoutSeconds: 60, systemPrompt: '', translationPrompt: '', reflectionPrompt: '', reflectionEnabled: false, chainOfThought: 'off' }],
+      ocrServices: [],
       popupPrecreate: true,
       overlayPrecreate: true,
       collectUsage: true,

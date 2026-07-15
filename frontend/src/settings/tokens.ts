@@ -1,6 +1,12 @@
 import { Plug, WandSparkles } from '@lucide/vue'
 import type { Component } from 'vue'
-import type { CustomServiceType, ServiceId, ServiceMeta } from './types'
+import type {
+  CustomServiceType,
+  OcrServiceId,
+  OcrServiceMeta,
+  ServiceId,
+  ServiceMeta,
+} from './types'
 
 // ── 协议元数据 ────────────────────────────────────────────
 const OPENAI_CHAT = (defaultEndpoint: string, defaultModel: string) => ({
@@ -313,6 +319,177 @@ export const DEFAULT_PROMPTS = {
   reflection:
     '请审视上面的翻译,从以下角度检查并改进:\n1. 是否有不符合目标语言习惯的表达?\n2. 专业术语是否一致?\n3. 是否保持了原文的语气和风格?\n4. 是否有遗漏或错译?\n\n请直接输出改进后的最终翻译,不要附加说明。',
 } as const
+
+/** 视觉 OCR 默认识别提示词；实例 ocrPrompt 为空时使用。 */
+export const DEFAULT_OCR_PROMPT = '提取图中全部文字，保持阅读顺序'
+
+/**
+ * 内置 OCR 服务元数据。
+ * - system：Windows 媒体 OCR（不可关、不可删）
+ * - vision：对应翻译侧已对接且具备多模态能力的 LLM（不含 DeepSeek / Edge / ML / 专用 OCR）
+ */
+export const BUILTIN_OCR_SERVICES: OcrServiceMeta[] = [
+  {
+    id: 'windows-media-ocr',
+    name: 'Windows 媒体 OCR',
+    description: 'Windows 10+ 系统自带 OCR，无需 API Key。',
+    detail: '配置预留；当前截图识别固定使用 Windows.Media.Ocr，与下方视觉实例启用状态无关。',
+    builtin: true,
+    keyRequired: false,
+    canDisable: false,
+    canDelete: false,
+    detailKind: 'system',
+    group: 'system',
+  },
+  {
+    id: 'openai-vision',
+    name: 'OpenAI 视觉',
+    description: 'GPT-4o 等多模态模型识图。与翻译实例独立，需单独添加。',
+    builtin: true,
+    keyRequired: true,
+    canDisable: true,
+    canDelete: true,
+    multiInstance: true,
+    hasModelApi: true,
+    defaultModel: 'gpt-4o',
+    models: ['gpt-4o', 'gpt-4o-mini'],
+    protocolId: 'openai_chat',
+    apiBaseUrl: 'https://api.openai.com/v1',
+    detailKind: 'vision-llm',
+    group: 'vision',
+    iconifyId: 'simple-icons:openai',
+    docsUrl: 'https://developers.openai.com/api/docs',
+    apiKeyUrl: 'https://platform.openai.com/api-keys',
+  },
+  {
+    id: 'claude-vision',
+    name: 'Claude 视觉',
+    description: 'Anthropic Claude 多模态识图。与翻译实例独立，需单独添加。',
+    builtin: true,
+    keyRequired: true,
+    canDisable: true,
+    canDelete: true,
+    multiInstance: true,
+    hasModelApi: true,
+    defaultModel: 'claude-haiku-4-5',
+    models: ['claude-haiku-4-5', 'claude-3-5-sonnet-latest', 'claude-3-5-haiku-latest'],
+    protocolId: 'claude_messages',
+    apiBaseUrl: 'https://api.anthropic.com',
+    detailKind: 'vision-llm',
+    group: 'vision',
+    iconifyId: 'simple-icons:anthropic',
+    docsUrl: 'https://docs.anthropic.com',
+    apiKeyUrl: 'https://console.anthropic.com/settings/keys',
+  },
+  {
+    id: 'gemini-vision',
+    name: 'Gemini 视觉',
+    description: 'Google Gemini 多模态识图。与翻译实例独立，需单独添加。',
+    builtin: true,
+    keyRequired: true,
+    canDisable: true,
+    canDelete: true,
+    multiInstance: true,
+    hasModelApi: true,
+    defaultModel: 'gemini-1.5-flash',
+    models: ['gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-1.5-flash-8b'],
+    protocolId: 'openai_chat',
+    // 与翻译 gemini 一致：Google OpenAI 兼容端点
+    apiBaseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    detailKind: 'vision-llm',
+    group: 'vision',
+    iconifyId: 'simple-icons:google',
+    docsUrl: 'https://ai.google.dev/docs',
+    apiKeyUrl: 'https://aistudio.google.com/apikey',
+  },
+  {
+    id: 'zhipu-vl',
+    name: '智谱视觉',
+    description: '智谱 GLM-4V 等多模态模型识图。与翻译实例独立，需单独添加。',
+    builtin: true,
+    keyRequired: true,
+    canDisable: true,
+    canDelete: true,
+    multiInstance: true,
+    hasModelApi: true,
+    defaultModel: 'glm-4v-flash',
+    models: ['glm-4v-plus', 'glm-4v', 'glm-4v-flash'],
+    protocolId: 'openai_chat',
+    apiBaseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+    detailKind: 'vision-llm',
+    group: 'vision',
+    docsUrl: 'https://open.bigmodel.cn/dev/api',
+    apiKeyUrl: 'https://open.bigmodel.cn/usercenter/apikeys',
+  },
+  {
+    id: 'siliconflow-vision',
+    name: '硅基流动视觉',
+    description: '硅基流动多模态开源模型识图。与翻译实例独立，需单独添加。',
+    builtin: true,
+    keyRequired: true,
+    canDisable: true,
+    canDelete: true,
+    multiInstance: true,
+    hasModelApi: true,
+    defaultModel: 'Qwen/Qwen2.5-VL-7B-Instruct',
+    models: [
+      'Qwen/Qwen2.5-VL-7B-Instruct',
+      'Qwen/Qwen2.5-VL-32B-Instruct',
+      'Qwen/Qwen2.5-VL-72B-Instruct',
+    ],
+    protocolId: 'openai_chat',
+    apiBaseUrl: 'https://api.siliconflow.cn/v1',
+    detailKind: 'vision-llm',
+    group: 'vision',
+    docsUrl: 'https://docs.siliconflow.cn',
+    apiKeyUrl: 'https://cloud.siliconflow.cn/account/ak',
+  },
+  {
+    // moonshot 视觉能力以官方文档为准；保留条目供用户接入，以 tokens 为唯一源
+    id: 'moonshot-vision',
+    name: '月之暗面视觉',
+    description: 'Moonshot 多模态识图。与翻译实例独立，需单独添加。',
+    builtin: true,
+    keyRequired: true,
+    canDisable: true,
+    canDelete: true,
+    multiInstance: true,
+    hasModelApi: true,
+    defaultModel: 'moonshot-v1-8k-vision-preview',
+    models: ['moonshot-v1-8k-vision-preview', 'moonshot-v1-32k-vision-preview'],
+    protocolId: 'openai_chat',
+    apiBaseUrl: 'https://api.moonshot.cn/v1',
+    detailKind: 'vision-llm',
+    group: 'vision',
+    iconifyId: 'simple-icons:moonshotai',
+    docsUrl: 'https://platform.moonshot.cn/docs',
+    apiKeyUrl: 'https://platform.moonshot.cn/console/api-keys',
+  },
+  {
+    id: 'openai-compatible-vision',
+    name: 'OpenAI 兼容视觉',
+    description: '接入任意 OpenAI 兼容多模态端点。与翻译实例独立，需单独添加。',
+    builtin: true,
+    keyRequired: true,
+    canDisable: true,
+    canDelete: true,
+    multiInstance: true,
+    needsEndpoint: true,
+    hasModelApi: true,
+    defaultModel: '',
+    protocolId: 'openai_chat',
+    apiBaseUrl: '',
+    detailKind: 'vision-llm',
+    group: 'vision',
+    docsUrl: 'https://developers.openai.com/api/docs',
+  },
+]
+
+export const ocrServiceById = (id: OcrServiceId): OcrServiceMeta | undefined =>
+  BUILTIN_OCR_SERVICES.find((s) => s.id === id)
+
+/** 添加 OCR 服务 picker：仅 vision 组（不含 system / 专用 OCR）。 */
+export const OCR_PICKER_SERVICES = BUILTIN_OCR_SERVICES.filter((s) => s.group === 'vision')
 
 /**
  * 模拟从服务商 /models 端点拉取到的模型列表。

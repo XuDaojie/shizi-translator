@@ -34,6 +34,7 @@ const baseState: AppSettings = {
     { id: 'svc-1', apiKey: 'sk-live-aaa', name: 'DeepSeek', enabled: true, protocol: 'openai_chat', type: 'deepseek', model: 'deepseek-chat', endpoint: 'https://api.deepseek.com', note: '', pulledModels: [], keyStatus: 'idle', chainOfThought: 'off', systemPrompt: '', translationPrompt: '', reflectionPrompt: '', reflectionEnabled: false },
     { id: 'svc-2', apiKey: 'sk-live-bbb', name: 'Claude', enabled: false, protocol: 'claude_messages', type: 'claude', model: 'claude-sonnet-4-20250514', endpoint: 'https://api.anthropic.com', note: '', pulledModels: [], keyStatus: 'idle', chainOfThought: 'off', systemPrompt: '', translationPrompt: '', reflectionPrompt: '', reflectionEnabled: false },
   ],
+  ocrServices: [],
   customServiceTypes: [],
   advanced: {
     logLevel: 'info',

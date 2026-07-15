@@ -23,6 +23,18 @@ export interface ServiceInstanceConfig {
   chainOfThought: ChainOfThought;
 }
 
+export interface OcrServiceInstanceConfig {
+  id: string;
+  serviceType: string;
+  name: string;
+  enabled: boolean;
+  apiKey: string | null;
+  endpoint: string;
+  model: string;
+  preferredLang: string;
+  ocrPrompt: string;
+}
+
 export interface AppConfig {
   interfaceLanguage: string;
   targetLang: string;
@@ -31,6 +43,7 @@ export interface AppConfig {
   restoreClipboard: boolean;
   historyLimit: number;
   services: ServiceInstanceConfig[];
+  ocrServices: OcrServiceInstanceConfig[];
   popupPrecreate: boolean;
   overlayPrecreate: boolean;
   collectUsage: boolean;
