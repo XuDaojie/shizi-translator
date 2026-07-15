@@ -60,6 +60,18 @@ pub fn encode_captured_image_png(image: &CapturedImage) -> Result<Vec<u8>, OcrEr
     Ok(encode_captured_image_png_info(image)?.png)
 }
 
+/// 将截图编码为 PNG，不缩放（供 UI 预览）。
+pub fn encode_png_unscaled(image: &CapturedImage) -> Result<Vec<u8>, OcrError> {
+    let rgba = captured_to_rgba(image)?;
+    let mut png = Vec::new();
+    {
+        let mut cursor = std::io::Cursor::new(&mut png);
+        rgba.write_to(&mut cursor, ImageFormat::Png)
+            .map_err(|e| OcrError::ImageConversionFailed(e.to_string()))?;
+    }
+    Ok(png)
+}
+
 /// `data:image/png;base64,...`
 pub fn png_to_data_url(png: &[u8]) -> String {
     format!("data:image/png;base64,{}", STANDARD.encode(png))
@@ -193,5 +205,22 @@ mod tests {
         assert!(!info.scaled);
         assert_eq!(info.source_width, 1);
         assert_eq!(info.sent_width, 1);
+    }
+
+    #[test]
+    fn encode_png_unscaled_keeps_source_dimensions() {
+        let w = 3000u32;
+        let h = 10u32;
+        let img = CapturedImage {
+            bytes: vec![0u8; (w * h * 4) as usize],
+            width: w,
+            height: h,
+            format: CapturedImageFormat::Rgba8,
+        };
+        let png = encode_png_unscaled(&img).unwrap();
+        assert!(png.starts_with(&[0x89, b'P', b'N', b'G']));
+        let decoded = image::load_from_memory(&png).unwrap();
+        assert_eq!(decoded.width(), w);
+        assert_eq!(decoded.height(), h);
     }
 }

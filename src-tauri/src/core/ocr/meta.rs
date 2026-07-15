@@ -15,6 +15,16 @@ pub struct OcrRunMeta {
     pub scaled: bool,
 }
 
+/// 纯识别（不翻译）完整响应：正文 + 元信息 + UI 预览 PNG。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecognizeImageResponse {
+    pub text: String,
+    pub meta: OcrRunMeta,
+    /// 供 UI 预览的 PNG base64（无 data: 前缀）；勿写入日志
+    pub preview_png_base64: String,
+}
+
 impl OcrRunMeta {
     pub fn info_summary(&self) -> String {
         format!(
