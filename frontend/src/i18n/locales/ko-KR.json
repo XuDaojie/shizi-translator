@@ -332,7 +332,7 @@
     "settings.empty.noMatchingServices": "서비스 인스턴스가 일치하지 않음",
     "settings.tooltip.noApiKeyRequired": "이 서비스는 API 키가 필요하지 않습니다",
     "settings.tooltip.apiKeyRequired": "API 키를 입력해야 합니다",
-    "settings.tooltip.ocrAlwaysEnabled": "Windows Media OCR은 항상 활성화되어 있습니다",
+    "settings.tooltip.ocrAlwaysEnabled": "활성화된 문자 인식 서비스를 최소 하나 유지하세요",
     "settings.tooltip.customOcrUnavailable": "맞춤 OCR 서비스는 아직 제공되지 않았습니다",
     "settings.tooltip.llmService": "맞춤형 추론 깊이 지원을 위한 대형 언어 모델 번역",
     "settings.aria.enableNamedService": "{name} 활성화",
@@ -342,7 +342,7 @@
     "settings.description.ocrImplementation": "현재 Windows에서 사용되는 광학 문자 인식 구현",
     "settings.description.networkRequirement": "인정을 위해 네트워킹이 필요한가",
     "settings.description.keyRequirement": "열쇠가 필요한가",
-    "settings.description.canDisable": "엔진 비활성화가 허용되는지 여부",
+    "settings.description.canDisable": "비전 채널과 상호 배타적으로 전환 가능. 전부 끌 수 없습니다.",
     "settings.field.ocrEngine": "OCR 엔진",
     "settings.field.networkRequirement": "네트워크 요구사항",
     "settings.field.canDisable": "꺼도 됩니다",
@@ -415,11 +415,16 @@
     "settings.prompt.summaryCustom": "사용자 지정됨",
     "settings.prompt.summaryReflectionOn": "반성 켜짐",
     "settings.toast.openUrlFailed": "링크를 열지 못했습니다",
-    "settings.description.addOcrService": "비전 멀티모달 채널만 해당. 번역 인스턴스와 독립적입니다. 스크린샷 OCR은 여전히 Windows 시스템 OCR을 사용합니다.",
+    "settings.description.addOcrService": "비전 멀티모달 채널만 해당. 번역 인스턴스와 독립적입니다. 스크린샷 인식은 현재 활성화된 OCR 하나를 사용합니다.",
     "settings.ocr.visionSubtitle": "{model} · 멀티모달",
     "settings.ocr.systemSubtitle": "내장 · 오프라인",
     "settings.ocr.configReserved": "설정 예약됨. 스크린샷 OCR은 Windows 시스템 OCR 사용",
     "settings.field.ocrPrompt": "OCR 프롬프트",
-    "settings.description.ocrPrompt": "비전 모델의 텍스트 추출 지침. 비어 있으면 기본값을 사용합니다."
+    "settings.description.ocrPrompt": "비전 모델의 텍스트 추출 지침. 비어 있으면 기본값을 사용합니다.",
+    "settings.ocr.runtimeActiveHint": "스크린샷 인식은 현재 활성화된 문자 인식 서비스 하나(Windows 또는 OpenAI 호환 비전)를 사용합니다.",
+    "settings.ocr.claudeUnsupported": "이 버전에서는 Claude 비전 인식을 지원하지 않습니다. Windows Media OCR 또는 OpenAI 호환 비전 채널을 사용하세요.",
+    "settings.toast.ocrUnsupported": "활성화할 수 없음",
+    "settings.toast.ocrClaudeUnsupported": "이 버전에서는 Claude 비전 OCR을 지원하지 않습니다.",
+    "settings.toast.ocrCannotDisableLast": "문자 인식 서비스를 최소 하나 유지하세요."
   }
 }

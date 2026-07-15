@@ -332,7 +332,7 @@
     "settings.empty.noMatchingServices": "沒有匹配的服務實例",
     "settings.tooltip.noApiKeyRequired": "該服務無需 API Key",
     "settings.tooltip.apiKeyRequired": "需要填寫 API Key",
-    "settings.tooltip.ocrAlwaysEnabled": "Windows 媒體 OCR 始終啟用",
+    "settings.tooltip.ocrAlwaysEnabled": "至少保留一項啟用的文字識別服務",
     "settings.tooltip.customOcrUnavailable": "自定義 OCR 服務暫未開放",
     "settings.tooltip.llmService": "大語言模型翻譯，支援自定義推理深度",
     "settings.aria.enableNamedService": "啟用 {name}",
@@ -342,7 +342,7 @@
     "settings.description.ocrImplementation": "當前 Windows 使用的光學字元識別實現",
     "settings.description.networkRequirement": "是否需要聯網完成識別",
     "settings.description.keyRequirement": "是否需要配置金鑰",
-    "settings.description.canDisable": "是否允許停用該引擎",
+    "settings.description.canDisable": "可與視覺渠道互斥切換；不允許全部關閉。",
     "settings.field.ocrEngine": "OCR 引擎",
     "settings.field.networkRequirement": "網路需求",
     "settings.field.canDisable": "可關閉",
@@ -415,11 +415,16 @@
     "settings.prompt.summaryCustom": "已自訂",
     "settings.prompt.summaryReflectionOn": "反思開",
     "settings.toast.openUrlFailed": "開啟連結失敗",
-    "settings.description.addOcrService": "僅多模態視覺渠道；與翻譯實例獨立，需單獨配置。目前截圖識別仍使用 Windows 系統 OCR。",
+    "settings.description.addOcrService": "僅多模態視覺渠道；與翻譯實例獨立。截圖識別使用當前啟用的一項 OCR。",
     "settings.ocr.visionSubtitle": "{model} · 多模態",
     "settings.ocr.systemSubtitle": "系統自帶 · 離線",
     "settings.ocr.configReserved": "配置預留；目前截圖識別使用 Windows 系統 OCR",
     "settings.field.ocrPrompt": "識別提示詞",
-    "settings.description.ocrPrompt": "指導視覺模型如何提取文字；空則使用預設。"
+    "settings.description.ocrPrompt": "指導視覺模型如何提取文字；空則使用預設。",
+    "settings.ocr.runtimeActiveHint": "截圖識別使用當前啟用的一項文字識別服務（Windows 或 OpenAI 兼容視覺）。",
+    "settings.ocr.claudeUnsupported": "本版本不支援 Claude 視覺識別，請改用 Windows 媒體 OCR 或 OpenAI 兼容視覺渠道。",
+    "settings.toast.ocrUnsupported": "無法啟用",
+    "settings.toast.ocrClaudeUnsupported": "本版本不支援 Claude 視覺 OCR。",
+    "settings.toast.ocrCannotDisableLast": "至少保留一項文字識別服務。"
   }
 }

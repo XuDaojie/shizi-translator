@@ -156,12 +156,6 @@ const onOcrSelect = (id: string): void => {
   activeOcrInstanceId.value = id
 }
 
-/** 任务 8 补全 i18n；此处中文硬编码避免缺键回落为 key 字符串。 */
-const OCR_RUNTIME_ACTIVE_HINT = '当前启用的文字识别服务用于截图框选识别。'
-const OCR_CLAUDE_UNSUPPORTED = '本版本截图识别不支持 Claude 视觉，请使用 OpenAI 兼容渠道或 Windows。'
-const OCR_UNSUPPORTED_TITLE = '无法启用'
-const OCR_CANNOT_DISABLE_LAST = '至少保留一项文字识别服务启用'
-
 /** runtimeSupported===false（如 Claude）禁用开关；其余可切换（关唯一 Windows 由 store 拒绝）。 */
 const isOcrSwitchDisabled = (inst: OcrServiceInstance): boolean => {
   const meta = ocrServiceById(inst.type)
@@ -170,19 +164,22 @@ const isOcrSwitchDisabled = (inst: OcrServiceInstance): boolean => {
 
 const ocrSwitchTitle = (inst: OcrServiceInstance): string | undefined => {
   const meta = ocrServiceById(inst.type)
-  if (meta?.runtimeSupported === false) return OCR_CLAUDE_UNSUPPORTED
+  if (meta?.runtimeSupported === false) return t(msgKey('settings.ocr.claudeUnsupported'))
   return undefined
 }
 
 const onOcrToggle = (inst: OcrServiceInstance, enabled: boolean): void => {
   if (enabled && ocrServiceById(inst.type)?.runtimeSupported === false) {
-    toast.error(OCR_UNSUPPORTED_TITLE, OCR_CLAUDE_UNSUPPORTED)
+    toast.error(
+      t(msgKey('settings.toast.ocrUnsupported')),
+      t(msgKey('settings.toast.ocrClaudeUnsupported')),
+    )
     return
   }
   if (!enabled) {
     const only = inst.enabled && props.state.ocrServices.filter((s) => s.enabled).length === 1
     if (only && inst.type === 'windows-media-ocr') {
-      toast.error(OCR_CANNOT_DISABLE_LAST)
+      toast.error(t(msgKey('settings.toast.ocrCannotDisableLast')))
       return
     }
   }
@@ -866,7 +863,7 @@ const onDragEnd = (): void => {
         <header class="flex items-start gap-3">
           <span
             class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary"
-            :title="activeOcrService.runtimeSupported === false ? OCR_CLAUDE_UNSUPPORTED : undefined"
+            :title="activeOcrService.runtimeSupported === false ? t(msgKey('settings.ocr.claudeUnsupported')) : undefined"
           >
             <ScanText class="h-[18px] w-[18px]" />
           </span>
@@ -958,7 +955,7 @@ const onDragEnd = (): void => {
             class="flex items-start gap-2 rounded-md border border-border bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground"
           >
             <CircleAlert class="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            <span>{{ OCR_RUNTIME_ACTIVE_HINT }}</span>
+            <span>{{ t(msgKey('settings.ocr.runtimeActiveHint')) }}</span>
           </div>
 
           <SettingGroup :title="t('settings.group.aboutService')">
@@ -985,7 +982,7 @@ const onDragEnd = (): void => {
             </SettingRow>
             <SettingRow
               :title="t('settings.field.canDisable')"
-              description="可与视觉渠道互斥切换；不允许全部关闭。"
+              :description="t(msgKey('settings.description.canDisable'))"
             >
               <span class="text-xs text-muted-foreground">{{ t('settings.status.systemService') }}</span>
             </SettingRow>
@@ -1041,7 +1038,7 @@ const onDragEnd = (): void => {
             class="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
           >
             <CircleAlert class="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            <span>{{ OCR_CLAUDE_UNSUPPORTED }}</span>
+            <span>{{ t(msgKey('settings.ocr.claudeUnsupported')) }}</span>
           </div>
 
           <div
@@ -1173,7 +1170,7 @@ const onDragEnd = (): void => {
             class="flex items-start gap-2 rounded-md border border-border bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground"
           >
             <CircleAlert class="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            <span>{{ OCR_RUNTIME_ACTIVE_HINT }}</span>
+            <span>{{ t(msgKey('settings.ocr.runtimeActiveHint')) }}</span>
           </div>
         </template>
       </div>

@@ -332,7 +332,7 @@
     "settings.empty.noMatchingServices": "No hay ninguna instancia de servicio coincidente",
     "settings.tooltip.noApiKeyRequired": "Este servicio no requiere una clave API",
     "settings.tooltip.apiKeyRequired": "Se requiere una clave API",
-    "settings.tooltip.ocrAlwaysEnabled": "Windows Media OCR siempre habilitado",
+    "settings.tooltip.ocrAlwaysEnabled": "Mantén al menos un servicio de reconocimiento de texto habilitado",
     "settings.tooltip.customOcrUnavailable": "El servicio de OCR personalizado aún no está disponible",
     "settings.tooltip.llmService": "Traducción de modelos de lenguaje grande, admite profundidad de inferencia personalizada",
     "settings.aria.enableNamedService": "Activar {name}",
@@ -342,7 +342,7 @@
     "settings.description.ocrImplementation": "Implementación de reconocimiento óptico de caracteres utilizada actualmente en Windows",
     "settings.description.networkRequirement": "Si se requiere una conexión a Internet para completar el reconocimiento",
     "settings.description.keyRequirement": "Si se requiere una clave de configuración",
-    "settings.description.canDisable": "Si se permite desactivar el motor",
+    "settings.description.canDisable": "Puede alternar de forma exclusiva con canales de visión; no se pueden desactivar todos.",
     "settings.field.ocrEngine": "Motor OCR",
     "settings.field.networkRequirement": "Requisitos de red",
     "settings.field.canDisable": "Se puede desactivar",
@@ -415,11 +415,16 @@
     "settings.prompt.summaryCustom": "Personalizado",
     "settings.prompt.summaryReflectionOn": "Reflexión activada",
     "settings.toast.openUrlFailed": "No se pudo abrir el enlace",
-    "settings.description.addOcrService": "Solo canales multimodales de visión; independientes de las instancias de traducción. El OCR de captura sigue usando el OCR del sistema Windows.",
+    "settings.description.addOcrService": "Solo canales multimodales de visión; independientes de las instancias de traducción. El reconocimiento de captura usa el OCR actualmente habilitado.",
     "settings.ocr.visionSubtitle": "{model} · Multimodal",
     "settings.ocr.systemSubtitle": "Integrado · Sin conexión",
     "settings.ocr.configReserved": "Configuración reservada; el OCR de captura usa el OCR del sistema Windows",
     "settings.field.ocrPrompt": "Prompt de OCR",
-    "settings.description.ocrPrompt": "Guía al modelo de visión para extraer texto; vacío usa el valor predeterminado."
+    "settings.description.ocrPrompt": "Guía al modelo de visión para extraer texto; vacío usa el valor predeterminado.",
+    "settings.ocr.runtimeActiveHint": "El reconocimiento de captura usa el servicio de reconocimiento de texto actualmente habilitado (Windows o visión compatible con OpenAI).",
+    "settings.ocr.claudeUnsupported": "La visión de Claude no es compatible en esta versión. Usa Windows Media OCR o un canal de visión compatible con OpenAI.",
+    "settings.toast.ocrUnsupported": "No se puede habilitar",
+    "settings.toast.ocrClaudeUnsupported": "El OCR de visión de Claude no es compatible en esta versión.",
+    "settings.toast.ocrCannotDisableLast": "Mantén al menos un servicio de reconocimiento de texto habilitado."
   }
 }

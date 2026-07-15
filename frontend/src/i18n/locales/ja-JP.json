@@ -332,7 +332,7 @@
     "settings.empty.noMatchingServices": "サービスインスタンスが一致しない",
     "settings.tooltip.noApiKeyRequired": "このサービスはAPIキーを必要としません",
     "settings.tooltip.apiKeyRequired": "APIキーを入力する必要があります",
-    "settings.tooltip.ocrAlwaysEnabled": "Windows Media OCRは常に有効です",
+    "settings.tooltip.ocrAlwaysEnabled": "有効な文字認識サービスを少なくとも 1 つ残してください",
     "settings.tooltip.customOcrUnavailable": "カスタムOCRサービスはまだ利用できません",
     "settings.tooltip.llmService": "カスタム推論深度をサポートする大規模言語モデル翻訳",
     "settings.aria.enableNamedService": "{name} を有効化",
@@ -342,7 +342,7 @@
     "settings.description.ocrImplementation": "現在Windowsで使用されている光学文字認識実装",
     "settings.description.networkRequirement": "認知のためにネットワーキングが必要かどうか",
     "settings.description.keyRequirement": "鍵が必要かどうか",
-    "settings.description.canDisable": "エンジンの停止が許されるかどうか",
+    "settings.description.canDisable": "ビジョンチャネルと排他切替可能。すべてをオフにはできません。",
     "settings.field.ocrEngine": "OCRエンジン",
     "settings.field.networkRequirement": "ネットワーク要件",
     "settings.field.canDisable": "はオフにできます",
@@ -415,11 +415,16 @@
     "settings.prompt.summaryCustom": "カスタム済み",
     "settings.prompt.summaryReflectionOn": "リフレクション ON",
     "settings.toast.openUrlFailed": "リンクを開けませんでした",
-    "settings.description.addOcrService": "ビジョン多モーダルチャネルのみ。翻訳インスタンスとは独立。スクリーンショット OCR は引き続き Windows システム OCR を使用します。",
+    "settings.description.addOcrService": "ビジョン多モーダルチャネルのみ。翻訳インスタンスとは独立。スクリーンショット認識は現在有効な 1 つの OCR を使用します。",
     "settings.ocr.visionSubtitle": "{model} · マルチモーダル",
     "settings.ocr.systemSubtitle": "内蔵 · オフライン",
     "settings.ocr.configReserved": "設定は予約済み。スクリーンショット OCR は Windows システム OCR を使用",
     "settings.field.ocrPrompt": "OCR プロンプト",
-    "settings.description.ocrPrompt": "ビジョンモデルの文字抽出を指示。空の場合はデフォルトを使用。"
+    "settings.description.ocrPrompt": "ビジョンモデルの文字抽出を指示。空の場合はデフォルトを使用。",
+    "settings.ocr.runtimeActiveHint": "スクリーンショット認識は、現在有効な 1 つの文字認識サービス（Windows または OpenAI 互換ビジョン）を使用します。",
+    "settings.ocr.claudeUnsupported": "このバージョンでは Claude ビジョン認識はサポートされていません。Windows Media OCR または OpenAI 互換ビジョンチャネルを使用してください。",
+    "settings.toast.ocrUnsupported": "有効にできません",
+    "settings.toast.ocrClaudeUnsupported": "このバージョンでは Claude ビジョン OCR はサポートされていません。",
+    "settings.toast.ocrCannotDisableLast": "文字認識サービスを少なくとも 1 つ有効のままにしてください。"
   }
 }

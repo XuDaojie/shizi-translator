@@ -332,7 +332,7 @@
     "settings.empty.noMatchingServices": "Keine passende Dienstinstanz",
     "settings.tooltip.noApiKeyRequired": "Dieser Dienst erfordert keinen API-Schlüssel",
     "settings.tooltip.apiKeyRequired": "Ein API-Schlüssel ist erforderlich",
-    "settings.tooltip.ocrAlwaysEnabled": "Windows Media OCR immer aktiviert",
+    "settings.tooltip.ocrAlwaysEnabled": "Mindestens einen Texterkennungsdienst aktiv lassen",
     "settings.tooltip.customOcrUnavailable": "Benutzerdefinierter OCR-Dienst ist noch nicht verfügbar",
     "settings.tooltip.llmService": "Große Sprachmodellübersetzung, unterstützt benutzerdefinierte Inferenztiefe",
     "settings.aria.enableNamedService": "{name} aktivieren",
@@ -342,7 +342,7 @@
     "settings.description.ocrImplementation": "Optische Zeichenerkennungsimplementierung, die derzeit in Windows verwendet wird",
     "settings.description.networkRequirement": "Ob eine Internetverbindung erforderlich ist, um die Erkennung abzuschließen",
     "settings.description.keyRequirement": "Ob ein Konfigurationsschlüssel erforderlich ist",
-    "settings.description.canDisable": "Ob die Engine zulässig ist deaktiviert",
+    "settings.description.canDisable": "Gegenseitig exklusiv mit Vision-Kanälen umschaltbar; nicht alle abschaltbar.",
     "settings.field.ocrEngine": "OCR Engine",
     "settings.field.networkRequirement": "Netzwerkanforderungen",
     "settings.field.canDisable": "Kann ausgeschaltet werden",
@@ -415,11 +415,16 @@
     "settings.prompt.summaryCustom": "Angepasst",
     "settings.prompt.summaryReflectionOn": "Reflexion an",
     "settings.toast.openUrlFailed": "Link konnte nicht geöffnet werden",
-    "settings.description.addOcrService": "Nur multimodale Vision-Kanäle; unabhängig von Übersetzungsinstanzen. Screenshot-OCR nutzt weiterhin Windows-System-OCR.",
+    "settings.description.addOcrService": "Nur multimodale Vision-Kanäle; unabhängig von Übersetzungsinstanzen. Screenshot-Erkennung nutzt den aktuell aktivierten OCR.",
     "settings.ocr.visionSubtitle": "{model} · Multimodal",
     "settings.ocr.systemSubtitle": "Integriert · Offline",
     "settings.ocr.configReserved": "Konfiguration reserviert; Screenshot-OCR nutzt Windows-System-OCR",
     "settings.field.ocrPrompt": "OCR-Prompt",
-    "settings.description.ocrPrompt": "Steuert die Textextraktion des Vision-Modells; leer = Standard."
+    "settings.description.ocrPrompt": "Steuert die Textextraktion des Vision-Modells; leer = Standard.",
+    "settings.ocr.runtimeActiveHint": "Die Screenshot-Erkennung nutzt den aktuell aktivierten Texterkennungsdienst (Windows oder OpenAI-kompatible Vision).",
+    "settings.ocr.claudeUnsupported": "Claude-Vision wird in dieser Version nicht unterstützt. Bitte Windows Media OCR oder einen OpenAI-kompatiblen Vision-Kanal verwenden.",
+    "settings.toast.ocrUnsupported": "Kann nicht aktiviert werden",
+    "settings.toast.ocrClaudeUnsupported": "Claude-Vision-OCR wird in dieser Version nicht unterstützt.",
+    "settings.toast.ocrCannotDisableLast": "Mindestens einen Texterkennungsdienst aktiv lassen."
   }
 }

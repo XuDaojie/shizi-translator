@@ -224,6 +224,23 @@ pub struct OcrWord {
 
 第一版 UI 可以只使用 `OcrResult.text`。保留 `lines` / `words` 是为了后续支持高亮、调试和更好的文本拼接，不要求第一版展示。
 
+## 引擎选择
+
+截图识别在运行时只使用**当前唯一启用**的一项文字识别服务（设置页「服务 → 文字识别」）：
+
+| 引擎 | 协议 / 实现 | 本版本 |
+| --- | --- | --- |
+| Windows 媒体 OCR | `Windows.Media.Ocr`（离线、系统自带） | 默认可启用，可与视觉渠道互斥切换 |
+| OpenAI 兼容视觉 | 多模态 vision 模型（只抽文字，再进翻译批次） | 可启用；启用后关闭其它 OCR |
+| Claude 视觉 | Messages 视觉协议 | **不可启用**（`runtimeSupported: false`） |
+
+规则摘要：
+
+- 至少保留一项启用的 OCR；不允许全部关闭。
+- 启用某项时互斥：仅该项 `enabled`，其余 OCR 实例关闭。
+- OCR 与翻译服务实例独立配置；识别出的纯文本仍走统一 `TranslationInput` / 多服务翻译批次。
+- 引擎解析与调用在 Rust 侧完成，前端只管理实例启用状态与配置。
+
 ## Windows OCR 技术路线
 
 ### Windows.Media.Ocr
