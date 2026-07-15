@@ -35,6 +35,7 @@ import {
 } from '../components'
 import type { AppSettings, ServiceId, ServiceInstance } from '../types'
 import { DEFAULT_PROMPTS, serviceById } from '../tokens'
+import { isPromptDefault } from '../components/setting-textarea-logic'
 import {
   invokeValidateServiceCredential,
   invokeListServiceModels,
@@ -117,9 +118,9 @@ const advancedSummary = computed(() => {
   const inst = activeInstance.value
   if (!inst) return ''
   const custom =
-    !!inst.systemPrompt.trim() ||
-    !!inst.translationPrompt.trim() ||
-    !!inst.reflectionPrompt.trim()
+    !isPromptDefault({ modelValue: inst.systemPrompt, defaultValue: DEFAULT_PROMPTS.system }) ||
+    !isPromptDefault({ modelValue: inst.translationPrompt, defaultValue: DEFAULT_PROMPTS.translation }) ||
+    !isPromptDefault({ modelValue: inst.reflectionPrompt, defaultValue: DEFAULT_PROMPTS.reflection })
   const parts: string[] = []
   parts.push(custom ? t(msgKey('settings.prompt.summaryCustom')) : t(msgKey('settings.prompt.summaryDefault')))
   if (inst.reflectionEnabled) parts.push(t(msgKey('settings.prompt.summaryReflectionOn')))
