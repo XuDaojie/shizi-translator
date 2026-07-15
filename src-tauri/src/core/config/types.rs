@@ -100,11 +100,46 @@ pub struct ServiceInstanceConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct OcrServiceInstanceConfig {
+    pub id: String,
+    pub service_type: String,
+    pub name: String,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    pub api_key: Option<String>,
+    #[serde(default)]
+    pub endpoint: String,
+    #[serde(default)]
+    pub model: String,
+    #[serde(default)]
+    pub preferred_lang: String,
+    #[serde(default)]
+    pub ocr_prompt: String,
+}
+
+impl OcrServiceInstanceConfig {
+    pub fn normalized(mut self) -> Self {
+        self.id = self.id.trim().to_string();
+        self.service_type = self.service_type.trim().to_string();
+        self.name = self.name.trim().to_string();
+        self.api_key = self.api_key.and_then(non_empty_string);
+        self.endpoint = self.endpoint.trim().to_string();
+        self.model = self.model.trim().to_string();
+        self.preferred_lang = self.preferred_lang.trim().to_string();
+        self.ocr_prompt = self.ocr_prompt.trim().to_string();
+        self
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AppConfig {
     #[serde(default)]
     pub shortcuts: HashMap<String, String>,
     #[serde(default)]
     pub services: Vec<ServiceInstanceConfig>,
+    #[serde(default)]
+    pub ocr_services: Vec<OcrServiceInstanceConfig>,
     pub target_lang: String,
     #[serde(default = "default_interface_language")]
     pub interface_language: String,
@@ -204,6 +239,7 @@ impl AppConfig {
                 reflection_enabled: false,
                 chain_of_thought: default_chain_of_thought(),
             }],
+            ocr_services: vec![],
             target_lang: default_target_lang_from_os(),
             interface_language: default_interface_language(),
             default_source_lang: default_source_lang(),
@@ -221,6 +257,11 @@ impl AppConfig {
     pub fn normalized(mut self) -> Self {
         self.shortcuts = normalize_shortcuts(self.shortcuts);
         self.services = self.services.into_iter().map(|s| s.normalized()).collect();
+        self.ocr_services = self
+            .ocr_services
+            .into_iter()
+            .map(|s| s.normalized())
+            .collect();
         if !TRANSLATION_LANGS.contains(&self.target_lang.as_str()) {
             self.target_lang = FALLBACK_TARGET_LANG.to_string();
         }
@@ -759,5 +800,64 @@ mod tests {
             .expect("缺少字段应可反序列化")
             .normalized();
         assert_eq!(config.log_level, "info");
+    }
+
+    #[test]
+    fn ocr_services_default_empty_and_deserializes_missing_as_empty() {
+        let config = AppConfig::default();
+        assert!(config.ocr_services.is_empty());
+
+        let json = r#"{"targetLang":"zh-CN","services":[]}"#;
+        let parsed: AppConfig = serde_json::from_str(json).expect("parse");
+        assert!(parsed.ocr_services.is_empty());
+    }
+
+    #[test]
+    fn ocr_services_roundtrip_camel_case() {
+        let mut config = AppConfig::default();
+        config.ocr_services = vec![OcrServiceInstanceConfig {
+            id: "ocr-win".into(),
+            service_type: "windows-media-ocr".into(),
+            name: "Windows 媒体 OCR".into(),
+            enabled: true,
+            api_key: None,
+            endpoint: String::new(),
+            model: String::new(),
+            preferred_lang: String::new(),
+            ocr_prompt: String::new(),
+        }];
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(json.contains("ocrServices"));
+        assert!(json.contains("serviceType"));
+        assert!(json.contains("preferredLang"));
+        assert!(json.contains("ocrPrompt"));
+        let back: AppConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.ocr_services.len(), 1);
+        assert_eq!(back.ocr_services[0].service_type, "windows-media-ocr");
+        assert!(back.ocr_services[0].enabled);
+    }
+
+    #[test]
+    fn normalized_trims_ocr_service_fields() {
+        let mut config = AppConfig::default();
+        config.ocr_services = vec![OcrServiceInstanceConfig {
+            id: "  ocr-1  ".into(),
+            service_type: "openai-vision".into(),
+            name: "  V  ".into(),
+            enabled: true,
+            api_key: Some("  sk  ".into()),
+            endpoint: "  https://api.openai.com/v1  ".into(),
+            model: "  gpt-4o  ".into(),
+            preferred_lang: "  en  ".into(),
+            ocr_prompt: "  hello  ".into(),
+        }];
+        let n = config.normalized();
+        assert_eq!(n.ocr_services[0].id, "ocr-1");
+        assert_eq!(n.ocr_services[0].name, "V");
+        assert_eq!(n.ocr_services[0].api_key.as_deref(), Some("sk"));
+        assert_eq!(n.ocr_services[0].endpoint, "https://api.openai.com/v1");
+        assert_eq!(n.ocr_services[0].model, "gpt-4o");
+        assert_eq!(n.ocr_services[0].preferred_lang, "en");
+        assert_eq!(n.ocr_services[0].ocr_prompt, "hello");
     }
 }
