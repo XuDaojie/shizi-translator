@@ -63,6 +63,37 @@ pub fn show_settings_window(app: &tauri::AppHandle) -> Result<(), String> {
     window.set_focus().map_err(|error| error.to_string())?;
     Ok(())
 }
+
+pub const OCR_LABEL: &str = "ocr";
+pub const OCR_URL: &str = "ocr.html";
+
+pub fn ensure_ocr_window(app: &tauri::AppHandle) -> Result<WebviewWindow, String> {
+    if let Some(window) = app.get_webview_window(OCR_LABEL) {
+        return Ok(window);
+    }
+
+    let window = WebviewWindowBuilder::new(app, OCR_LABEL, WebviewUrl::App(OCR_URL.into()))
+        .title("Shizi 文字识别")
+        .inner_size(960.0, 640.0)
+        .min_inner_size(720.0, 480.0)
+        .resizable(true)
+        .center()
+        .visible(false)
+        .build()
+        .map_err(|error| format!("创建文字识别窗口失败: {error}"))?;
+    close_to_hide(&window);
+    attach_app_shortcut_focus_listener(&window, app);
+    Ok(window)
+}
+
+pub fn show_ocr_window(app: &tauri::AppHandle) -> Result<(), String> {
+    let window = ensure_ocr_window(app)?;
+    window.show().map_err(|error| error.to_string())?;
+    window.unminimize().map_err(|error| error.to_string())?;
+    window.set_focus().map_err(|error| error.to_string())?;
+    Ok(())
+}
+
 pub fn setup_close_to_hide(app: &tauri::App) {
     if let Some(window) = app.get_webview_window("main") {
         close_to_hide(&window);
@@ -77,5 +108,10 @@ mod tests {
     #[test]
     fn new_settings_window_starts_hidden() {
         assert!(!SETTINGS_INITIAL_VISIBLE);
+    }
+
+    #[test]
+    fn ocr_window_label_is_ocr() {
+        assert_eq!(OCR_LABEL, "ocr");
     }
 }
