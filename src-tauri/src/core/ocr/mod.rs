@@ -1,5 +1,6 @@
 pub mod image_encode;
 pub mod resolve;
+pub mod vision_openai;
 
 // cdylib crate-type 无 Rust 外部消费者，pub use re-export 易被判死代码；保留供短路径访问
 #[allow(unused_imports)]
