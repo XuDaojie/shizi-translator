@@ -281,6 +281,8 @@
     "settings.shortcut.translate-clipboard.description": "Traduire le contenu actuel du presse-papiers. ",
     "settings.shortcut.translate-screenshot.label": "Traduction de capture d'écran",
     "settings.shortcut.translate-screenshot.description": " Sélectionnez la zone d'écran, puis identifiez-la et traduisez-la. ",
+    "settings.shortcut.ocr-recognize.label": "Reconnaissance de texte",
+    "settings.shortcut.ocr-recognize.description": "Ouvrir la reconnaissance de texte et sélectionner une zone (sans traduction automatique).",
     "settings.shortcut.word-lookup.label": "Traduction de mots",
     "settings.shortcut.word-lookup.description": "Affiche les résultats de la traduction lorsque le curseur survole. ",
     "settings.shortcut.open-settings.label": "Ouvrir les paramètres",

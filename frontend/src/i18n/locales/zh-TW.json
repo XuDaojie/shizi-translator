@@ -281,6 +281,8 @@
     "settings.shortcut.translate-clipboard.description": "翻譯當前剪貼板內容。",
     "settings.shortcut.translate-screenshot.label": "截圖翻譯",
     "settings.shortcut.translate-screenshot.description": "框選螢幕區域後識別並翻譯。",
+    "settings.shortcut.ocr-recognize.label": "文字識別",
+    "settings.shortcut.ocr-recognize.description": "開啟文字識別並框選區域識別文字（不自動翻譯）。",
     "settings.shortcut.word-lookup.label": "取詞翻譯",
     "settings.shortcut.word-lookup.description": "游標懸停時顯示翻譯結果。",
     "settings.shortcut.open-settings.label": "打開設置",

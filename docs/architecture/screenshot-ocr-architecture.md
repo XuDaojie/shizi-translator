@@ -61,6 +61,8 @@ OCR 快捷键
   -> Web popup 通过 translation:event 展示
 ```
 
+纯识别（独立文字识别窗口）与截图翻译共享 DXGI 抓帧 + overlay 框选，但在 `submit_capture_region` 处按 `AppState.CapturePurpose`（`Translate` | `RecognizeOnly`）分叉：`Translate` 继续 `start_translation_from_input`；`RecognizeOnly` 只 emit `ocr:recognize-result` 到 `ocr` 窗口，不调用 `TranslationService`。
+
 禁止以下路线：
 
 ```text

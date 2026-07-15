@@ -281,6 +281,8 @@
     "settings.shortcut.translate-clipboard.description": "現在のクリップボードの内容を翻訳してください。",
     "settings.shortcut.translate-screenshot.label": "スクリーンショット翻訳",
     "settings.shortcut.translate-screenshot.description": "画面の領域を選択して認識し翻訳してください。",
+    "settings.shortcut.ocr-recognize.label": "文字認識",
+    "settings.shortcut.ocr-recognize.description": "文字認識を開き、領域を選択して文字を認識します（自動翻訳なし）。",
     "settings.shortcut.word-lookup.label": "語の選択と翻訳",
     "settings.shortcut.word-lookup.description": "カーソルを合わせたときの翻訳結果が表示されます。",
     "settings.shortcut.open-settings.label": "オープン設定",

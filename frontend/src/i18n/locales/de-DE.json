@@ -281,6 +281,8 @@
     "settings.shortcut.translate-clipboard.description": "Übersetzt den aktuellen Inhalt der Zwischenablage. ",
     "settings.shortcut.translate-screenshot.label": "Screenshot-Übersetzung",
     "settings.shortcut.translate-screenshot.description": " Wählen Sie den Bildschirmbereich aus, identifizieren und übersetzen Sie ihn. ",
+    "settings.shortcut.ocr-recognize.label": "Texterkennung",
+    "settings.shortcut.ocr-recognize.description": "Texterkennung öffnen und einen Bereich markieren (ohne Auto-Übersetzung).",
     "settings.shortcut.word-lookup.label": "Wortübersetzung",
     "settings.shortcut.word-lookup.description": "Zeigt die Übersetzungsergebnisse an, wenn sich der Cursor darüber bewegt. ",
     "settings.shortcut.open-settings.label": "Einstellungen öffnen",

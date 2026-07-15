@@ -281,6 +281,8 @@
     "settings.shortcut.translate-clipboard.description": "Traduce el contenido actual del portapapeles. ",
     "settings.shortcut.translate-screenshot.label": "Traducción de capturas de pantalla",
     "settings.shortcut.translate-screenshot.description": " Seleccione el área de la pantalla y luego identifíquela y tradúzcala. ",
+    "settings.shortcut.ocr-recognize.label": "Reconocimiento de texto",
+    "settings.shortcut.ocr-recognize.description": "Abrir reconocimiento de texto y seleccionar un área (sin traducción automática).",
     "settings.shortcut.word-lookup.label": "Traducción de palabras",
     "settings.shortcut.word-lookup.description": "Muestra los resultados de la traducción cuando el cursor está sobre el cursor. ",
     "settings.shortcut.open-settings.label": "Abrir configuración",

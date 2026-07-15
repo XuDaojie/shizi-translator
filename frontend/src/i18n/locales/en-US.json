@@ -286,6 +286,8 @@
     "settings.shortcut.translate-clipboard.description": "Translate the current clipboard content. ",
     "settings.shortcut.translate-screenshot.label": "Screenshot translation",
     "settings.shortcut.translate-screenshot.description": " Select the screen area and then identify and translate it. ",
+    "settings.shortcut.ocr-recognize.label": "Text recognition",
+    "settings.shortcut.ocr-recognize.description": "Open text recognition and select a region to recognize text (no auto-translate).",
     "settings.shortcut.word-lookup.label": "Word translation",
     "settings.shortcut.word-lookup.description": "Displays the translation results when the cursor is hovering. ",
     "settings.shortcut.open-settings.label": "Open settings",
