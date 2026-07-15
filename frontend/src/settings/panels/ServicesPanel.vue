@@ -12,6 +12,10 @@ import {
   Sparkles,
   ScanText,
   Lock,
+  BookOpen,
+  ExternalLink,
+  KeyRound,
+  ChevronDown,
 } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -31,11 +35,19 @@ import {
 } from '../components'
 import type { AppSettings, ServiceId, ServiceInstance } from '../types'
 import { DEFAULT_PROMPTS, serviceById } from '../tokens'
-import { invokeValidateServiceCredential, invokeListServiceModels } from '@/lib/tauri'
+import {
+  invokeValidateServiceCredential,
+  invokeListServiceModels,
+  invokeOpenUrl,
+  isTauriReady,
+} from '@/lib/tauri'
 import { useSettings } from '../stores/settings'
 import { useDevMode } from '../composables/useDevMode'
 import { validateServiceForEnable } from '@/settings/service-validation'
-import { t } from '@/i18n'
+import { t, type MessageKey } from '@/i18n'
+
+/** 任务 9 再落入 locale 文件；此处 cast 避免 MessageKey 严格校验阻塞 typecheck。 */
+const msgKey = (key: string): MessageKey => key as MessageKey
 
 const props = defineProps<{
   state: AppSettings
@@ -90,12 +102,43 @@ const editingName = ref(false)
 const nameDraft = ref('')
 const nameInput = ref<HTMLInputElement | null>(null)
 
+/** 高级提示词区折叠状态；切换实例时重置为收起。 */
+const advancedOpen = ref(false)
+
 const activeInstance = computed<ServiceInstance | undefined>(() =>
   props.state.services.find((s) => s.id === activeInstanceId.value),
 )
 const activeService = computed(() =>
   activeInstance.value ? serviceById(activeInstance.value.type) : undefined,
 )
+
+/** 高级区折叠摘要：默认/自定义提示词 · 反思开启。 */
+const advancedSummary = computed(() => {
+  const inst = activeInstance.value
+  if (!inst) return ''
+  const custom =
+    !!inst.systemPrompt.trim() ||
+    !!inst.translationPrompt.trim() ||
+    !!inst.reflectionPrompt.trim()
+  const parts: string[] = []
+  parts.push(custom ? t(msgKey('settings.prompt.summaryCustom')) : t(msgKey('settings.prompt.summaryDefault')))
+  if (inst.reflectionEnabled) parts.push(t(msgKey('settings.prompt.summaryReflectionOn')))
+  return parts.join(' · ')
+})
+
+const openExternal = async (url: string): Promise<void> => {
+  try {
+    if (isTauriReady()) await invokeOpenUrl(url)
+    else window.open(url, '_blank', 'noopener,noreferrer')
+  } catch (err) {
+    toast.error(t(msgKey('settings.toast.openUrlFailed')), String(err))
+  }
+}
+
+watch(activeInstanceId, () => {
+  advancedOpen.value = false
+  editingName.value = false
+})
 
 const keyStatusFor = (instanceId: string): ServiceInstance['keyStatus'] =>
   keyStatusById.value[instanceId] ?? 'idle'
@@ -694,6 +737,31 @@ const onDragEnd = (): void => {
           <p class="mt-0.5 text-[11px] leading-snug text-muted-foreground">
             {{ activeService.description }}
           </p>
+          <div
+            v-if="activeService.docsUrl || activeService.apiKeyUrl"
+            class="mt-2 flex flex-wrap items-center gap-1.5"
+          >
+            <button
+              v-if="activeService.docsUrl"
+              type="button"
+              class="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+              @click="openExternal(activeService.docsUrl!)"
+            >
+              <BookOpen class="h-3 w-3" />
+              {{ t(msgKey('settings.button.viewDocs')) }}
+              <ExternalLink class="h-2.5 w-2.5 opacity-60" />
+            </button>
+            <button
+              v-if="activeService.apiKeyUrl"
+              type="button"
+              class="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+              @click="openExternal(activeService.apiKeyUrl!)"
+            >
+              <KeyRound class="h-3 w-3" />
+              {{ t(msgKey('settings.button.applyApiKey')) }}
+              <ExternalLink class="h-2.5 w-2.5 opacity-60" />
+            </button>
+          </div>
         </div>
       </header>
 
@@ -774,97 +842,96 @@ const onDragEnd = (): void => {
         </SettingRow>
       </SettingGroup>
 
-      <DevOnly>
-        <SettingGroup
-          v-if="activeService.category === 'llm'"
-          :title="t('settings.field.chainOfThought')"
-          bare
-        >
-          <SettingRow
-            :title="t('settings.field.chainOfThought')"
-            :description="t('settings.description.chainOfThought')"
-            status="wip"
-            vertical
-          >
-            <SettingSelect
-              :model-value="activeInstance.chainOfThought"
-              :options="chainOfThoughtOptions"
-              @update:model-value="(v) => (activeInstance!.chainOfThought = v as typeof activeInstance.chainOfThought)"
-            />
-          </SettingRow>
-        </SettingGroup>
-      </DevOnly>
-
-      <SettingGroup
-        v-if="activeService.category === 'llm'"
-        :title="t('settings.group.prompts')"
-        bare
+      <!-- 高级：思维链 + 提示词 + custom 备注，默认折叠 -->
+      <div
+        v-if="activeService.category === 'llm' || activeService.id === 'custom'"
+        class="rounded-lg border border-border"
       >
-        <SettingRow
-          :title="t('settings.field.systemPrompt')"
-          :description="t('settings.description.systemPrompt')"
-          vertical
+        <button
+          type="button"
+          class="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left transition-colors hover:bg-accent/30"
+          :aria-expanded="advancedOpen"
+          @click="advancedOpen = !advancedOpen"
         >
+          <span class="flex min-w-0 items-center gap-2">
+            <ChevronDown
+              :class="[
+                'h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform',
+                advancedOpen ? 'rotate-0' : '-rotate-90',
+              ]"
+            />
+            <span class="text-xs font-medium text-foreground">{{ t(msgKey('settings.group.advancedPrompts')) }}</span>
+            <span class="truncate text-[11px] text-muted-foreground">{{ advancedSummary }}</span>
+          </span>
+        </button>
+        <div v-if="advancedOpen" class="space-y-3 border-t border-border px-3 py-3">
+          <DevOnly>
+            <SettingRow
+              v-if="activeService.category === 'llm'"
+              :title="t('settings.field.chainOfThought')"
+              :description="t('settings.description.chainOfThought')"
+              status="wip"
+              vertical
+            >
+              <SettingSelect
+                :model-value="activeInstance.chainOfThought"
+                :options="chainOfThoughtOptions"
+                @update:model-value="(v) => (activeInstance!.chainOfThought = v as typeof activeInstance.chainOfThought)"
+              />
+            </SettingRow>
+          </DevOnly>
+
           <SettingTextarea
+            v-if="activeService.category === 'llm'"
+            :title="t('settings.field.systemPrompt')"
+            :description="t('settings.description.systemPrompt')"
             :model-value="activeInstance.systemPrompt"
             :default-value="DEFAULT_PROMPTS.system"
-            :placeholder="t('settings.field.systemPrompt')"
             @update:model-value="(v) => (activeInstance!.systemPrompt = v)"
           />
-        </SettingRow>
-        <SettingRow
-          :title="t('settings.field.translationPrompt')"
-          :description="t('settings.description.translationPrompt')"
-          vertical
-        >
           <SettingTextarea
+            v-if="activeService.category === 'llm'"
+            :title="t('settings.field.translationPrompt')"
+            :description="t('settings.description.translationPrompt')"
+            :variables="['{source_lang}', '{target_lang}', '{text}']"
             :model-value="activeInstance.translationPrompt"
             :default-value="DEFAULT_PROMPTS.translation"
-            :placeholder="t('settings.field.translationPrompt')"
             @update:model-value="(v) => (activeInstance!.translationPrompt = v)"
           />
-        </SettingRow>
-        <DevOnly>
-          <SettingRow
-            :title="t('settings.field.reflectionPrompt')"
-            :description="t('settings.description.reflectionPrompt')"
-            status="wip"
-            vertical
-          >
-            <div class="flex w-full items-center justify-between gap-3">
-              <p class="text-xs text-muted-foreground">
-                {{ t(activeInstance.reflectionEnabled ? 'settings.status.reflectionEnabled' : 'settings.status.reflectionDisabled') }}
-              </p>
-              <SettingSwitch
-                :model-value="activeInstance.reflectionEnabled"
-                :title="t(activeInstance.reflectionEnabled ? 'settings.button.disableReflection' : 'settings.button.enableReflection')"
-                @update:model-value="(v) => (activeInstance!.reflectionEnabled = v)"
-              />
-            </div>
+          <DevOnly>
             <SettingTextarea
-              v-if="activeInstance.reflectionEnabled"
+              v-if="activeService.category === 'llm'"
+              :title="t('settings.field.reflectionPrompt')"
+              :description="t('settings.description.reflectionPrompt')"
+              status="wip"
               :model-value="activeInstance.reflectionPrompt"
               :default-value="DEFAULT_PROMPTS.reflection"
-              :placeholder="t('settings.field.reflectionPrompt')"
-              class="mt-3"
+              :collapsed="!activeInstance.reflectionEnabled"
+              :collapsed-hint="t(msgKey('settings.prompt.reflectionCollapsed'))"
               @update:model-value="(v) => (activeInstance!.reflectionPrompt = v)"
+            >
+              <template #header-end>
+                <SettingSwitch
+                  :model-value="activeInstance.reflectionEnabled"
+                  @update:model-value="(v) => (activeInstance!.reflectionEnabled = v)"
+                />
+              </template>
+            </SettingTextarea>
+          </DevOnly>
+
+          <SettingRow
+            v-if="activeService.id === 'custom'"
+            :title="t('settings.field.note')"
+            :description="t('settings.description.note')"
+            vertical
+          >
+            <SettingInput
+              v-model="activeInstance.note"
+              :placeholder="t('settings.placeholder.note')"
             />
           </SettingRow>
-        </DevOnly>
-      </SettingGroup>
-
-      <SettingGroup v-if="activeService.id === 'custom'" :title="t('settings.field.note')" bare>
-        <SettingRow
-          :title="t('settings.field.note')"
-          :description="t('settings.description.note')"
-          vertical
-        >
-          <SettingInput
-            v-model="activeInstance.note"
-            :placeholder="t('settings.placeholder.note')"
-          />
-        </SettingRow>
-      </SettingGroup>
+        </div>
+      </div>
       </template>
 
       <SettingGroup :title="t('settings.group.danger')" bare>
@@ -884,7 +951,19 @@ const onDragEnd = (): void => {
         class="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
       >
         <CircleAlert class="h-3.5 w-3.5 mt-0.5 shrink-0" />
-        <span>{{ t('settings.warning.missingApiKey') }}</span>
+        <span class="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+          <span>{{ t('settings.warning.missingApiKey') }}</span>
+          <button
+            v-if="activeService.apiKeyUrl"
+            type="button"
+            class="inline-flex items-center gap-1 underline-offset-2 hover:underline"
+            @click="openExternal(activeService.apiKeyUrl!)"
+          >
+            <KeyRound class="h-3 w-3" />
+            {{ t(msgKey('settings.button.applyApiKey')) }}
+            <ExternalLink class="h-2.5 w-2.5 opacity-60" />
+          </button>
+        </span>
       </div>
       </div>
     </div>
