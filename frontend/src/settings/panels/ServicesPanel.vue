@@ -35,6 +35,7 @@ import {
 } from '../components'
 import type { AppSettings, ServiceId, ServiceInstance, OcrServiceId, OcrServiceInstance } from '../types'
 import {
+  DEFAULT_OCR_PROMPT,
   DEFAULT_PROMPTS,
   OCR_PICKER_SERVICES,
   ocrServiceById,
@@ -113,6 +114,8 @@ const nameInput = ref<HTMLInputElement | null>(null)
 
 /** 高级提示词区折叠状态；切换实例时重置为收起。 */
 const advancedOpen = ref(false)
+/** OCR 视觉详情「识别提示词」折叠；切换 OCR 实例时重置。 */
+const advancedOcrOpen = ref(false)
 
 const activeInstance = computed<ServiceInstance | undefined>(() =>
   props.state.services.find((s) => s.id === activeInstanceId.value),
@@ -157,6 +160,96 @@ const onOcrToggle = (inst: OcrServiceInstance, enabled: boolean): void => {
   settings.setOcrEnabled(inst.id, enabled)
 }
 
+const probeOcrRequest = (inst: OcrServiceInstance) => {
+  const meta = ocrServiceById(inst.type)
+  return {
+    protocol: meta?.protocolId ?? 'openai_chat',
+    endpoint: inst.endpoint,
+    apiKey: inst.apiKey.trim() || null,
+  }
+}
+
+/** OCR 模型下拉 = 已拉取 ∪ 内置 models（去重，拉取在前）。 */
+const ocrModelOptions = computed((): string[] => {
+  const inst = activeOcrInstance.value
+  if (!inst) return []
+  const builtin = ocrServiceById(inst.type)?.models ?? []
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const m of [...inst.pulledModels, ...builtin]) {
+    const id = m.trim()
+    if (!id || seen.has(id)) continue
+    seen.add(id)
+    out.push(id)
+  }
+  return out
+})
+
+const onOcrKeyValidate = async (key: string): Promise<void> => {
+  const inst = activeOcrInstance.value
+  if (!inst) return
+  if (!key.trim()) {
+    inst.keyStatus = 'invalid'
+    toast.error(t('settings.toast.validationFailed'), t('settings.toast.apiKeyRequired'))
+    return
+  }
+  if (inst.keyStatus === 'validating') return
+  inst.keyStatus = 'validating'
+  try {
+    await invokeValidateServiceCredential(probeOcrRequest(inst))
+    if (activeOcrInstance.value?.id !== inst.id) return
+    inst.keyStatus = 'valid'
+  } catch (err) {
+    if (activeOcrInstance.value?.id !== inst.id) return
+    inst.keyStatus = 'invalid'
+    toast.error(t('settings.toast.validationFailed'), String(err))
+  }
+}
+
+const onOcrPullModels = async (instanceId: string): Promise<void> => {
+  if (pullingId.value === instanceId) return
+  const inst = props.state.ocrServices.find((s) => s.id === instanceId)
+  if (!inst) return
+
+  const meta = ocrServiceById(inst.type)
+  if (!meta?.hasModelApi) return
+  if (inst.pulledModels.length > 0) return
+
+  if (!inst.apiKey.trim()) {
+    toast.error(t('settings.toast.pullFailed'), t('settings.toast.apiKeyRequired'))
+    return
+  }
+  if (!inst.endpoint.trim()) {
+    toast.error(t('settings.toast.pullFailed'), t('settings.toast.endpointRequired'))
+    return
+  }
+
+  pullingId.value = instanceId
+  await nextTick()
+  try {
+    const result = await invokeListServiceModels(probeOcrRequest(inst))
+    if (activeOcrInstance.value?.id !== inst.id) return
+    inst.pulledModels = result.models
+    if (result.models.length === 0) {
+      toast.info(t('settings.toast.emptyModels'), t('settings.toast.emptyModelsDescription'))
+    }
+  } catch (err) {
+    if (activeOcrInstance.value?.id !== inst.id) return
+    toast.error(t('settings.toast.pullFailed'), String(err))
+  } finally {
+    if (pullingId.value === instanceId) pullingId.value = null
+  }
+}
+
+const onOcrRemove = (): void => {
+  const inst = activeOcrInstance.value
+  if (!inst) return
+  if (activeOcrService.value?.canDelete === false) return
+  if (!window.confirm(t('settings.dialog.deleteService', { name: inst.name }))) return
+  settings.removeOcrService(inst.id)
+  activeOcrInstanceId.value = props.state.ocrServices[0]?.id ?? ''
+}
+
 /** 高级区折叠摘要：默认/自定义提示词 · 反思开启。 */
 const advancedSummary = computed(() => {
   const inst = activeInstance.value
@@ -185,6 +278,18 @@ watch(activeInstanceId, () => {
   editingName.value = false
 })
 
+watch(activeOcrInstanceId, () => {
+  advancedOcrOpen.value = false
+  editingName.value = false
+})
+
+/** tab 切换时收起编辑/折叠，避免翻译与 OCR 详情状态串扰。 */
+watch(tab, () => {
+  editingName.value = false
+  advancedOpen.value = false
+  advancedOcrOpen.value = false
+})
+
 const keyStatusFor = (instanceId: string): ServiceInstance['keyStatus'] =>
   keyStatusById.value[instanceId] ?? 'idle'
 
@@ -208,7 +313,8 @@ const filteredInstances = computed(() => {
 })
 
 watch(
-  () => activeInstance.value?.name,
+  () =>
+    tab.value === 'ocr' ? activeOcrInstance.value?.name : activeInstance.value?.name,
   (n) => {
     if (!editingName.value) nameDraft.value = n ?? ''
   },
@@ -315,8 +421,15 @@ const onPullModels = async (instanceId: string): Promise<void> => {
 }
 
 const enterNameEdit = async (): Promise<void> => {
-  if (!activeInstance.value) return
-  nameDraft.value = activeInstance.value.name
+  if (tab.value === 'ocr') {
+    const inst = activeOcrInstance.value
+    // system（Windows）不可重命名
+    if (!inst || activeOcrService.value?.detailKind === 'system') return
+    nameDraft.value = inst.name
+  } else {
+    if (!activeInstance.value) return
+    nameDraft.value = activeInstance.value.name
+  }
   editingName.value = true
   await nextTick()
   nameInput.value?.focus()
@@ -324,8 +437,20 @@ const enterNameEdit = async (): Promise<void> => {
 }
 
 const commitNameEdit = (): void => {
-  if (!editingName.value || !activeInstance.value) return
+  if (!editingName.value) return
   const next = nameDraft.value.trim()
+  if (tab.value === 'ocr') {
+    const inst = activeOcrInstance.value
+    if (inst && next && next !== inst.name) {
+      settings.renameOcrService(inst.id, next)
+    }
+    editingName.value = false
+    return
+  }
+  if (!activeInstance.value) {
+    editingName.value = false
+    return
+  }
   if (next && next !== activeInstance.value.name) {
     activeInstance.value.name = next
   }
@@ -334,7 +459,10 @@ const commitNameEdit = (): void => {
 
 const cancelNameEdit = (): void => {
   editingName.value = false
-  nameDraft.value = activeInstance.value?.name ?? ''
+  nameDraft.value =
+    tab.value === 'ocr'
+      ? (activeOcrInstance.value?.name ?? '')
+      : (activeInstance.value?.name ?? '')
 }
 
 /** 拖拽重排:在 services 数组里拖动实例改变顺序。 */
@@ -703,109 +831,328 @@ const onDragEnd = (): void => {
       </template>
     </aside>
 
-    <!-- 右侧:实例详情(翻译服务) / OCR 信息面板(文字识别) — 高度锁在网格行内,自身滚动 -->
+    <!-- 右侧: OCR 详情（system / vision-llm） — 高度锁在网格行内,自身滚动 -->
     <div
       v-if="tab === 'ocr'"
       class="h-full min-h-0 min-w-0 self-stretch overflow-y-auto overscroll-contain pt-1 scrollbar-thin"
     >
-      <div class="flex flex-col gap-2.5">
-      <header class="flex items-start gap-3">
-        <span
-          class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary"
-          :title="activeOcrService?.detailKind === 'system' ? t('settings.tooltip.ocrAlwaysEnabled') : undefined"
-        >
-          <ScanText class="h-[18px] w-[18px]" />
-        </span>
-        <div class="min-w-0 flex-1">
-          <div class="flex items-center gap-2 flex-wrap">
-            <h2 class="text-base font-semibold text-foreground">
-              {{ activeOcrInstance?.name ?? 'Windows 媒体 OCR' }}
-            </h2>
-          </div>
-          <p class="mt-1 text-xs text-muted-foreground leading-snug">
-            {{ activeOcrService?.description ?? t('settings.description.ocrEngine') }}
-          </p>
-        </div>
-      </header>
-
-      <!-- system：保留 Windows 静态说明；vision：任务 11 前仅配置预留提示 -->
-      <template v-if="!activeOcrService || activeOcrService.detailKind === 'system'">
-            <SettingGroup :title="t('settings.group.aboutService')">
-        <SettingRow
-                :title="t('settings.field.ocrEngine')"
-                :description="t('settings.description.ocrImplementation')"
-        >
-          <code class="rounded bg-muted px-1.5 py-0.5 text-xs text-foreground/80">Windows.Media.Ocr</code>
-        </SettingRow>
-        <SettingRow
-                :title="t('settings.field.networkRequirement')"
-                :description="t('settings.description.networkRequirement')"
-        >
-          <span class="inline-flex items-center gap-1 text-xs text-foreground">
-            <Lock class="h-3 w-3 text-muted-foreground" />
-                {{ t('settings.status.offline') }}
-          </span>
-        </SettingRow>
-        <SettingRow
-          title="API Key"
-                :description="t('settings.description.keyRequirement')"
-        >
-                <span class="text-xs text-foreground">{{ t('settings.status.noKeyRequired') }}</span>
-        </SettingRow>
-        <SettingRow
-                :title="t('settings.field.canDisable')"
-                :description="t('settings.description.canDisable')"
-        >
-                <span class="text-xs text-muted-foreground">{{ t('settings.status.systemService') }}</span>
-        </SettingRow>
-      </SettingGroup>
-
-      <SettingGroup :title="t('settings.field.capabilities')" :description="t('settings.description.ocrCapabilities')">
-        <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div class="rounded-md border border-border bg-background/40 p-3">
-            <div class="flex items-center gap-1.5">
-              <Sparkles class="h-3 w-3 text-primary" />
-              <h4 class="text-xs font-medium text-foreground">{{ t('settings.ocr.commonCapabilities') }}</h4>
-            </div>
-            <p class="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
-              {{ t('settings.ocr.languages') }}
-            </p>
-          </div>
-          <div class="rounded-md border border-border bg-background/40 p-3">
-            <div class="flex items-center gap-1.5">
-              <CircleAlert class="h-3 w-3 text-amber-600 dark:text-amber-400" />
-              <h4 class="text-xs font-medium text-foreground">{{ t('settings.ocr.limitationsTitle') }}</h4>
-            </div>
-            <p class="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
-              {{ t('settings.ocr.limitations') }}
-            </p>
-          </div>
-          <div class="rounded-md border border-border bg-background/40 p-3">
-            <div class="flex items-center gap-1.5">
-              <ScanText class="h-3 w-3 text-primary" />
-              <h4 class="text-xs font-medium text-foreground">{{ t('settings.ocr.useCasesTitle') }}</h4>
-            </div>
-            <p class="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
-              {{ t('settings.ocr.useCases') }}
-            </p>
-          </div>
-        </div>
-      </SettingGroup>
-
       <div
-        class="flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200"
+        v-if="activeOcrInstance && activeOcrService"
+        class="flex flex-col gap-2.5"
       >
-        <ScanText class="h-3.5 w-3.5 shrink-0" />
-        <span>{{ t('settings.ocr.footer') }}</span>
+        <!-- Header：system 不可重命名/删除；vision 可重命名 + 外链 + 删除走危险区 -->
+        <header class="flex items-start gap-3">
+          <span
+            class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary"
+            :title="activeOcrService.detailKind === 'system' ? t('settings.tooltip.ocrAlwaysEnabled') : undefined"
+          >
+            <ScanText class="h-[18px] w-[18px]" />
+          </span>
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2">
+              <template v-if="!editingName || activeOcrService.detailKind === 'system'">
+                <h2 class="truncate text-sm font-semibold text-foreground">
+                  {{ activeOcrInstance.name }}
+                </h2>
+                <Button
+                  v-if="activeOcrService.detailKind === 'vision-llm'"
+                  variant="ghost"
+                  size="icon"
+                  class="h-6 w-6"
+                  :aria-label="t('settings.aria.renameService')"
+                  :title="t('settings.tooltip.rename')"
+                  @click="enterNameEdit"
+                >
+                  <Pencil class="h-3 w-3" />
+                </Button>
+              </template>
+              <template v-else>
+                <input
+                  ref="nameInput"
+                  v-model="nameDraft"
+                  type="text"
+                  class="h-7 flex-1 max-w-[280px] rounded-md border border-input bg-background px-2 text-sm font-semibold text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  @keydown.enter.prevent="commitNameEdit"
+                  @keydown.esc.prevent="cancelNameEdit"
+                  @blur="commitNameEdit"
+                />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  class="h-6 w-6"
+                  :aria-label="t('common.confirm')"
+                  @click="commitNameEdit"
+                >
+                  <Check class="h-3.5 w-3.5 text-primary" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  class="h-6 w-6"
+                  :aria-label="t('common.cancel')"
+                  @click="cancelNameEdit"
+                >
+                  <X class="h-3.5 w-3.5" />
+                </Button>
+              </template>
+            </div>
+            <p class="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+              {{ activeOcrService.description }}
+            </p>
+            <div
+              v-if="
+                activeOcrService.detailKind === 'vision-llm' &&
+                (activeOcrService.docsUrl || activeOcrService.apiKeyUrl)
+              "
+              class="mt-2 flex flex-wrap items-center gap-1.5"
+            >
+              <button
+                v-if="activeOcrService.docsUrl"
+                type="button"
+                class="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+                @click="openExternal(activeOcrService.docsUrl!)"
+              >
+                <BookOpen class="h-3 w-3" />
+                {{ t(msgKey('settings.button.viewDocs')) }}
+                <ExternalLink class="h-2.5 w-2.5 opacity-60" />
+              </button>
+              <button
+                v-if="activeOcrService.apiKeyUrl"
+                type="button"
+                class="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+                @click="openExternal(activeOcrService.apiKeyUrl!)"
+              >
+                <KeyRound class="h-3 w-3" />
+                {{ t(msgKey('settings.button.applyApiKey')) }}
+                <ExternalLink class="h-2.5 w-2.5 opacity-60" />
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <!-- system：关于 + 三栏能力 + 状态条；醒目 configReserved -->
+        <template v-if="activeOcrService.detailKind === 'system'">
+          <div
+            class="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+          >
+            <CircleAlert class="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>{{ t(msgKey('settings.ocr.configReserved')) }}</span>
+          </div>
+
+          <SettingGroup :title="t('settings.group.aboutService')">
+            <SettingRow
+              :title="t('settings.field.ocrEngine')"
+              :description="t('settings.description.ocrImplementation')"
+            >
+              <code class="rounded bg-muted px-1.5 py-0.5 text-xs text-foreground/80">Windows.Media.Ocr</code>
+            </SettingRow>
+            <SettingRow
+              :title="t('settings.field.networkRequirement')"
+              :description="t('settings.description.networkRequirement')"
+            >
+              <span class="inline-flex items-center gap-1 text-xs text-foreground">
+                <Lock class="h-3 w-3 text-muted-foreground" />
+                {{ t('settings.status.offline') }}
+              </span>
+            </SettingRow>
+            <SettingRow
+              title="API Key"
+              :description="t('settings.description.keyRequirement')"
+            >
+              <span class="text-xs text-foreground">{{ t('settings.status.noKeyRequired') }}</span>
+            </SettingRow>
+            <SettingRow
+              :title="t('settings.field.canDisable')"
+              :description="t('settings.description.canDisable')"
+            >
+              <span class="text-xs text-muted-foreground">{{ t('settings.status.systemService') }}</span>
+            </SettingRow>
+          </SettingGroup>
+
+          <SettingGroup
+            :title="t('settings.field.capabilities')"
+            :description="t('settings.description.ocrCapabilities')"
+          >
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div class="rounded-md border border-border bg-background/40 p-3">
+                <div class="flex items-center gap-1.5">
+                  <Sparkles class="h-3 w-3 text-primary" />
+                  <h4 class="text-xs font-medium text-foreground">{{ t('settings.ocr.commonCapabilities') }}</h4>
+                </div>
+                <p class="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+                  {{ t('settings.ocr.languages') }}
+                </p>
+              </div>
+              <div class="rounded-md border border-border bg-background/40 p-3">
+                <div class="flex items-center gap-1.5">
+                  <CircleAlert class="h-3 w-3 text-amber-600 dark:text-amber-400" />
+                  <h4 class="text-xs font-medium text-foreground">{{ t('settings.ocr.limitationsTitle') }}</h4>
+                </div>
+                <p class="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+                  {{ t('settings.ocr.limitations') }}
+                </p>
+              </div>
+              <div class="rounded-md border border-border bg-background/40 p-3">
+                <div class="flex items-center gap-1.5">
+                  <ScanText class="h-3 w-3 text-primary" />
+                  <h4 class="text-xs font-medium text-foreground">{{ t('settings.ocr.useCasesTitle') }}</h4>
+                </div>
+                <p class="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+                  {{ t('settings.ocr.useCases') }}
+                </p>
+              </div>
+            </div>
+          </SettingGroup>
+
+          <div
+            class="flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200"
+          >
+            <ScanText class="h-3.5 w-3.5 shrink-0" />
+            <span>{{ t('settings.ocr.footer') }}</span>
+          </div>
+        </template>
+
+        <!-- vision-llm：缺 Key + 基础配置 + 高级提示词 + 删除 + 预留提示 -->
+        <template v-else-if="activeOcrService.detailKind === 'vision-llm'">
+          <div
+            v-if="!activeOcrInstance.apiKey"
+            class="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+          >
+            <CircleAlert class="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span class="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+              <span>{{ t('settings.warning.missingApiKey') }}</span>
+              <button
+                v-if="activeOcrService.apiKeyUrl"
+                type="button"
+                class="inline-flex items-center gap-1 underline-offset-2 hover:underline"
+                @click="openExternal(activeOcrService.apiKeyUrl!)"
+              >
+                <KeyRound class="h-3 w-3" />
+                {{ t(msgKey('settings.button.applyApiKey')) }}
+                <ExternalLink class="h-2.5 w-2.5 opacity-60" />
+              </button>
+            </span>
+          </div>
+
+          <SettingGroup :title="t('settings.group.endpoint')" bare>
+            <SettingRow
+              title="API Endpoint"
+              :description="t('settings.description.endpoint')"
+              vertical
+            >
+              <SettingInput
+                v-model="activeOcrInstance.endpoint"
+                :placeholder="t('settings.placeholder.endpoint')"
+              />
+            </SettingRow>
+          </SettingGroup>
+
+          <SettingGroup :title="t('settings.group.credentials')" bare>
+            <SettingRow
+              title="API Key"
+              :description="t('settings.description.apiKey', { name: activeOcrService.name })"
+              vertical
+            >
+              <ApiKeyInput
+                v-model="activeOcrInstance.apiKey"
+                :status="activeOcrInstance.keyStatus"
+                @validate="onOcrKeyValidate"
+              />
+            </SettingRow>
+          </SettingGroup>
+
+          <SettingGroup
+            :title="t('settings.group.model')"
+            :description="t('settings.description.model')"
+            bare
+          >
+            <SettingRow
+              :title="t('settings.field.defaultModel')"
+              :description="t('settings.description.defaultModel')"
+              vertical
+            >
+              <ModelCombobox
+                :model-value="activeOcrInstance.model"
+                :models="ocrModelOptions"
+                :loading="pullingId === activeOcrInstance.id"
+                :placeholder="t('settings.placeholder.model')"
+                @update:model-value="(v) => (activeOcrInstance!.model = v)"
+                @open="() => onOcrPullModels(activeOcrInstance!.id)"
+              />
+            </SettingRow>
+          </SettingGroup>
+
+          <div class="rounded-lg border border-border">
+            <button
+              type="button"
+              class="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left transition-colors hover:bg-accent/30"
+              :aria-expanded="advancedOcrOpen"
+              @click="advancedOcrOpen = !advancedOcrOpen"
+            >
+              <span class="flex min-w-0 items-center gap-2">
+                <ChevronDown
+                  :class="[
+                    'h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform',
+                    advancedOcrOpen ? 'rotate-0' : '-rotate-90',
+                  ]"
+                />
+                <span class="text-xs font-medium text-foreground">
+                  {{ t('settings.field.ocrPrompt') }}
+                </span>
+                <span class="truncate text-[11px] text-muted-foreground">
+                  {{
+                    isPromptDefault({
+                      modelValue: activeOcrInstance.ocrPrompt,
+                      defaultValue: DEFAULT_OCR_PROMPT,
+                    })
+                      ? t(msgKey('settings.prompt.summaryDefault'))
+                      : t(msgKey('settings.prompt.summaryCustom'))
+                  }}
+                </span>
+              </span>
+            </button>
+            <div v-if="advancedOcrOpen" class="space-y-3 border-t border-border px-3 py-3">
+              <SettingTextarea
+                :title="t('settings.field.ocrPrompt')"
+                :description="t('settings.description.ocrPrompt')"
+                :model-value="activeOcrInstance.ocrPrompt"
+                :default-value="DEFAULT_OCR_PROMPT"
+                @update:model-value="(v) => (activeOcrInstance!.ocrPrompt = v)"
+              />
+            </div>
+          </div>
+
+          <SettingGroup
+            v-if="activeOcrService.canDelete !== false"
+            :title="t('settings.group.danger')"
+            bare
+          >
+            <SettingRow
+              :title="t('settings.field.deleteService')"
+              :description="t('settings.description.deleteService')"
+            >
+              <Button variant="outline" size="sm" @click="onOcrRemove">
+                <Trash2 class="h-3.5 w-3.5 text-destructive" />
+                {{ t('settings.button.deleteService') }}
+              </Button>
+            </SettingRow>
+          </SettingGroup>
+
+          <div
+            class="flex items-start gap-2 rounded-md border border-border bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground"
+          >
+            <CircleAlert class="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>{{ t(msgKey('settings.ocr.configReserved')) }}</span>
+          </div>
+        </template>
       </div>
-      </template>
+
+      <!-- OCR 空态：无选中实例 -->
       <div
         v-else
-        class="flex items-start gap-2 rounded-md border border-border bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground"
+        class="flex h-full min-h-[200px] items-center justify-center px-4 text-center text-xs text-muted-foreground"
       >
-        <CircleAlert class="mt-0.5 h-3.5 w-3.5 shrink-0" />
-        <span>{{ t(msgKey('settings.ocr.configReserved')) }}</span>
-      </div>
+        {{ t('settings.empty.noMatchingServices') }}
       </div>
     </div>
 
