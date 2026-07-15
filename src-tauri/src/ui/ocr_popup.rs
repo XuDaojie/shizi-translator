@@ -110,6 +110,21 @@ pub fn friendly_ocr_error(error: OcrTranslationError) -> String {
         OcrTranslationError::Ocr(OcrError::UnsupportedPlatform) => {
             "OCR 识别失败：当前平台暂不支持截图 OCR。".to_string()
         }
+        OcrTranslationError::Ocr(OcrError::NoEngineConfigured) => {
+            "OCR 识别失败：没有可用的文字识别服务。请在「设置 → 服务 → 文字识别」启用一项。".to_string()
+        }
+        OcrTranslationError::Ocr(OcrError::UnsupportedProtocol(ref p)) => {
+            format!("OCR 识别失败：当前版本不支持该识别协议（{p}）。请改用 Windows 媒体 OCR 或 OpenAI 兼容视觉。")
+        }
+        OcrTranslationError::Ocr(OcrError::Auth(ref d)) => {
+            format!("OCR 识别失败：认证失败（{d}）。请在「设置 → 文字识别」检查 API Key。")
+        }
+        OcrTranslationError::Ocr(OcrError::Api { ref message, .. }) => {
+            format!("OCR 识别失败：{message}")
+        }
+        OcrTranslationError::Ocr(OcrError::Http(ref d)) => {
+            format!("OCR 识别失败：网络错误（{d}）")
+        }
     }
 }
 
@@ -167,6 +182,55 @@ mod tests {
         assert_eq!(
             friendly_ocr_error(OcrTranslationError::Ocr(OcrError::UnsupportedPlatform)),
             "OCR 识别失败：当前平台暂不支持截图 OCR。"
+        );
+    }
+
+    #[test]
+    fn friendly_error_maps_no_engine_configured() {
+        assert_eq!(
+            friendly_ocr_error(OcrTranslationError::Ocr(OcrError::NoEngineConfigured)),
+            "OCR 识别失败：没有可用的文字识别服务。请在「设置 → 服务 → 文字识别」启用一项。"
+        );
+    }
+
+    #[test]
+    fn friendly_error_maps_unsupported_protocol() {
+        assert_eq!(
+            friendly_ocr_error(OcrTranslationError::Ocr(OcrError::UnsupportedProtocol(
+                "claude-vision".to_string()
+            ))),
+            "OCR 识别失败：当前版本不支持该识别协议（claude-vision）。请改用 Windows 媒体 OCR 或 OpenAI 兼容视觉。"
+        );
+    }
+
+    #[test]
+    fn friendly_error_maps_auth() {
+        assert_eq!(
+            friendly_ocr_error(OcrTranslationError::Ocr(OcrError::Auth(
+                "missing key".to_string()
+            ))),
+            "OCR 识别失败：认证失败（missing key）。请在「设置 → 文字识别」检查 API Key。"
+        );
+    }
+
+    #[test]
+    fn friendly_error_maps_api() {
+        assert_eq!(
+            friendly_ocr_error(OcrTranslationError::Ocr(OcrError::Api {
+                message: "rate limit".to_string(),
+                retryable: true,
+            })),
+            "OCR 识别失败：rate limit"
+        );
+    }
+
+    #[test]
+    fn friendly_error_maps_http() {
+        assert_eq!(
+            friendly_ocr_error(OcrTranslationError::Ocr(OcrError::Http(
+                "timeout".to_string()
+            ))),
+            "OCR 识别失败：网络错误（timeout）"
         );
     }
 
