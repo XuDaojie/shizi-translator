@@ -1,5 +1,8 @@
 use crate::{
-    app::{popup_window, state::AppState},
+    app::{
+        popup_window,
+        state::{AppState, CapturePurpose},
+    },
     core::{capture::CaptureError, ocr::OcrError, ocr_translation::OcrTranslationError},
     platform::capture_screen,
     ui::{overlay, web_popup::show_translation_error},
@@ -13,12 +16,14 @@ pub async fn start_translation_from_ocr(app: tauri::AppHandle, state: AppState) 
         return;
     }
 
-    // capture 独立锁：挡住 OCR/recognize 期间二次 Alt+O 覆盖 pending_capture。
+    // capture 独立锁：挡住 OCR/recognize 期间二次截图快捷键覆盖 pending_capture。
     // 持锁到 submit_capture_region / cancel_capture 释放；本函数每条失败路径都须 finish_capture。
     if let Err(message) = state.try_begin_capture() {
         show_translation_error(&app, message);
         return;
     }
+    // Alt+S / 弹窗截图翻译入口：提交后走翻译链路，禁止纯识别分叉。
+    let _ = state.set_capture_purpose(CapturePurpose::Translate);
 
     // 先抓整屏帧（overlay 显示前拍完，避免把 overlay 截进图里）
     let frame = match capture_screen().await {
@@ -61,7 +66,7 @@ pub async fn start_translation_from_ocr(app: tauri::AppHandle, state: AppState) 
     }
 }
 
-/// 翻译弹窗「截图翻译」按钮入口：先隐藏弹窗避免被抓进截图帧，再复用 Alt+O 的 OCR 链路。
+/// 翻译弹窗「截图翻译」按钮入口：先隐藏弹窗避免被抓进截图帧，再复用截图翻译链路。
 /// 框选完成后 submit_capture_region 内部 show_translation_popup 会重新 show 并定位弹窗。
 #[tauri::command]
 pub async fn trigger_ocr_translation(
@@ -99,10 +104,10 @@ pub fn friendly_ocr_error(error: OcrTranslationError) -> String {
             "OCR 识别失败：缺少 OCR 语言包。请在「Windows 设置 > 时间和语言 > 语言」安装对应 OCR 语言包后重试。".to_string()
         }
         OcrTranslationError::Ocr(OcrError::ImageTooLarge) => {
-            "OCR 识别失败：截图区域过大，请缩小区域后重新按 Alt+O 截图。".to_string()
+            "OCR 识别失败：截图区域过大，请缩小区域后重新按 Alt+S 截图。".to_string()
         }
         OcrTranslationError::Ocr(OcrError::EmptyResult) => {
-            "OCR 识别失败：未识别到文本。请重新按 Alt+O 框选更清晰的区域。".to_string()
+            "OCR 识别失败：未识别到文本。请重新按 Alt+S 框选更清晰的区域。".to_string()
         }
         OcrTranslationError::Ocr(OcrError::ImageConversionFailed(_)) => {
             "OCR 识别失败：图像转换失败，请重新截图。".to_string()
@@ -137,7 +142,7 @@ mod tests {
     fn friendly_error_maps_empty_result() {
         assert_eq!(
             friendly_ocr_error(OcrTranslationError::Ocr(OcrError::EmptyResult)),
-            "OCR 识别失败：未识别到文本。请重新按 Alt+O 框选更清晰的区域。"
+            "OCR 识别失败：未识别到文本。请重新按 Alt+S 框选更清晰的区域。"
         );
     }
 
@@ -155,7 +160,7 @@ mod tests {
     fn friendly_error_maps_image_too_large() {
         assert_eq!(
             friendly_ocr_error(OcrTranslationError::Ocr(OcrError::ImageTooLarge)),
-            "OCR 识别失败：截图区域过大，请缩小区域后重新按 Alt+O 截图。"
+            "OCR 识别失败：截图区域过大，请缩小区域后重新按 Alt+S 截图。"
         );
     }
 

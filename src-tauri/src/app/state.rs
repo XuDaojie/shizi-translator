@@ -11,6 +11,15 @@ use crate::core::mt::EdgeTranslateEnv;
 use crate::core::translation::TranslationInput;
 use tokio_util::sync::CancellationToken;
 
+/// 截图框选提交后的用途：翻译链路 vs 纯识别（OCR 窗）。
+/// 由入口在 `try_begin_capture` 成功后设置，`submit_capture_region` 按此分叉。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CapturePurpose {
+    #[default]
+    Translate,
+    RecognizeOnly,
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub config_store: ConfigStore,
@@ -21,10 +30,12 @@ pub struct AppState {
     // 接管的旧翻译"。spawn 收尾凭 generation 判断是否仍为当前翻译，避免旧翻译收尾
     // 清掉新翻译的 cancel token / 释放 busy。
     translation_generation: Arc<Mutex<u64>>,
-    // capture 流程独立锁：从 start_translation_from_ocr 抓帧到 submit/cancel 释放，
-    // 期间挡住二次 Alt+O 覆盖 pending_capture。与 translation_busy 解耦——
-    // translation_busy 在 start_translation_from_input 末尾才置位，无法保护 OCR/recognize 窗口。
+    // capture 流程独立锁：从抓帧到 submit/cancel 释放，期间挡住二次截图快捷键
+    // 覆盖 pending_capture。与 translation_busy 解耦——translation_busy 在
+    // start_translation_from_input 末尾才置位，无法保护 OCR/recognize 窗口。
     capture_in_progress: Arc<Mutex<bool>>,
+    // overlay 提交用途：Translate → 翻译弹窗；RecognizeOnly → OCR 窗事件。
+    capture_purpose: Arc<Mutex<CapturePurpose>>,
     // overlay 截图链路：抓到的整屏帧 + 显示器 scale_factor，等待框选裁剪。
     pending_capture: Arc<Mutex<Option<(CapturedImage, f64)>>>,
     // 当前翻译的取消信号。begin 时存入，翻译自然结束 clear、用户取消 cancel。
@@ -63,6 +74,7 @@ impl AppState {
             translation_busy: Arc::new(Mutex::new(false)),
             translation_generation: Arc::new(Mutex::new(0)),
             capture_in_progress: Arc::new(Mutex::new(false)),
+            capture_purpose: Arc::new(Mutex::new(CapturePurpose::Translate)),
             pending_capture: Arc::new(Mutex::new(None)),
             current_cancel_token: Arc::new(Mutex::new(None)),
             last_translation_input: Arc::new(Mutex::new(None)),
@@ -165,7 +177,7 @@ impl AppState {
     }
 
     /// 占住 capture 锁。overlay 截图链路从抓帧到 submit/cancel 期间持锁，
-    /// 挡住二次 Alt+O 覆盖 pending_capture。失败表示已有 capture 在进行。
+    /// 挡住二次截图快捷键覆盖 pending_capture。失败表示已有 capture 在进行。
     pub fn try_begin_capture(&self) -> Result<(), String> {
         let mut busy = self
             .capture_in_progress
@@ -186,6 +198,24 @@ impl AppState {
             .map_err(|_| "截图状态锁已损坏".to_string())?;
         *busy = false;
         Ok(())
+    }
+
+    /// 设置截图提交用途。入口在 try_begin_capture 成功后调用。
+    pub fn set_capture_purpose(&self, purpose: CapturePurpose) -> Result<(), String> {
+        let mut slot = self
+            .capture_purpose
+            .lock()
+            .map_err(|_| "截图用途状态锁已损坏".to_string())?;
+        *slot = purpose;
+        Ok(())
+    }
+
+    /// 读截图提交用途。锁毒化回退 Translate。
+    pub fn capture_purpose(&self) -> CapturePurpose {
+        self.capture_purpose
+            .lock()
+            .map(|slot| *slot)
+            .unwrap_or(CapturePurpose::Translate)
     }
 
     pub fn set_pending_capture(&self, frame: CapturedImage, scale_factor: f64) -> Result<(), String> {
@@ -534,6 +564,22 @@ mod tests {
         state.finish_capture().expect("第一次释放");
         // 对已清位再清应无害（cancel/submit 各分支可能重复释放）。
         state.finish_capture().expect("幂等释放");
+    }
+
+    #[test]
+    fn capture_purpose_defaults_to_translate_and_round_trips() {
+        let state = app_state();
+        assert_eq!(state.capture_purpose(), CapturePurpose::Translate);
+
+        state
+            .set_capture_purpose(CapturePurpose::RecognizeOnly)
+            .expect("设为纯识别");
+        assert_eq!(state.capture_purpose(), CapturePurpose::RecognizeOnly);
+
+        state
+            .set_capture_purpose(CapturePurpose::Translate)
+            .expect("设回翻译");
+        assert_eq!(state.capture_purpose(), CapturePurpose::Translate);
     }
 
     #[test]

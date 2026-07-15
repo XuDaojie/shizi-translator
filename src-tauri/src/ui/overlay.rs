@@ -1,10 +1,10 @@
-use tauri::{Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 
 use crate::{
-    app::state::AppState,
+    app::state::{AppState, CapturePurpose},
     core::config::AppConfig,
     core::ocr::OcrHints,
-    platform::recognize_region,
+    platform::{recognize_cropped_full, recognize_region},
     ui::web_popup::{show_translation_error, show_translation_popup, start_translation_from_input},
 };
 
@@ -24,7 +24,7 @@ fn build_overlay(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, String>
         .build()
         .map_err(|e| e.to_string())?;
     // 兜底：overlay 被外部关闭或异常销毁时（非 submit/cancel 正常路径），
-    // 释放 pending_capture 帧与 capture 锁，避免锁永久占用导致后续 Alt+O 被拒。
+    // 释放 pending_capture 帧与 capture 锁，避免锁永久占用导致后续截图快捷键被拒。
     let app_handle = app.clone();
     window.on_window_event(move |event| {
         if let WindowEvent::Destroyed = event {
@@ -151,24 +151,56 @@ pub async fn submit_capture_region(
             return Err(e.to_string());
         }
     };
-    // recognize 期间持锁，挡住二次 Alt+O 覆盖新帧。
-    let result =
-        recognize_region(&frame, region, OcrHints::default(), &config.ocr_services).await;
-    // recognize 完成，释放 capture 锁；后续 start_translation_from_input 由 translation_busy 接管。
-    let _ = state.finish_capture();
 
-    let app_state = state.inner();
-    match result {
-        // recognize_cropped_for_translation 永不返回 Ok(None)（空文本走 Err(EmptyResult)）；
-        // 此分支若被触达即契约违反，报错而非静默吞掉。
-        Ok(None) => show_translation_error(&app, "未识别到文本"),
-        Ok(Some(input)) => {
-            let _ = show_translation_popup(&app, &config);
-            if let Err(error) = start_translation_from_input(input, app.clone(), app_state) {
-                show_translation_error(&app, error);
+    // 按入口设置的用途分叉：Translate → 翻译弹窗；RecognizeOnly → OCR 窗事件。
+    // recognize 期间持锁，挡住二次截图快捷键覆盖新帧；两条路径均须 finish_capture。
+    let purpose = state.capture_purpose();
+    match purpose {
+        CapturePurpose::Translate => {
+            let result =
+                recognize_region(&frame, region, OcrHints::default(), &config.ocr_services).await;
+            let _ = state.finish_capture();
+            let app_state = state.inner();
+            match result {
+                // recognize_cropped_for_translation 永不返回 Ok(None)（空文本走 Err(EmptyResult)）；
+                // 此分支若被触达即契约违反，报错而非静默吞掉。
+                Ok(None) => show_translation_error(&app, "未识别到文本"),
+                Ok(Some(input)) => {
+                    let _ = show_translation_popup(&app, &config);
+                    if let Err(error) = start_translation_from_input(input, app.clone(), app_state) {
+                        show_translation_error(&app, error);
+                    }
+                }
+                Err(error) => {
+                    show_translation_error(&app, crate::ui::ocr_popup::friendly_ocr_error(error))
+                }
             }
         }
-        Err(error) => show_translation_error(&app, crate::ui::ocr_popup::friendly_ocr_error(error)),
+        CapturePurpose::RecognizeOnly => {
+            let result = recognize_cropped_full(
+                &frame,
+                region,
+                OcrHints::default(),
+                &config.ocr_services,
+            )
+            .await;
+            let _ = state.finish_capture();
+            match result {
+                Ok(payload) => {
+                    let _ = crate::app::window::show_ocr_window(&app);
+                    if let Err(e) = app.emit("ocr:recognize-result", &payload) {
+                        log::warn!("emit ocr:recognize-result 失败: {e}");
+                    }
+                }
+                Err(error) => {
+                    let msg = crate::ui::ocr_popup::friendly_ocr_error(error);
+                    let _ = crate::app::window::show_ocr_window(&app);
+                    if let Err(e) = app.emit("ocr:recognize-failed", msg) {
+                        log::warn!("emit ocr:recognize-failed 失败: {e}");
+                    }
+                }
+            }
+        }
     }
     Ok(())
 }
