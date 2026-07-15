@@ -246,6 +246,7 @@ fn default_shortcuts() -> HashMap<String, String> {
         ("translate-clipboard".to_string(), "Ctrl+Shift+C".to_string()),
         ("word-lookup".to_string(), String::new()),
         ("open-settings".to_string(), "Ctrl+,".to_string()),
+        ("ocr-recognize".to_string(), "Alt+O".to_string()),
     ])
 }
 
@@ -782,6 +783,25 @@ mod tests {
         assert_eq!(
             config.shortcuts.get("open-settings").map(String::as_str), Some("Ctrl+,")
         );
+    }
+
+    #[test]
+    fn default_shortcuts_include_ocr_recognize_alt_o() {
+        let config = AppConfig::default();
+        assert_eq!(
+            config.shortcuts.get("ocr-recognize").map(String::as_str),
+            Some("Alt+O")
+        );
+    }
+
+    #[test]
+    fn normalize_keeps_ocr_recognize_alt_o_while_migrating_screenshot() {
+        let mut config = AppConfig::default();
+        config.shortcuts.insert("translate-screenshot".into(), "Alt+O".into());
+        config.shortcuts.insert("ocr-recognize".into(), "Alt+O".into());
+        let n = config.normalized();
+        assert_eq!(n.shortcuts.get("translate-screenshot").unwrap(), "Alt+S");
+        assert_eq!(n.shortcuts.get("ocr-recognize").unwrap(), "Alt+O");
     }
 
     #[test]
