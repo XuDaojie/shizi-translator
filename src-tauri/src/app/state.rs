@@ -43,6 +43,9 @@ pub struct AppState {
     current_cancel_token: Arc<Mutex<Option<CancellationToken>>>,
     // 最近一次成功开始的翻译输入，供重试复用。begin 成功后存入，retry 时 take。
     last_translation_input: Arc<Mutex<Option<TranslationInput>>>,
+    // 最近一次纯识别成功的源图（进程内单槽），供 OCR 窗「重新识别」。
+    // 仅 recognize_image_full 成功路径由 ui 写入；翻译路径不写；不落盘。
+    last_ocr_image: Arc<Mutex<Option<CapturedImage>>>,
     // 启动时快捷键注册失败的冲突列表。best-effort 注册后，被其他应用占用的
     // 快捷键记录于此，供设置页拉取展示；保存配置全量成功后清空。
     shortcut_conflicts: Arc<Mutex<Vec<ShortcutBindingError>>>,
@@ -78,6 +81,7 @@ impl AppState {
             pending_capture: Arc::new(Mutex::new(None)),
             current_cancel_token: Arc::new(Mutex::new(None)),
             last_translation_input: Arc::new(Mutex::new(None)),
+            last_ocr_image: Arc::new(Mutex::new(None)),
             shortcut_conflicts: Arc::new(Mutex::new(Vec::new())),
             session_source_lang: Arc::new(Mutex::new(default_source_lang)),
             session_target_lang: Arc::new(Mutex::new(default_target_lang)),
@@ -280,6 +284,24 @@ impl AppState {
             .lock()
             .map_err(|_| "重试输入状态锁已损坏".to_string())?;
         Ok(slot.take())
+    }
+
+    pub fn set_last_ocr_image(&self, image: CapturedImage) -> Result<(), String> {
+        let mut slot = self
+            .last_ocr_image
+            .lock()
+            .map_err(|_| "OCR 图像缓存锁已损坏".to_string())?;
+        *slot = Some(image);
+        Ok(())
+    }
+
+    /// 克隆缓存图供重新识别；无缓存返回 `Ok(None)`（非 take）。
+    pub fn clone_last_ocr_image(&self) -> Result<Option<CapturedImage>, String> {
+        let slot = self
+            .last_ocr_image
+            .lock()
+            .map_err(|_| "OCR 图像缓存锁已损坏".to_string())?;
+        Ok(slot.clone())
     }
 
     pub fn clear_current_cancel_token(&self) -> Result<(), String> {
@@ -642,6 +664,51 @@ mod tests {
 
         let taken = state.take_last_translation_input().expect("取出");
         assert_eq!(taken, Some(second));
+    }
+
+    #[test]
+    fn last_ocr_image_none_when_empty() {
+        let state = app_state();
+        let got = state.clone_last_ocr_image().expect("clone");
+        assert!(got.is_none());
+    }
+
+    #[test]
+    fn last_ocr_image_set_and_clone_round_trip() {
+        use crate::core::capture::{CapturedImage, CapturedImageFormat};
+        let state = app_state();
+        let img = CapturedImage {
+            bytes: vec![1, 2, 3, 4],
+            width: 1,
+            height: 1,
+            format: CapturedImageFormat::Bgra8,
+        };
+        state.set_last_ocr_image(img.clone()).expect("set");
+        let a = state.clone_last_ocr_image().expect("clone1");
+        let b = state.clone_last_ocr_image().expect("clone2");
+        assert_eq!(a, Some(img.clone()));
+        assert_eq!(b, Some(img)); // clone 非 take，可多次
+    }
+
+    #[test]
+    fn last_ocr_image_overwrite_keeps_latest() {
+        use crate::core::capture::{CapturedImage, CapturedImageFormat};
+        let state = app_state();
+        let first = CapturedImage {
+            bytes: vec![0; 4],
+            width: 1,
+            height: 1,
+            format: CapturedImageFormat::Bgra8,
+        };
+        let second = CapturedImage {
+            bytes: vec![9; 8],
+            width: 2,
+            height: 1,
+            format: CapturedImageFormat::Rgba8,
+        };
+        state.set_last_ocr_image(first).expect("first");
+        state.set_last_ocr_image(second.clone()).expect("second");
+        assert_eq!(state.clone_last_ocr_image().unwrap(), Some(second));
     }
 
     #[test]
