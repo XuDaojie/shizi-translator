@@ -14,10 +14,12 @@ const meta = ref<OcrRunMeta | null>(null)
 const errorMessage = ref('')
 const engineSummary = ref('')
 const copyHint = ref('')
+const hasLastImage = ref(false)
 
 const isLoading = computed(() => status.value === 'loading')
 const hasPreview = computed(() => Boolean(previewUrl.value))
 const hasText = computed(() => text.value.length > 0)
+const canRerecognize = computed(() => hasLastImage.value && !isLoading.value)
 
 let unlistenResult: (() => void) | null = null
 let unlistenFailed: (() => void) | null = null
@@ -39,6 +41,7 @@ function applySuccess(payload: RecognizeImageResponse): void {
   errorMessage.value = ''
   copyHint.value = ''
   status.value = 'success'
+  hasLastImage.value = true
   logger.info('OCR 识别成功', {
     engine: m.engine,
     model: m.model,
@@ -104,6 +107,23 @@ async function onClipboard(): Promise<void> {
   copyHint.value = ''
   try {
     const result = await apis.invoke<RecognizeImageResponse>('recognize_clipboard_image')
+    applySuccess(result)
+  } catch (e) {
+    applyError(String(e))
+  }
+}
+
+async function onRerecognize(): Promise<void> {
+  const apis = getTauriApis()
+  if (!apis) {
+    applyError('Tauri API 未就绪')
+    return
+  }
+  status.value = 'loading'
+  errorMessage.value = ''
+  copyHint.value = ''
+  try {
+    const result = await apis.invoke<RecognizeImageResponse>('rerecognize_last_image')
     applySuccess(result)
   } catch (e) {
     applyError(String(e))
@@ -185,6 +205,14 @@ onUnmounted(() => {
         </Button>
         <Button variant="outline" size="sm" :disabled="isLoading" @click="onClipboard">
           从剪贴板
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          :disabled="!canRerecognize"
+          @click="onRerecognize"
+        >
+          重新识别
         </Button>
       </div>
       <div class="ml-auto min-w-0 truncate text-xs text-muted-foreground" :title="engineSummary">
