@@ -140,3 +140,20 @@ export async function invokeRefreshInterfaceLanguages(): Promise<InterfaceLangua
 export async function invokeOpenLanguagePackDirectory(): Promise<void> {
   return requireInvoke()<void>('open_language_pack_directory')
 }
+
+export type CheckUpdateStatus = 'up_to_date' | 'update_available' | 'error'
+
+export interface CheckUpdateResult {
+  status: CheckUpdateStatus
+  currentVersion: string
+  latestVersion: string | null
+  releaseName: string | null
+  releaseUrl: string | null
+  isPrerelease: boolean | null
+  message: string | null
+}
+
+/** channel 缺省时后端读 AppConfig.updateChannel */
+export async function invokeCheckForUpdate(channel?: 'stable' | 'beta'): Promise<CheckUpdateResult> {
+  return requireInvoke()<CheckUpdateResult>('check_for_update', channel ? { channel } : {})
+}
