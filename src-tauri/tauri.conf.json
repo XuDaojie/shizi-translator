@@ -1,6 +1,6 @@
 {
   "productName": "Shizi",
-  "version": "0.7.0-beta.3",
+  "version": "0.7.0-beta.4",
   "identifier": "com.shizi.app",
   "build": {
     "frontendDist": "../frontend/dist",
