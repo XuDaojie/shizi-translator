@@ -1,6 +1,6 @@
 [package]
 name = "shizi"
-version = "0.7.0-beta.4"
+version = "0.7.0-beta.5"
 description = "A desktop translation app powered by LLM"
 authors = ["XuDaojie"]
 edition = "2021"
