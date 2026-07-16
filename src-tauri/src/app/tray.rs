@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use tauri::{
     image::Image,
@@ -43,6 +44,80 @@ fn tray_icon_image(app: &tauri::App) -> tauri::Result<Image<'static>> {
         .map(|monitor| monitor.scale_factor())
         .unwrap_or(1.0);
     tray_icon_image_for_scale(scale_factor)
+}
+
+/// 托盘加速键展示模式。Native = 系统 MenuItem accelerator；TextOnly = 文案拼接、不注册 accelerator。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrayAccelMode {
+    Native,
+    TextOnly,
+}
+
+/// 默认 Native。若 Windows 实机发现 accelerator 在菜单未打开时抢键，改为 TextOnly。
+const TRAY_ACCEL_MODE: TrayAccelMode = TrayAccelMode::Native;
+
+pub const TRAY_LABEL_SELECTION: &str = "划词翻译";
+pub const TRAY_LABEL_SCREENSHOT: &str = "截图翻译";
+pub const TRAY_LABEL_OCR: &str = "文字识别";
+pub const TRAY_LABEL_SETTINGS: &str = "偏好设置";
+pub const TRAY_LABEL_QUIT: &str = "退出 shizi";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TrayMenuBinding {
+    pub menu_id: &'static str,
+    pub label: &'static str,
+    pub shortcut_id: Option<&'static str>,
+}
+
+/// 有加速键的菜单项（顺序即菜单上半 + 设置项）。quit 与分隔线由 setup 组装。
+pub fn tray_menu_bindings() -> &'static [TrayMenuBinding] {
+    &[
+        TrayMenuBinding {
+            menu_id: "selection",
+            label: TRAY_LABEL_SELECTION,
+            shortcut_id: Some("translate-selection"),
+        },
+        TrayMenuBinding {
+            menu_id: "screenshot",
+            label: TRAY_LABEL_SCREENSHOT,
+            shortcut_id: Some("translate-screenshot"),
+        },
+        TrayMenuBinding {
+            menu_id: "ocr",
+            label: TRAY_LABEL_OCR,
+            shortcut_id: Some("ocr-recognize"),
+        },
+        TrayMenuBinding {
+            menu_id: "settings",
+            label: TRAY_LABEL_SETTINGS,
+            shortcut_id: Some("open-settings"),
+        },
+    ]
+}
+
+/// 从 shortcuts map 取展示用加速键：缺 key / trim 空 → None；否则 Some(trimmed)。
+pub fn menu_accelerator(shortcuts: &HashMap<String, String>, id: &str) -> Option<String> {
+    shortcuts
+        .get(id)
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+}
+
+#[allow(dead_code)]
+fn menu_item_text(label: &str, accel: Option<&str>) -> String {
+    match (TRAY_ACCEL_MODE, accel) {
+        (TrayAccelMode::TextOnly, Some(keys)) => format!("{label}\t{keys}"),
+        _ => label.to_string(),
+    }
+}
+
+#[allow(dead_code)]
+fn menu_item_accelerator_arg(accel: Option<&str>) -> Option<&str> {
+    match TRAY_ACCEL_MODE {
+        TrayAccelMode::Native => accel,
+        TrayAccelMode::TextOnly => None,
+    }
 }
 
 #[derive(Clone)]
@@ -108,7 +183,8 @@ pub fn setup_tray(app: &tauri::App) -> tauri::Result<TrayI18nHandles> {
 
 #[cfg(test)]
 mod tests {
-    use super::{tray_icon_image_for_scale, tray_icon_size};
+    use super::{menu_accelerator, tray_icon_image_for_scale, tray_icon_size, tray_menu_bindings};
+    use std::collections::HashMap;
 
     #[test]
     fn tray_icon_size_matches_common_windows_scale_factors() {
@@ -138,5 +214,33 @@ mod tests {
                 (expected_size, expected_size)
             );
         }
+    }
+
+    #[test]
+    fn menu_accelerator_trims_and_skips_empty() {
+        let mut map = HashMap::new();
+        map.insert("translate-selection".into(), "  Alt+D  ".into());
+        map.insert("translate-screenshot".into(), "".into());
+        map.insert("ocr-recognize".into(), "   ".into());
+
+        assert_eq!(
+            menu_accelerator(&map, "translate-selection").as_deref(),
+            Some("Alt+D")
+        );
+        assert_eq!(menu_accelerator(&map, "translate-screenshot"), None);
+        assert_eq!(menu_accelerator(&map, "ocr-recognize"), None);
+        assert_eq!(menu_accelerator(&map, "missing-id"), None);
+    }
+
+    #[test]
+    fn tray_menu_bindings_order_and_shortcut_ids() {
+        let rows = tray_menu_bindings();
+        let ids: Vec<&str> = rows.iter().map(|r| r.menu_id).collect();
+        assert_eq!(ids, ["selection", "screenshot", "ocr", "settings"]);
+        assert_eq!(rows[0].shortcut_id, Some("translate-selection"));
+        assert_eq!(rows[1].shortcut_id, Some("translate-screenshot"));
+        assert_eq!(rows[2].shortcut_id, Some("ocr-recognize"));
+        assert_eq!(rows[3].shortcut_id, Some("open-settings"));
+        // quit 不在 bindings 表（无加速键）；由 setup 单独追加
     }
 }
