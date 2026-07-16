@@ -75,6 +75,9 @@ pub fn save_app_config(
             ))
         })?;
 
+    // 语言同步会重置托盘文案；紧接着按最新 shortcuts 热更新加速键（失败仅 warn）
+    crate::app::tray::refresh_tray_menu_accelerators(&app);
+
     app.emit("app-config:changed", &saved_config)
         .map_err(|error| ShortcutBindingError::global(format!("无法广播配置变更: {error}")))?;
 

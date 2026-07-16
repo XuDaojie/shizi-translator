@@ -104,11 +104,16 @@ pub fn menu_accelerator(shortcuts: &HashMap<String, String>, id: &str) -> Option
         .map(|s| s.to_string())
 }
 
-fn menu_item_text(label: &str, accel: Option<&str>) -> String {
-    match (TRAY_ACCEL_MODE, accel) {
+/// 按加速键模式生成菜单项展示文案（可测纯函数）。
+pub fn format_tray_label(mode: TrayAccelMode, label: &str, accel: Option<&str>) -> String {
+    match (mode, accel) {
         (TrayAccelMode::TextOnly, Some(keys)) => format!("{label}\t{keys}"),
         _ => label.to_string(),
     }
+}
+
+fn menu_item_text(label: &str, accel: Option<&str>) -> String {
+    format_tray_label(TRAY_ACCEL_MODE, label, accel)
 }
 
 fn menu_item_accelerator_arg(accel: Option<&str>) -> Option<&str> {
@@ -130,6 +135,60 @@ fn create_bound_menu_item(
     let text = menu_item_text(binding.label, accel_ref);
     let accel_arg = menu_item_accelerator_arg(accel_ref);
     MenuItem::with_id(app, binding.menu_id, text, true, accel_arg)
+}
+
+/// 配置保存后热更新托盘菜单加速键展示；失败只 warn，不传播错误。
+pub fn refresh_tray_menu_accelerators(app: &tauri::AppHandle) {
+    let state = app.state::<AppState>();
+    let shortcuts = match state.config_store.get() {
+        Ok(c) => c.shortcuts,
+        Err(e) => {
+            log::warn!("刷新托盘加速键失败：无法读配置: {e}");
+            return;
+        }
+    };
+    let handles = app.state::<TrayI18nHandles>();
+    if let Err(e) = apply_accelerators_to_handles(&handles, &shortcuts) {
+        log::warn!("刷新托盘加速键失败: {e}");
+    }
+}
+
+fn apply_accelerators_to_handles(
+    handles: &TrayI18nHandles,
+    shortcuts: &HashMap<String, String>,
+) -> Result<(), String> {
+    let pairs: [(&MenuItem<tauri::Wry>, &str, &str); 4] = [
+        (&handles.selection, TRAY_LABEL_SELECTION, "translate-selection"),
+        (
+            &handles.screenshot,
+            TRAY_LABEL_SCREENSHOT,
+            "translate-screenshot",
+        ),
+        (&handles.ocr, TRAY_LABEL_OCR, "ocr-recognize"),
+        (&handles.settings, TRAY_LABEL_SETTINGS, "open-settings"),
+    ];
+    for (item, label, shortcut_id) in pairs {
+        let accel = menu_accelerator(shortcuts, shortcut_id);
+        let text = format_tray_label(TRAY_ACCEL_MODE, label, accel.as_deref());
+        item.set_text(text)
+            .map_err(|e| format!("set_text {shortcut_id}: {e}"))?;
+        let native = match TRAY_ACCEL_MODE {
+            TrayAccelMode::Native => accel.as_deref(),
+            TrayAccelMode::TextOnly => None,
+        };
+        // set_accelerator 内部 parse().ok()；非法 keys 静默清除。不要直接依赖 muda。
+        item.set_accelerator(native)
+            .map_err(|e| format!("set_accelerator {shortcut_id}: {e}"))?;
+    }
+    handles
+        .quit
+        .set_text(TRAY_LABEL_QUIT)
+        .map_err(|e| format!("set_text quit: {e}"))?;
+    handles
+        .quit
+        .set_accelerator(None::<&str>)
+        .map_err(|e| format!("set_accelerator quit: {e}"))?;
+    Ok(())
 }
 
 #[derive(Clone)]
@@ -224,8 +283,27 @@ pub fn setup_tray(app: &tauri::App) -> tauri::Result<TrayI18nHandles> {
 
 #[cfg(test)]
 mod tests {
-    use super::{menu_accelerator, tray_icon_image_for_scale, tray_icon_size, tray_menu_bindings};
+    use super::{
+        format_tray_label, menu_accelerator, tray_icon_image_for_scale, tray_icon_size,
+        tray_menu_bindings, TrayAccelMode,
+    };
     use std::collections::HashMap;
+
+    #[test]
+    fn menu_item_text_respects_accel_mode_shape() {
+        assert_eq!(
+            format_tray_label(TrayAccelMode::Native, "划词翻译", Some("Alt+D")),
+            "划词翻译"
+        );
+        assert_eq!(
+            format_tray_label(TrayAccelMode::TextOnly, "划词翻译", Some("Alt+D")),
+            "划词翻译\tAlt+D"
+        );
+        assert_eq!(
+            format_tray_label(TrayAccelMode::TextOnly, "划词翻译", None),
+            "划词翻译"
+        );
+    }
 
     #[test]
     fn tray_icon_size_matches_common_windows_scale_factors() {
