@@ -2,7 +2,7 @@
 
 > 本文件为**模板参考**，供填充后打印输出。实际交接词只打印、不落盘、不进 git——新对话恢复上下文唯一依赖是已提交的 spec / plan 文档。
 
-阶段化开发详见 `CLAUDE.md` / `AGENTS.md` 协作规范第 7 条。两个交接点对应两套模板，执行 `brainstorming` / `writing-plans` 收尾时按字段填充后，在回复末尾以代码块输出，然后停下、不得跨阶段继续。
+**适用范围：仅 L 档三阶段交接。** 规模判定见 `CLAUDE.md` / `AGENTS.md`。S/M 即使做了 brainstorming 或写了完整 spec，也**不使用**本模板（本对话内确认后实现即可）。L 档在 `brainstorming` / `writing-plans` 收尾按字段填充后，于回复末尾以代码块输出，然后停下、不得跨阶段继续。
 
 ## spec → plan（需求规划 → 实现计划）
 
