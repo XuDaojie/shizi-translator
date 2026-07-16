@@ -62,6 +62,13 @@ pub fn ensure_popup_window(_app: &tauri::AppHandle, _config: &AppConfig) -> Resu
     Ok(())
 }
 
+/// 隐藏翻译弹窗。截图前调用，避免把弹窗打进 DXGI 帧；幂等。
+pub fn hide_popup(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window(POPUP_LABEL) {
+        let _ = window.hide();
+    }
+}
+
 /// 唤起弹窗：复用 main 翻译窗口并定位。
 /// 光标上下文不可用时退化为不重新定位（保留上一次位置或默认）。
 pub fn show_popup(app: &tauri::AppHandle, _config: &AppConfig) -> Result<(), String> {

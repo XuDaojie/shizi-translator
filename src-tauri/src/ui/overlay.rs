@@ -109,15 +109,19 @@ pub async fn cancel_capture(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
+    // 在 finish 前读 purpose：取消纯识别框选时需恢复 OCR 窗（截图前被 hide）。
     let purpose = state.capture_purpose();
     let _ = state.take_pending_capture();
     // 释放 capture 锁。幂等：若 submit 已 take 走帧并释放过，此处再清无害。
     // 若 cancel 自己 take 走帧，则此处负责释放 start_translation_from_ocr 占的锁。
     let _ = state.finish_capture();
     hide_overlay(&app);
-    // 仅 RecognizeOnly 清会话槽，避免泄漏到下次；Translate / Alt+S 路径不碰。
+    // 仅 RecognizeOnly 清会话槽并恢复 OCR 窗；Translate / Alt+S 路径不碰。
     if purpose == CapturePurpose::RecognizeOnly {
         let _ = state.clear_ocr_session_service_id();
+        if let Err(e) = crate::app::window::show_ocr_window(&app) {
+            log::warn!("取消截图后恢复文字识别窗口失败: {e}");
+        }
     }
     Ok(())
 }

@@ -16,7 +16,31 @@ use windows::Win32::Graphics::Dxgi::{
     IDXGIOutputDuplication, DXGI_OUTDUPL_FRAME_INFO,
 };
 use windows::Win32::Graphics::Gdi::{MonitorFromPoint, MONITOR_DEFAULTTOPRIMARY};
-use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
+use windows::Win32::UI::WindowsAndMessaging::{GetCursorPos, ShowCursor};
+
+/// 抓帧期间隐藏系统光标，避免 GPU 偶发把光标合成进 DXGI 桌面帧（导致 OCR 把鼠标形状当文字）。
+/// `ShowCursor` 维护显示计数：FALSE 递减、TRUE 递增；光标仅在计数 ≥ 0 时显示。
+/// Drop 时恢复，保证 panic / 提前返回也不会把系统光标弄丢。
+struct CursorHideGuard;
+
+impl CursorHideGuard {
+    fn hide() -> Self {
+        // 持续递减直到计数 < 0（光标不可见）。
+        unsafe {
+            while ShowCursor(false) >= 0 {}
+        }
+        Self
+    }
+}
+
+impl Drop for CursorHideGuard {
+    fn drop(&mut self) {
+        // 持续递增直到计数 ≥ 0（恢复可见）。
+        unsafe {
+            while ShowCursor(true) < 0 {}
+        }
+    }
+}
 
 pub struct WindowsScreenCapture;
 
@@ -122,12 +146,19 @@ impl WindowsScreenCapture {
     }
 
     fn capture_monitor_blocking() -> Result<CapturedImage, CaptureError> {
+        // 在整段 DXGI 抓帧期间隐藏系统光标；guard 出作用域后自动恢复。
+        let _cursor_guard = CursorHideGuard::hide();
+        // 光标隐藏后稍等一帧合成，降低「残影」仍被写进桌面图像的概率。
+        std::thread::sleep(Duration::from_millis(30));
+
         let (device, context) = Self::create_d3d11_device()?;
         let (dupl, _width, _height) = Self::duplicate_cursor_output(&device)?;
 
         // AcquireNextFrame 轮询：必须等到 AccumulatedFrames >= 1 才是有效帧。
         // Duplication 对象刚创建时首次 acquire 可能返回 Ok 但 AccumulatedFrames == 0，
         // 此时 texture 无有效内容（全黑），MSDN 明确不应处理；须 ReleaseFrame 后继续等。
+        // 注：不能靠 PointerPosition.Visible 过滤「光标画进帧」——ShowCursor(FALSE) 后
+        // Visible 同样为 false，会误丢干净帧；光标问题靠上方 CursorHideGuard 处理。
         let mut acquired: Option<ID3D11Texture2D> = None;
         for _ in 0..40 {
             let mut frame_info = DXGI_OUTDUPL_FRAME_INFO::default();

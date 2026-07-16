@@ -94,6 +94,13 @@ pub fn show_ocr_window(app: &tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// 隐藏文字识别窗口。纯识别截图前调用，避免窗口内容进帧；幂等。
+pub fn hide_ocr_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window(OCR_LABEL) {
+        let _ = window.hide();
+    }
+}
+
 pub fn setup_close_to_hide(app: &tauri::App) {
     if let Some(window) = app.get_webview_window("main") {
         close_to_hide(&window);

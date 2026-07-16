@@ -25,6 +25,11 @@ pub async fn start_translation_from_ocr(app: tauri::AppHandle, state: AppState) 
     // Alt+S / 弹窗截图翻译入口：提交后走翻译链路，禁止纯识别分叉。
     let _ = state.set_capture_purpose(CapturePurpose::Translate);
 
+    // 截图前隐藏翻译弹窗，避免弹窗内容进帧（快捷键与按钮入口共用此路径）。
+    popup_window::hide_popup(&app);
+    // 给 DWM 提交 hide 的时间，降低把弹窗残影打进下一帧的概率。
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
     // 先抓整屏帧（overlay 显示前拍完，避免把 overlay 截进图里）
     let frame = match capture_screen().await {
         Ok(frame) => frame,
@@ -66,16 +71,13 @@ pub async fn start_translation_from_ocr(app: tauri::AppHandle, state: AppState) 
     }
 }
 
-/// 翻译弹窗「截图翻译」按钮入口：先隐藏弹窗避免被抓进截图帧，再复用截图翻译链路。
+/// 翻译弹窗「截图翻译」按钮入口：复用 `start_translation_from_ocr`（内部会先 hide 弹窗再抓帧）。
 /// 框选完成后 submit_capture_region 内部 show_translation_popup 会重新 show 并定位弹窗。
 #[tauri::command]
 pub async fn trigger_ocr_translation(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
-    if let Some(popup) = app.get_webview_window(popup_window::POPUP_LABEL) {
-        let _ = popup.hide();
-    }
     start_translation_from_ocr(app, state.inner().clone()).await;
     Ok(())
 }

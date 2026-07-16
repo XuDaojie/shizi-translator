@@ -352,11 +352,10 @@ pub fn handle_global_shortcut(
             });
         }
         Some(ShortcutAction::OcrRecognize) => {
+            // 不先 show OCR 窗：start_ocr_capture_flow 会 hide 再抓帧，
+            // 框选完成 / 失败后再由 submit / emit 路径 show。
             let app_handle = app.clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(e) = crate::app::window::show_ocr_window(&app_handle) {
-                    log::warn!("打开文字识别窗口失败: {e}");
-                }
                 let state = app_handle.state::<AppState>().inner().clone();
                 // 快捷键无前端 service_id：显式清槽，避免残留上次 OCR 窗截图的临时 id。
                 let _ = state.set_ocr_session_service_id(None);
