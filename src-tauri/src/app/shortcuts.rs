@@ -344,13 +344,7 @@ pub fn handle_global_shortcut(
     match classify_shortcut(shortcut, &config) {
         Some(ShortcutAction::SelectionTranslate) => handle_selection_translate(app),
         Some(ShortcutAction::ClipboardTranslate) => handle_clipboard_translate(app),
-        Some(ShortcutAction::OcrTranslate) => {
-            let app_handle = app.clone();
-            let state = state.inner().clone();
-            tauri::async_runtime::spawn(async move {
-                start_translation_from_ocr(app_handle, state).await;
-            });
-        }
+        Some(ShortcutAction::OcrTranslate) => trigger_ocr_translate(app),
         Some(ShortcutAction::OcrRecognize) => {
             // 不先 show OCR 窗：start_ocr_capture_flow 会 hide 再抓帧，
             // 框选完成 / 失败后再由 submit / emit 路径 show。
@@ -370,6 +364,15 @@ pub fn handle_global_shortcut(
         }
         None => {}
     }
+}
+
+/// 截图 OCR 后进入翻译链路（全局快捷键 Alt+S 与托盘「截图翻译」共用）。
+pub fn trigger_ocr_translate(app: &tauri::AppHandle) {
+    let state = app.state::<AppState>().inner().clone();
+    let app_handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        start_translation_from_ocr(app_handle, state).await;
+    });
 }
 
 fn handle_selection_translate(app: &tauri::AppHandle) {

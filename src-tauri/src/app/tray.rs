@@ -159,6 +159,9 @@ pub fn setup_tray(app: &tauri::App) -> tauri::Result<TrayI18nHandles> {
                     log::warn!("打开文字识别窗口失败: {e}");
                 }
             }
+            "screenshot" => {
+                crate::app::shortcuts::trigger_ocr_translate(app);
+            }
             "settings" => {
                 let _ = show_settings_window(app);
             }
