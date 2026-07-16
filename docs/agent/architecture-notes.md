@@ -19,9 +19,10 @@
 
 - 事实来源：`config.json` 的 `services[]`（`protocol` / `endpoint` / `model` / `apiKey` / `enabled`）。旧单 provider 路径已废弃。
 - 协议 id：`openai_chat` / `claude_messages` / `mock` / `microsoft_edge`。映射在 `core/translation/protocol.rs` 的 `provider_for_service`；未知协议报错。`microsoft_edge` 经 `BatchTranslateProvider` + `StreamingAdapter` 适配流式。
+- `AppConfig` 另含 `updateChannel`（`stable`/`beta`）与 `autoCheckUpdate`（默认 `true`）；前后端经 `projectToAppConfig` / `syncFromBackend` 同步。
 - 设置页挂载 `settings.syncFromBackend()`：后端 `services` 空 → 前端 `projectToAppConfig` 覆盖写回；非空 → `mergeBackendIntoServices` 按 id 合并（后端覆盖 enabled/apiKey/endpoint/model/protocol；前端保留 prompts/keyStatus/chainOfThought/pulledModels/note）。
 - `save_app_config` 后广播 `app-config:changed`；弹窗同步卡片（翻译中不新增未参与批次的服务卡）。
-- Dev-only：`ServiceMeta.protocols.length === 0` 与 `<DevOnly>`（`import.meta.env.DEV`）在 release 隐藏、dev 可见。
+- Dev-only：`ServiceMeta.protocols.length === 0` 与 `<DevOnly>`（`import.meta.env.DEV`）在 release 隐藏、dev 可见。自动检查更新已落地，**不再**列为 wip / DevOnly（主题 / 思维链 / 反思等仍可能 DevOnly）。
 
 ## 国际化
 
@@ -50,6 +51,7 @@
 - 翻译/配置：`start_translation`、`take_pending_source_text`、`get_app_config`、`save_app_config`、`get_shortcut_conflicts`
 - Overlay：`get_capture_frame_meta` / `get_capture_frame_bytes` / `submit_capture_region` / `cancel_capture`
 - 日志：`write_frontend_log` / `export_logs`；Edge：`save_edge_translate_env`
+- 更新：`check_for_update`（可选 `channel`；缺省读 `AppConfig.updateChannel`）；启动 `spawn_startup_update_check`（`autoCheckUpdate` 时系统 dialog + `open_url`）
 - 事件：`translation:event` → `Started` / `Delta` / `Finished` / `Failed`
 
 ## 历史与日志
@@ -65,6 +67,7 @@
 | 配置 | `src-tauri/src/core/config/` |
 | 翻译 / 协议 | `src-tauri/src/core/translation/` |
 | LLM / MT | `src-tauri/src/core/llm/`、`core/mt/` |
+| 检查更新 | `src-tauri/src/core/update/`、`ui/update.rs` |
 | 截图 / OCR | `src-tauri/src/core/capture/`、`core/ocr/`、`ocr_translation.rs` |
 | UI commands | `src-tauri/src/ui/` |
 | 翻译弹窗前端 | `frontend/src/popup/` |

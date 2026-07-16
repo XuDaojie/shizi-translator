@@ -12,7 +12,7 @@ Windows 端大模型翻译软件（Tauri 2 + Vue/Vite），目标体验接近 ma
 ```
 frontend/          Vite：settings.html（设置）、translate.html（弹窗 Vue）、public/overlay.html（OCR 框选，永久静态）
   src/popup/       翻译弹窗组件与 composable；历史面板复用其卡片组件
-src-tauri/         Rust：lib.rs 装配；app/ 托盘快捷键窗口；core/{config,history,llm,mt,translation,selection,capture,ocr}；ui/ commands
+src-tauri/         Rust：lib.rs 装配；app/ 托盘快捷键窗口；core/{config,history,llm,mt,translation,selection,capture,ocr,update}；ui/ commands
 capabilities/      Tauri 权限（改快捷键/窗口 API 须同步）
 plugins.md         已装插件/技能清单（变更须同步）
 ```
@@ -32,11 +32,12 @@ plugins.md         已装插件/技能清单（变更须同步）
 
 - **分层**：业务在 Rust 核心；UI 仅弹窗 / 设置 / overlay，勿把核心逻辑写进前端、勿让 UI 模块互耦。
 - **托盘驻留**：关窗 = hide；托盘退出才进程结束。`main` 默认不可见，冷启动由前端 show。
-- **配置事实来源**：`config.json` 的 `services[]`；协议 `openai_chat` / `claude_messages` / `mock` / `microsoft_edge`（`provider_for_service`）。
+- **配置事实来源**：`config.json` 的 `services[]`；协议 `openai_chat` / `claude_messages` / `mock` / `microsoft_edge`（`provider_for_service`）。`AppConfig` 另含 `updateChannel`（`stable`/`beta`）与 `autoCheckUpdate`（默认 `true`）。
 - **配置同步**：设置页 `syncFromBackend`；`save_app_config` → `app-config:changed` 刷新弹窗卡片。
 - **批次翻译**：启用服务保序并发；事件带 `serviceInstanceId`；单服务失败不影响其他。
 - **快捷键**：`Alt+D` 划词、`Alt+S` 截图译、`Alt+O` 仅识别；新快捷键同步 capabilities。
 - **历史 / 日志**：SQLite 历史与分文件日志；失败 best-effort，不挡翻译主路径。
+- **检查更新**：command `check_for_update`（GitHub Releases + 通道过滤 + semver）；设置页手动检查 → toast/Dialog → `open_url` 浏览器下载；启动时若 `autoCheckUpdate` 则后端 best-effort 检查，有更新才弹系统 dialog（「前往下载」/「稍后」），确认后后端 `open_url`。不做应用内安装、无 updater 插件。
 
 ## 开发说明
 

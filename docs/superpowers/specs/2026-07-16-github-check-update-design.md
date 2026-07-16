@@ -1,13 +1,14 @@
 # GitHub 检查更新（跳转下载）设计规格
 
 - 日期：2026-07-16
-- 状态：已批准（待实现）
+- 状态：已实现
 - 关联：
-  - 设置页已有 UI 占位：`GeneralPanel`「更新」组（`updateChannel` / `autoCheckUpdate`，后者现为 `DevOnly` + `status="wip"`）
+  - 设置页「更新」组：`GeneralPanel`（`updateChannel` / `autoCheckUpdate` 已接后端；自动检查已非 DevOnly/wip）
   - 现有 `open_url` command（`src-tauri/src/ui/config.rs`）
   - GitHub 仓库与发版：`XuDaojie/shizi-translator`，`.github/workflows/release.yml` 已发布 NSIS 到 Releases
-  - 前端本地类型：`frontend/src/settings/types.ts`（`UpdateChannel`、`GeneralSettings`）
-  - 后端配置：`src-tauri/src/core/config/types.rs`（`AppConfig`，**当前无**更新相关字段）
+  - 前端类型：`frontend/src/types/config.ts` / `settings/types.ts`（`UpdateChannel`、`AppConfig` 字段）
+  - 后端配置：`src-tauri/src/core/config/types.rs`（`AppConfig` 含 `update_channel` / `auto_check_update`）
+  - 更新核心：`src-tauri/src/core/update/`；command：`src-tauri/src/ui/update.rs`（`check_for_update` + 启动检查）
 
 ## 1. 目的
 
