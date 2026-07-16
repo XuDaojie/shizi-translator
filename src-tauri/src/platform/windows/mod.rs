@@ -1,6 +1,9 @@
 pub mod capture;
 pub mod ocr;
 pub mod cursor;
+pub mod pdf;
+
+pub use pdf::{render_pdf_first_page, PdfFirstPage};
 
 use std::time::Instant;
 

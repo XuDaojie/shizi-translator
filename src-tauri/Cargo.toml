@@ -39,6 +39,7 @@ base64 = "0.22"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.58", features = [
+  "Data_Pdf",
   "Foundation",
   "Foundation_Collections",
   "Globalization",

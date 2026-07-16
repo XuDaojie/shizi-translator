@@ -5,6 +5,20 @@ use crate::core::{
     translation::TranslationInput,
 };
 
+/// PDF 首页渲染结果（非 Windows 平台占位类型，与 windows/pdf 对齐）。
+#[derive(Debug, Clone)]
+pub struct PdfFirstPage {
+    pub image: CapturedImage,
+    pub page_count: u32,
+}
+
+/// 非 Windows 平台暂不支持 PDF 识别。
+pub async fn render_pdf_first_page(_bytes: &[u8]) -> Result<PdfFirstPage, OcrError> {
+    Err(OcrError::PdfOpenFailed(
+        "当前平台暂不支持 PDF 识别".into(),
+    ))
+}
+
 pub async fn capture_screen() -> Result<CapturedImage, CaptureError> {
     Err(CaptureError::UnsupportedPlatform)
 }
