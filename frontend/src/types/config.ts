@@ -48,5 +48,7 @@ export interface AppConfig {
   overlayPrecreate: boolean;
   collectUsage: boolean;
   logLevel: LogLevel;
+  updateChannel: 'stable' | 'beta';
+  autoCheckUpdate: boolean;
   shortcuts: Record<string, string>;
 }

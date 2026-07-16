@@ -327,7 +327,8 @@ const makeAppConfig = (services: ServiceInstanceConfig[], over: Partial<AppConfi
   autoCopy: true, restoreClipboard: true, historyLimit: 500, services,
   ocrServices: [],
   popupPrecreate: true, overlayPrecreate: true, collectUsage: true,
-  logLevel: 'info', shortcuts: {}, ...over,
+  logLevel: 'info', updateChannel: 'stable', autoCheckUpdate: true,
+  shortcuts: {}, ...over,
 })
 
 describe('mergeBackendIntoServices', () => {
@@ -615,14 +616,14 @@ describe('syncFromBackend', () => {
     backend.resolve({
       interfaceLanguage: 'auto', targetLang: 'zh-CN', defaultSourceLang: 'auto',
       autoCopy: true, restoreClipboard: true, historyLimit: 500, services: [], ocrServices: [],
-      popupPrecreate: true, overlayPrecreate: true, collectUsage: true, logLevel: 'info', shortcuts: {},
+      popupPrecreate: true, overlayPrecreate: true, collectUsage: true, logLevel: 'info', updateChannel: 'stable', autoCheckUpdate: true, shortcuts: {},
     })
     await Promise.all([first, second])
 
     vi.mocked(invokeGetAppConfig).mockResolvedValueOnce({
       interfaceLanguage: 'auto', targetLang: 'zh-CN', defaultSourceLang: 'auto',
       autoCopy: true, restoreClipboard: true, historyLimit: 500, services: [], ocrServices: [],
-      popupPrecreate: true, overlayPrecreate: true, collectUsage: true, logLevel: 'info', shortcuts: {},
+      popupPrecreate: true, overlayPrecreate: true, collectUsage: true, logLevel: 'info', updateChannel: 'stable', autoCheckUpdate: true, shortcuts: {},
     })
     vi.mocked(invokeGetInterfaceLanguageSnapshot).mockResolvedValueOnce(languageSnapshot())
     await settings.syncFromBackend()
@@ -652,6 +653,8 @@ describe('syncFromBackend', () => {
       overlayPrecreate: true,
       collectUsage: true,
       logLevel: 'info',
+      updateChannel: 'stable',
+      autoCheckUpdate: true,
       shortcuts: {},
     });
 
@@ -672,7 +675,7 @@ describe('syncFromBackend', () => {
     vi.mocked(invokeGetAppConfig).mockResolvedValue({
       interfaceLanguage: 'zh-CN', targetLang: 'zh-CN', defaultSourceLang: 'auto',
       autoCopy: true, restoreClipboard: true, historyLimit: 500, services: [], ocrServices: [],
-      popupPrecreate: true, overlayPrecreate: true, collectUsage: true, logLevel: 'info', shortcuts: {},
+      popupPrecreate: true, overlayPrecreate: true, collectUsage: true, logLevel: 'info', updateChannel: 'stable', autoCheckUpdate: true, shortcuts: {},
     })
     vi.mocked(invokeGetInterfaceLanguageSnapshot).mockResolvedValue(languageSnapshot({
       configuredLocale: 'zh-CN', locale: 'zh-CN',
@@ -703,7 +706,7 @@ describe('syncFromBackend', () => {
     vi.mocked(invokeGetAppConfig).mockResolvedValue({
       interfaceLanguage: 'auto', targetLang: 'zh-CN', defaultSourceLang: 'auto',
       autoCopy: true, restoreClipboard: true, historyLimit: 500, services: [], ocrServices: [],
-      popupPrecreate: true, overlayPrecreate: true, collectUsage: true, logLevel: 'info', shortcuts: {},
+      popupPrecreate: true, overlayPrecreate: true, collectUsage: true, logLevel: 'info', updateChannel: 'stable', autoCheckUpdate: true, shortcuts: {},
     })
     vi.mocked(invokeSaveAppConfig).mockRejectedValueOnce(new Error('write failed'))
 
@@ -721,7 +724,7 @@ describe('syncFromBackend', () => {
     vi.mocked(invokeGetAppConfig).mockResolvedValue({
       interfaceLanguage: 'auto', targetLang: 'zh-CN', defaultSourceLang: 'auto',
       autoCopy: true, restoreClipboard: true, historyLimit: 500, services: [], ocrServices: [],
-      popupPrecreate: true, overlayPrecreate: true, collectUsage: true, logLevel: 'info', shortcuts: {},
+      popupPrecreate: true, overlayPrecreate: true, collectUsage: true, logLevel: 'info', updateChannel: 'stable', autoCheckUpdate: true, shortcuts: {},
     })
     vi.mocked(invokeGetInterfaceLanguageSnapshot).mockResolvedValue(languageSnapshot())
     const pendingSave = deferred<Awaited<ReturnType<typeof invokeSaveAppConfig>>>()
@@ -807,6 +810,8 @@ describe('syncFromBackend', () => {
       overlayPrecreate: true,
       collectUsage: true,
       logLevel: 'info',
+      updateChannel: 'stable',
+      autoCheckUpdate: true,
       shortcuts: {},
     });
 
@@ -840,7 +845,7 @@ describe('syncFromBackend', () => {
     vi.mocked(invokeGetAppConfig).mockResolvedValue({
       interfaceLanguage: 'zh-CN', targetLang: 'zh-CN', services: [makeBackend({ id: localId })], ocrServices: [],
       defaultSourceLang: 'auto', autoCopy: true, restoreClipboard: true, historyLimit: 500,
-      popupPrecreate: true, overlayPrecreate: true, collectUsage: true, logLevel: 'info', shortcuts: {},
+      popupPrecreate: true, overlayPrecreate: true, collectUsage: true, logLevel: 'info', updateChannel: 'stable', autoCheckUpdate: true, shortcuts: {},
     });
 
     await settings.syncFromBackend();
@@ -878,6 +883,8 @@ describe('syncFromBackend', () => {
       overlayPrecreate: true,
       collectUsage: true,
       logLevel: 'info',
+      updateChannel: 'stable',
+      autoCheckUpdate: true,
       shortcuts: {
         'translate-selection': 'Ctrl+Alt+D',
         'translate-screenshot': '',
@@ -923,6 +930,8 @@ describe('syncFromBackend', () => {
       overlayPrecreate: true,
       collectUsage: true,
       logLevel: 'info',
+      updateChannel: 'stable',
+      autoCheckUpdate: true,
       shortcuts: { 'translate-selection': 'Alt+D' },
     });
     vi.mocked(invokeGetShortcutConflicts).mockResolvedValue([
@@ -969,6 +978,8 @@ describe('syncFromBackend', () => {
         overlayPrecreate: true,
         collectUsage: true,
         logLevel: 'info',
+        updateChannel: 'stable',
+        autoCheckUpdate: true,
         shortcuts: {},
       });
       await settings.syncFromBackend();
@@ -1018,6 +1029,8 @@ describe('syncFromBackend', () => {
       overlayPrecreate: true,
       collectUsage: true,
       logLevel: 'info',
+      updateChannel: 'stable',
+      autoCheckUpdate: true,
       shortcuts: {},
     });
 
@@ -1058,6 +1071,8 @@ describe('syncFromBackend', () => {
         overlayPrecreate: true,
         collectUsage: true,
         logLevel: 'info',
+        updateChannel: 'stable',
+        autoCheckUpdate: true,
         shortcuts: {},
       });
       await settings.syncFromBackend();
@@ -1141,6 +1156,8 @@ describe('defaultTargetLang', () => {
       overlayPrecreate: true,
       collectUsage: true,
       logLevel: 'info',
+      updateChannel: 'stable',
+      autoCheckUpdate: true,
       shortcuts: {},
     });
     const settings = useSettings();

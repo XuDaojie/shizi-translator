@@ -744,6 +744,10 @@ export const useSettings = () => ({
         backend.ocrServices ?? [],
       )
       state.general.language = backend.interfaceLanguage
+      state.general.updateChannel =
+        backend.updateChannel === 'beta' ? 'beta' : 'stable'
+      state.general.autoCheckUpdate =
+        backend.autoCheckUpdate ?? state.general.autoCheckUpdate
       applyInterfaceLanguageSnapshot(languageSnapshot)
       state.translation.defaultSourceLang =
         backend.defaultSourceLang ?? state.translation.defaultSourceLang

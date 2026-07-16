@@ -209,6 +209,15 @@ describe('projectToAppConfig', () => {
     expect(config.ocrServices[1]).not.toHaveProperty('keyStatus')
     expect(config.ocrServices[1]).not.toHaveProperty('pulledModels')
   })
+
+  it('投影 updateChannel 与 autoCheckUpdate', () => {
+    const state = makeState([]);
+    state.general.updateChannel = 'beta';
+    state.general.autoCheckUpdate = false;
+    const config = projectToAppConfig(state);
+    expect(config.updateChannel).toBe('beta');
+    expect(config.autoCheckUpdate).toBe(false);
+  });
 });
 
 describe('validateConfig', () => {
@@ -225,6 +234,8 @@ describe('validateConfig', () => {
     overlayPrecreate: true,
     collectUsage: true,
     logLevel: 'info',
+    updateChannel: 'stable',
+    autoCheckUpdate: true,
     shortcuts: {},
   };
 
