@@ -320,8 +320,21 @@ export const DEFAULT_PROMPTS = {
     '请审视上面的翻译,从以下角度检查并改进:\n1. 是否有不符合目标语言习惯的表达?\n2. 专业术语是否一致?\n3. 是否保持了原文的语气和风格?\n4. 是否有遗漏或错译?\n\n请直接输出改进后的最终翻译,不要附加说明。',
 } as const
 
-/** 视觉 OCR 默认识别提示词；实例 ocrPrompt 为空时使用。 */
-export const DEFAULT_OCR_PROMPT = '提取图中全部文字，保持阅读顺序'
+/** 通用视觉模型默认 OCR 提示；实例 ocrPrompt 为空且非 DeepSeek-OCR 时使用。 */
+export const DEFAULT_OCR_PROMPT =
+  '请识别图中全部文字，按阅读顺序完整输出。只输出文字，不要解释。'
+
+/** DeepSeek-OCR 官方推荐默认任务句；实例 ocrPrompt 为空且模型为 DeepSeek-OCR 时使用。 */
+export const DEFAULT_DEEPSEEK_OCR_PROMPT = 'Free OCR.'
+
+/** 按模型选择空配置时的默认 OCR 提示（与后端 `effective_ocr_prompt` 对齐）。 */
+export function defaultOcrPromptForModel(model: string): string {
+  const m = model.toLowerCase()
+  if (m.includes('deepseek-ocr') || m.includes('deepseek_ocr')) {
+    return DEFAULT_DEEPSEEK_OCR_PROMPT
+  }
+  return DEFAULT_OCR_PROMPT
+}
 
 /**
  * 内置 OCR 服务元数据。

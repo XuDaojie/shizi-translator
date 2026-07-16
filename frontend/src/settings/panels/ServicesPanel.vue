@@ -35,8 +35,8 @@ import {
 } from '../components'
 import type { AppSettings, ServiceId, ServiceInstance, OcrServiceId, OcrServiceInstance } from '../types'
 import {
-  DEFAULT_OCR_PROMPT,
   DEFAULT_PROMPTS,
+  defaultOcrPromptForModel,
   OCR_PICKER_SERVICES,
   ocrServiceById,
   ocrTypeToTranslationServiceId,
@@ -130,6 +130,11 @@ const activeOcrInstance = computed(() =>
 )
 const activeOcrService = computed(() =>
   activeOcrInstance.value ? ocrServiceById(activeOcrInstance.value.type) : undefined,
+)
+
+/** 空 ocrPrompt 时的展示默认值：DeepSeek-OCR → Free OCR.，其它 → 通用提示 */
+const ocrPromptDefault = computed(() =>
+  defaultOcrPromptForModel(activeOcrInstance.value?.model ?? ''),
 )
 
 watch(
@@ -1138,7 +1143,7 @@ const onDragEnd = (): void => {
                   {{
                     isPromptDefault({
                       modelValue: activeOcrInstance.ocrPrompt,
-                      defaultValue: DEFAULT_OCR_PROMPT,
+                      defaultValue: ocrPromptDefault,
                     })
                       ? t(msgKey('settings.prompt.summaryDefault'))
                       : t(msgKey('settings.prompt.summaryCustom'))
@@ -1151,7 +1156,7 @@ const onDragEnd = (): void => {
                 :title="t('settings.field.ocrPrompt')"
                 :description="t('settings.description.ocrPrompt')"
                 :model-value="activeOcrInstance.ocrPrompt"
-                :default-value="DEFAULT_OCR_PROMPT"
+                :default-value="ocrPromptDefault"
                 @update:model-value="(v) => (activeOcrInstance!.ocrPrompt = v)"
               />
             </div>

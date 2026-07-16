@@ -8,11 +8,20 @@ use super::image_encode::{encode_captured_image_png_info, png_to_data_url};
 use super::resolve::VisionOcrConfig;
 use super::{OcrEngine, OcrError, OcrHints, OcrResult};
 
-/// 与 frontend/src/settings/tokens.ts DEFAULT_OCR_PROMPT 对齐
-pub const DEFAULT_OCR_PROMPT: &str = "提取图中全部文字，保持阅读顺序";
+/// 通用视觉模型默认 OCR 提示（与 frontend `DEFAULT_OCR_PROMPT` 对齐）。
+pub const DEFAULT_OCR_PROMPT: &str =
+    "请识别图中全部文字，按阅读顺序完整输出。只输出文字，不要解释。";
+/// DeepSeek-OCR 官方推荐默认任务句（与 frontend `DEFAULT_DEEPSEEK_OCR_PROMPT` 对齐）。
+pub const DEFAULT_DEEPSEEK_OCR_PROMPT: &str = "Free OCR.";
 pub const VISION_OCR_TIMEOUT_SECS: u64 = 60;
 pub const VISION_OCR_MAX_TOKENS: u32 = 2048;
-const USER_HINT: &str = "请识别图中全部文字。";
+/// OCR 固定 temperature=0，降低采样随机导致的结果漂移与胡话。
+pub const VISION_OCR_TEMPERATURE: f32 = 0.0;
+
+/// **临时**开关：`true` 时 debug 输出完整请求体/响应体（含 base64 图）。
+/// 仅用于排查 OCR 问题；修完后务必改回 `false`，恢复 `sanitize_request_body_for_log`。
+/// Authorization 始终走 `format_auth_header_for_log`，不写 Key 明文。
+const VISION_OCR_TEMP_LOG_FULL_BODY: bool = true;
 
 pub struct VisionOcrEngine {
     config: VisionOcrConfig,
@@ -35,32 +44,48 @@ impl VisionOcrEngine {
         )
     }
 
-    /// 纯函数：组 OpenAI Chat Completions 多模态非流式请求体
-    pub(crate) fn build_request_body(model: &str, system: &str, data_url: &str) -> serde_json::Value {
+    /// 纯函数：组 OpenAI Chat Completions 多模态非流式请求体。
+    ///
+    /// - 通用视觉模型：user content = [text 完整 prompt, image_url + detail=high]
+    /// - DeepSeek-OCR（硅基流动等）：**不传 detail**（文档写明不支持，固定 1024 Base），
+    ///   content = [image_url, text]（图在前）。此前对 DeepSeek-OCR 传 `detail=high`
+    ///   且 text-before-image 时，大图易返回 `}}]}}]` 退化串。
+    /// - 不用 system 放主指令；`temperature=0` 压采样随机。
+    pub(crate) fn build_request_body(model: &str, prompt: &str, data_url: &str) -> serde_json::Value {
+        let deepseek_ocr = is_deepseek_ocr_model(model);
+        let image_part = if deepseek_ocr {
+            serde_json::json!({
+                "type": "image_url",
+                "image_url": { "url": data_url }
+            })
+        } else {
+            serde_json::json!({
+                "type": "image_url",
+                "image_url": {
+                    "url": data_url,
+                    "detail": "high"
+                }
+            })
+        };
+        let text_part = serde_json::json!({
+            "type": "text",
+            "text": prompt
+        });
+        // DeepSeek-OCR：图 → 提示；其它 VLM：提示 → 图
+        let content = if deepseek_ocr {
+            serde_json::json!([image_part, text_part])
+        } else {
+            serde_json::json!([text_part, image_part])
+        };
         serde_json::json!({
             "model": model,
             "stream": false,
+            "temperature": VISION_OCR_TEMPERATURE,
             "max_tokens": VISION_OCR_MAX_TOKENS,
             "messages": [
                 {
-                    "role": "system",
-                    "content": system
-                },
-                {
                     "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": USER_HINT
-                        },
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": data_url,
-                                "detail": "high"
-                            }
-                        }
-                    ]
+                    "content": content
                 }
             ]
         })
@@ -98,6 +123,15 @@ impl VisionOcrEngine {
         let text = text.trim().to_string();
         if text.is_empty() {
             return Err(OcrError::EmptyResult);
+        }
+        // 模型崩溃时会吐出 `}}]}}]` / `} } } }` 等 JSON 碎片（DeepSeek-OCR 常见）
+        if is_degenerate_ocr_output(&text) {
+            return Err(OcrError::Api {
+                message: "OCR 模型返回了无效内容（疑似格式不兼容或生成退化）。\
+建议：换用通用视觉模型（如 gpt-4o / Qwen-VL），或检查 DeepSeek-OCR 提示词（可用 Free OCR.）。"
+                    .into(),
+                retryable: true,
+            });
         }
         Ok(text)
     }
@@ -147,11 +181,7 @@ impl OcrEngine for VisionOcrEngine {
             encoded.png.len()
         );
         let data_url = png_to_data_url(&encoded.png);
-        let system = if self.config.ocr_prompt.trim().is_empty() {
-            DEFAULT_OCR_PROMPT
-        } else {
-            self.config.ocr_prompt.as_str()
-        };
+        let system = effective_ocr_prompt(&self.config.model, &self.config.ocr_prompt);
         let endpoint = self.endpoint();
         let body = Self::build_request_body(&self.config.model, system, &data_url);
         log::debug!("Vision OCR 请求诊断: POST {endpoint}");
@@ -159,12 +189,18 @@ impl OcrEngine for VisionOcrEngine {
             "Vision OCR 请求头: Authorization={}, Content-Type=application/json",
             format_auth_header_for_log(&self.config.api_key)
         );
-        log::debug!(
-            "Vision OCR 请求体: {}",
-            sanitize_request_body_for_log(&body)
-        );
-        // 保留 system 全文 debug（配置非 secret，与现状一致）
-        log::debug!("Vision OCR system prompt: {system}");
+        // TEMP: 排查 OCR 问题时临时输出完整请求体（含 base64）。修好后改 false，恢复脱敏。
+        // Authorization 始终脱敏，永不写 Key 明文。
+        if VISION_OCR_TEMP_LOG_FULL_BODY {
+            log::debug!("Vision OCR 请求体(TEMP完整): {body}");
+        } else {
+            log::debug!(
+                "Vision OCR 请求体: {}",
+                sanitize_request_body_for_log(&body)
+            );
+        }
+        // 完整 OCR 提示词（配置非 secret；现放在 user content[0] text）
+        log::debug!("Vision OCR prompt (user text first): {system}");
         let resp = self
             .client
             .post(&endpoint)
@@ -180,13 +216,27 @@ impl OcrEngine for VisionOcrEngine {
             .await
             .map_err(|e| OcrError::Http(e.to_string()))?;
         if !(200..300).contains(&status) {
+            if VISION_OCR_TEMP_LOG_FULL_BODY {
+                log::debug!(
+                    "Vision OCR 错误响应(TEMP完整): status={status} body={text}"
+                );
+            } else {
+                log::debug!(
+                    "Vision OCR 错误响应: status={status} body_len={}",
+                    text.len()
+                );
+            }
             return Err(Self::map_http_error(status, &text));
         }
         let body_len = text.len();
-        log::debug!("Vision OCR 响应: status={status} body_len={body_len}");
-        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
-            if let Some(usage) = v.get("usage") {
-                log::debug!("Vision OCR usage: {usage}");
+        if VISION_OCR_TEMP_LOG_FULL_BODY {
+            log::debug!("Vision OCR 响应(TEMP完整): status={status} body={text}");
+        } else {
+            log::debug!("Vision OCR 响应: status={status} body_len={body_len}");
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
+                if let Some(usage) = v.get("usage") {
+                    log::debug!("Vision OCR usage: {usage}");
+                }
             }
         }
         let content = Self::parse_success_content(&text)?;
@@ -248,6 +298,39 @@ struct ApiErrorEnvelope {
 struct ApiErrorBody {
     #[serde(default)]
     message: String,
+}
+
+/// SiliconFlow 等对 `deepseek-ai/DeepSeek-OCR` 有专用约定（无 detail、固定分辨率）。
+pub(crate) fn is_deepseek_ocr_model(model: &str) -> bool {
+    let m = model.to_ascii_lowercase();
+    m.contains("deepseek-ocr") || m.contains("deepseek_ocr")
+}
+
+/// 配置为空时按模型选默认提示；非空则用用户配置（trim 后）。
+pub(crate) fn effective_ocr_prompt<'a>(model: &str, configured: &'a str) -> &'a str {
+    let t = configured.trim();
+    if !t.is_empty() {
+        return t;
+    }
+    if is_deepseek_ocr_model(model) {
+        DEFAULT_DEEPSEEK_OCR_PROMPT
+    } else {
+        DEFAULT_OCR_PROMPT
+    }
+}
+
+/// 是否为「只含括号/空白」的退化输出（如 `}}]}}]` 循环）。
+pub(crate) fn is_degenerate_ocr_output(text: &str) -> bool {
+    let t = text.trim();
+    if t.chars().count() < 16 {
+        return false;
+    }
+    let total = t.chars().count() as f64;
+    let junk = t
+        .chars()
+        .filter(|c| matches!(c, '}' | '{' | ']' | '[' | ')' | '(' | ',' | ':' | ' ' | '\t' | '\n' | '\r'))
+        .count() as f64;
+    junk / total >= 0.90
 }
 
 /// 最小错误解析：优先 `error.message`
@@ -318,20 +401,19 @@ mod tests {
     fn request_body_is_non_streaming_with_image_url() {
         let body = VisionOcrEngine::build_request_body(
             "gpt-4o",
-            "提取图中全部文字，保持阅读顺序",
+            DEFAULT_OCR_PROMPT,
             "data:image/png;base64,AAA",
         );
         assert_eq!(body["stream"], false);
+        assert_eq!(body["temperature"], 0.0);
         assert_eq!(body["max_tokens"], 2048);
         assert_eq!(body["model"], "gpt-4o");
-        assert_eq!(body["messages"][0]["role"], "system");
-        assert_eq!(
-            body["messages"][0]["content"],
-            "提取图中全部文字，保持阅读顺序"
-        );
-        let user_content = &body["messages"][1]["content"];
+        // 单条 user：先完整提示词 text，再 image
+        assert_eq!(body["messages"].as_array().map(|a| a.len()), Some(1));
+        assert_eq!(body["messages"][0]["role"], "user");
+        let user_content = &body["messages"][0]["content"];
         assert_eq!(user_content[0]["type"], "text");
-        assert_eq!(user_content[0]["text"], USER_HINT);
+        assert_eq!(user_content[0]["text"], DEFAULT_OCR_PROMPT);
         assert_eq!(user_content[1]["type"], "image_url");
         assert_eq!(
             user_content[1]["image_url"]["url"],
@@ -348,8 +430,80 @@ mod tests {
             "data:image/png;base64,AAA",
         );
         assert_eq!(
-            body["messages"][1]["content"][1]["image_url"]["detail"],
+            body["messages"][0]["content"][1]["image_url"]["detail"],
             "high"
+        );
+    }
+
+    #[test]
+    fn request_body_prompt_text_before_image() {
+        let body = VisionOcrEngine::build_request_body(
+            "m",
+            "FULL_PROMPT_BEFORE_IMAGE",
+            "data:image/png;base64,XYZ",
+        );
+        let parts = body["messages"][0]["content"].as_array().expect("parts");
+        assert_eq!(parts.len(), 2);
+        assert_eq!(parts[0]["type"], "text");
+        assert_eq!(parts[0]["text"], "FULL_PROMPT_BEFORE_IMAGE");
+        assert_eq!(parts[1]["type"], "image_url");
+    }
+
+    #[test]
+    fn deepseek_ocr_image_before_text_and_no_detail() {
+        let body = VisionOcrEngine::build_request_body(
+            "deepseek-ai/DeepSeek-OCR",
+            "Free OCR.",
+            "data:image/png;base64,AAA",
+        );
+        let parts = body["messages"][0]["content"].as_array().expect("parts");
+        assert_eq!(parts[0]["type"], "image_url");
+        assert_eq!(parts[0]["image_url"]["url"], "data:image/png;base64,AAA");
+        assert!(
+            parts[0]["image_url"].get("detail").is_none(),
+            "DeepSeek-OCR 不得传 detail"
+        );
+        assert_eq!(parts[1]["type"], "text");
+        assert_eq!(parts[1]["text"], "Free OCR.");
+    }
+
+    #[test]
+    fn parse_rejects_degenerate_brace_spam() {
+        let spam = "}}]".repeat(40);
+        let raw = format!(
+            r#"{{"choices":[{{"message":{{"content":"{spam}"}}}}]}}"#
+        );
+        let err = VisionOcrEngine::parse_success_content(&raw).unwrap_err();
+        assert!(
+            matches!(err, OcrError::Api { .. }),
+            "应拒绝退化输出: {err:?}"
+        );
+    }
+
+    #[test]
+    fn is_degenerate_detects_brace_loop_not_normal_text() {
+        assert!(is_degenerate_ocr_output(&"}}]".repeat(30)));
+        assert!(!is_degenerate_ocr_output(DEFAULT_OCR_PROMPT));
+        assert!(!is_degenerate_ocr_output("Hello world from OCR"));
+    }
+
+    #[test]
+    fn effective_prompt_defaults_by_model() {
+        assert_eq!(
+            effective_ocr_prompt("gpt-4o", ""),
+            DEFAULT_OCR_PROMPT
+        );
+        assert_eq!(
+            effective_ocr_prompt("deepseek-ai/DeepSeek-OCR", ""),
+            DEFAULT_DEEPSEEK_OCR_PROMPT
+        );
+        assert_eq!(
+            effective_ocr_prompt("deepseek-ai/DeepSeek-OCR", "  Free OCR.  "),
+            "Free OCR."
+        );
+        assert_eq!(
+            effective_ocr_prompt("gpt-4o", "自定义"),
+            "自定义"
         );
     }
 
@@ -402,13 +556,12 @@ mod tests {
         assert_eq!(sanitized["model"], "gpt-4o");
         assert_eq!(sanitized["stream"], false);
         assert_eq!(sanitized["max_tokens"], 2048);
-        assert_eq!(sanitized["messages"][0]["content"], "sys-prompt-full");
-        assert_eq!(sanitized["messages"][1]["content"][0]["text"], USER_HINT);
+        assert_eq!(sanitized["messages"][0]["content"][0]["text"], "sys-prompt-full");
         assert_eq!(
-            sanitized["messages"][1]["content"][1]["image_url"]["detail"],
+            sanitized["messages"][0]["content"][1]["image_url"]["detail"],
             "high"
         );
-        let url = sanitized["messages"][1]["content"][1]["image_url"]["url"]
+        let url = sanitized["messages"][0]["content"][1]["image_url"]["url"]
             .as_str()
             .expect("url string");
         assert!(url.starts_with("data:image/png;base64,[len="));
@@ -420,7 +573,7 @@ mod tests {
         let url = "https://example.com/img.png?token=secret";
         let body = VisionOcrEngine::build_request_body("m", "s", url);
         let sanitized = sanitize_request_body_for_log(&body);
-        let out = sanitized["messages"][1]["content"][1]["image_url"]["url"]
+        let out = sanitized["messages"][0]["content"][1]["image_url"]["url"]
             .as_str()
             .unwrap();
         assert!(out.contains("https"), "应含 scheme: {out}");
