@@ -418,7 +418,7 @@
     "settings.prompt.summaryReflectionOn": "反思開",
     "settings.toast.openUrlFailed": "開啟連結失敗",
     "settings.description.addOcrService": "僅多模態視覺渠道；與翻譯實例獨立。截圖識別使用當前啟用的一項 OCR。",
-    "settings.ocr.visionSubtitle": "{model} · 多模態",
+    "settings.ocr.visionSubtitle": "{model}",
     "settings.ocr.systemSubtitle": "系統自帶 · 離線",
     "settings.ocr.configReserved": "配置預留；目前截圖識別使用 Windows 系統 OCR",
     "settings.field.ocrPrompt": "識別提示詞",

@@ -418,7 +418,7 @@
     "settings.prompt.summaryReflectionOn": "リフレクション ON",
     "settings.toast.openUrlFailed": "リンクを開けませんでした",
     "settings.description.addOcrService": "ビジョン多モーダルチャネルのみ。翻訳インスタンスとは独立。スクリーンショット認識は現在有効な 1 つの OCR を使用します。",
-    "settings.ocr.visionSubtitle": "{model} · マルチモーダル",
+    "settings.ocr.visionSubtitle": "{model}",
     "settings.ocr.systemSubtitle": "内蔵 · オフライン",
     "settings.ocr.configReserved": "設定は予約済み。スクリーンショット OCR は Windows システム OCR を使用",
     "settings.field.ocrPrompt": "OCR プロンプト",

@@ -363,7 +363,7 @@
     "settings.ocr.useCasesTitle": "Suitable for scenarios",
     "settings.ocr.useCases": "Software UI, menus, web pages, documents and simple layout pictures",
     "settings.ocr.footer": "Provided by Windows system · Always available · No network required · Instant recognition",
-    "settings.ocr.visionSubtitle": "{model} · Multimodal",
+    "settings.ocr.visionSubtitle": "{model}",
     "settings.ocr.systemSubtitle": "Built-in · Offline",
     "settings.ocr.configReserved": "Config reserved; screenshot OCR still uses Windows system OCR",
     "settings.description.protocol": "Select the service communication protocol. ",

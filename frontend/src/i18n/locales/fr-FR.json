@@ -418,7 +418,7 @@
     "settings.prompt.summaryReflectionOn": "Réflexion activée",
     "settings.toast.openUrlFailed": "Échec de l\\u2019ouverture du lien",
     "settings.description.addOcrService": "Canaux multimodaux vision uniquement ; indépendants des instances de traduction. La reconnaissance capture utilise le OCR actuellement activé.",
-    "settings.ocr.visionSubtitle": "{model} · Multimodal",
+    "settings.ocr.visionSubtitle": "{model}",
     "settings.ocr.systemSubtitle": "Intégré · Hors ligne",
     "settings.ocr.configReserved": "Config réservée ; l\\u2019OCR capture utilise encore l\\u2019OCR système Windows",
     "settings.field.ocrPrompt": "Invite OCR",

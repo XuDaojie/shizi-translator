@@ -418,7 +418,7 @@
     "settings.prompt.summaryReflectionOn": "Reflexión activada",
     "settings.toast.openUrlFailed": "No se pudo abrir el enlace",
     "settings.description.addOcrService": "Solo canales multimodales de visión; independientes de las instancias de traducción. El reconocimiento de captura usa el OCR actualmente habilitado.",
-    "settings.ocr.visionSubtitle": "{model} · Multimodal",
+    "settings.ocr.visionSubtitle": "{model}",
     "settings.ocr.systemSubtitle": "Integrado · Sin conexión",
     "settings.ocr.configReserved": "Configuración reservada; el OCR de captura usa el OCR del sistema Windows",
     "settings.field.ocrPrompt": "Prompt de OCR",

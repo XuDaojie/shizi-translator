@@ -418,7 +418,7 @@
     "settings.prompt.summaryReflectionOn": "Reflexion an",
     "settings.toast.openUrlFailed": "Link konnte nicht geöffnet werden",
     "settings.description.addOcrService": "Nur multimodale Vision-Kanäle; unabhängig von Übersetzungsinstanzen. Screenshot-Erkennung nutzt den aktuell aktivierten OCR.",
-    "settings.ocr.visionSubtitle": "{model} · Multimodal",
+    "settings.ocr.visionSubtitle": "{model}",
     "settings.ocr.systemSubtitle": "Integriert · Offline",
     "settings.ocr.configReserved": "Konfiguration reserviert; Screenshot-OCR nutzt Windows-System-OCR",
     "settings.field.ocrPrompt": "OCR-Prompt",

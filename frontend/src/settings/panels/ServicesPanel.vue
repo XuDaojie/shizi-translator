@@ -149,7 +149,7 @@ watch(
 const ocrSubtitle = (inst: OcrServiceInstance): string => {
   const meta = ocrServiceById(inst.type)
   if (meta?.detailKind === 'system') return t(msgKey('settings.ocr.systemSubtitle'))
-  return t(msgKey('settings.ocr.visionSubtitle'), { model: inst.model || '—' })
+  return inst.model || '—'
 }
 
 const onAddOcrService = (type: OcrServiceId): void => {
