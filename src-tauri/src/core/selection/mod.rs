@@ -35,11 +35,15 @@ fn normalize_clipboard_text(text: Option<String>) -> Result<String, SelectionErr
 }
 
 pub fn copy_selected_text(restore_clipboard: bool) -> Result<String, SelectionError> {
-    keyboard::wait_until_modifiers_released();
     let snapshot = clipboard::capture_text_snapshot();
     let sentinel = selection_sentinel();
     clipboard::write_text(&sentinel)?;
-    keyboard::send_copy_shortcut()?;
+    if let Err(error) = keyboard::send_copy_shortcut() {
+        if should_restore_clipboard(restore_clipboard, &snapshot, false) {
+            clipboard::restore_text_snapshot(snapshot);
+        }
+        return Err(error);
+    }
 
     let deadline = Instant::now() + Duration::from_millis(600);
     let mut selected_text = None;
@@ -55,14 +59,18 @@ pub fn copy_selected_text(restore_clipboard: bool) -> Result<String, SelectionEr
         thread::sleep(Duration::from_millis(40));
     }
 
-    if should_restore_clipboard(restore_clipboard, &snapshot) {
+    if should_restore_clipboard(restore_clipboard, &snapshot, true) {
         clipboard::restore_text_snapshot(snapshot);
     }
     selected_text.ok_or(SelectionError::EmptySelection)
 }
 
-fn should_restore_clipboard(restore_clipboard: bool, snapshot: &Option<String>) -> bool {
-    restore_clipboard && snapshot.is_some()
+fn should_restore_clipboard(
+    restore_clipboard: bool,
+    snapshot: &Option<String>,
+    copy_succeeded: bool,
+) -> bool {
+    snapshot.is_some() && (restore_clipboard || !copy_succeeded)
 }
 
 fn selection_sentinel() -> String {
@@ -102,8 +110,25 @@ mod tests {
 
     #[test]
     fn restore_clipboard_flag_controls_restore() {
-        assert!(should_restore_clipboard(true, &Some("old".to_string())));
-        assert!(!should_restore_clipboard(false, &Some("old".to_string())));
-        assert!(!should_restore_clipboard(true, &None));
+        assert!(should_restore_clipboard(
+            true,
+            &Some("old".to_string()),
+            true
+        ));
+        assert!(!should_restore_clipboard(
+            false,
+            &Some("old".to_string()),
+            true
+        ));
+        assert!(!should_restore_clipboard(true, &None, true));
+    }
+
+    #[test]
+    fn copy_failure_always_restores_clipboard_snapshot() {
+        assert!(should_restore_clipboard(
+            false,
+            &Some("old".to_string()),
+            false
+        ));
     }
 }
