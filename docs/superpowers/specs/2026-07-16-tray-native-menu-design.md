@@ -1,7 +1,7 @@
 # 托盘原生菜单样式对齐 设计规格
 
 - 日期：2026-07-16
-- 状态：已确认，待实现
+- 状态：已实现（编码执行于 `feat/tray-native-menu`；本轮托盘菜单文案为中文产品常量，未扩 8 语 `tray.*` locale，见 plan 澄清）
 - 关联：
   - OpenDesign 原型：`C:\Users\xdj\IdeaProjects\LLM\OpenDesignProjects\shizi`（`src/tray/TrayNativeMenu.vue` / `TrayMenuPage.vue`）
   - [application-internationalization-design](./2026-07-11-application-internationalization-design.md)（托盘文案与 `TrayI18nHandles`）

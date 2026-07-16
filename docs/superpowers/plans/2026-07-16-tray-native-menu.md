@@ -1,6 +1,6 @@
 # 托盘原生菜单样式对齐 实现计划
 
-> **面向 AI 代理的工作者：** 必需子技能：使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans 逐任务实现此计划。步骤使用复选框（`- [ ]`）语法来跟踪进度。
+> **面向 AI 代理的工作者：** 必需子技能：使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans 逐任务实现此计划。步骤使用复选框（`- [x]`）语法来跟踪进度。
 
 **目标：** 按方案 3 重排托盘系统原生菜单（划词翻译 / 截图翻译 / 文字识别 → 分隔 → 偏好设置 → 分隔 → 退出 shizi），展示并热更新 `AppConfig.shortcuts` 加速键，托盘可触发截图翻译且与 `Alt+S` / `ShortcutAction::OcrTranslate` 同路径。
 
@@ -98,7 +98,7 @@ TrayIcon::set_menu / 重建：本轮默认不用
 - 修改：`src-tauri/src/app/tray.rs`
 - 测试：同文件 `#[cfg(test)] mod tests`
 
-- [ ] **步骤 1：编写失败的测试**
+- [x] **步骤 1：编写失败的测试**
 
 在 `tray.rs` 的 `tests` 模块（保留现有 tray 图标测试）追加：
 
@@ -135,7 +135,7 @@ fn tray_menu_bindings_order_and_shortcut_ids() {
 }
 ```
 
-- [ ] **步骤 2：运行测试确认失败**
+- [x] **步骤 2：运行测试确认失败**
 
 运行：
 
@@ -145,7 +145,7 @@ cd src-tauri && cargo test menu_accelerator_trims_and_skips_empty tray_menu_bind
 
 预期：FAIL（`menu_accelerator` / `tray_menu_bindings` 未定义）
 
-- [ ] **步骤 3：最少实现让测试通过**
+- [x] **步骤 3：最少实现让测试通过**
 
 在 `tray.rs` 中（`setup_tray` 之前）增加：
 
@@ -225,7 +225,7 @@ fn menu_item_accelerator_arg(accel: Option<&str>) -> Option<&str> {
 }
 ```
 
-- [ ] **步骤 4：运行测试确认通过**
+- [x] **步骤 4：运行测试确认通过**
 
 ```bash
 cd src-tauri && cargo test menu_accelerator_trims_and_skips_empty tray_menu_bindings_order_and_shortcut_ids -- --nocapture
@@ -233,7 +233,7 @@ cd src-tauri && cargo test menu_accelerator_trims_and_skips_empty tray_menu_bind
 
 预期：PASS
 
-- [ ] **步骤 5：Commit**
+- [x] **步骤 5：Commit**
 
 ```bash
 git add src-tauri/src/app/tray.rs
@@ -249,7 +249,7 @@ git commit -m "test(tray): 加速键纯函数与菜单绑定表"
 - 修改：`src-tauri/src/ui/i18n.rs`（字段改名编译通过 + 中文常量 set_text）
 - 依赖：任务 1
 
-- [ ] **步骤 1：扩展 `TrayI18nHandles`**
+- [x] **步骤 1：扩展 `TrayI18nHandles`**
 
 ```rust
 #[derive(Clone)]
@@ -266,7 +266,7 @@ pub struct TrayI18nHandles {
 
 删除旧字段 `translate`。
 
-- [ ] **步骤 2：重写 `setup_tray` 菜单组装（加速键可先全 None，任务 4 再接 config）**
+- [x] **步骤 2：重写 `setup_tray` 菜单组装（加速键可先全 None，任务 4 再接 config）**
 
 要点：
 
@@ -299,7 +299,7 @@ let shortcuts = app
 
 推荐原子边界：任务 2 只改结构 + `selection`/`ocr`/`settings`/`quit` 事件；`screenshot` 在任务 3 接线。
 
-- [ ] **步骤 3：修正 `ui/i18n.rs` 编译与文案策略**
+- [x] **步骤 3：修正 `ui/i18n.rs` 编译与文案策略**
 
 将：
 
@@ -342,7 +342,7 @@ handles
 
 说明：本轮**有意**让界面语言切换不再改托盘菜单项语言，只保留 tooltip / 窗口标题的 i18n。
 
-- [ ] **步骤 4：编译检查**
+- [x] **步骤 4：编译检查**
 
 ```bash
 cd src-tauri && cargo test tray_ -- --nocapture
@@ -351,7 +351,7 @@ cd src-tauri && cargo build
 
 预期：编译通过；现有 tray 图标测试 + 任务 1 测试 PASS
 
-- [ ] **步骤 5：Commit**
+- [x] **步骤 5：Commit**
 
 ```bash
 git add src-tauri/src/app/tray.rs src-tauri/src/ui/i18n.rs
@@ -366,7 +366,7 @@ git commit -m "feat(tray): 原生菜单信息架构与分隔线"
 - 修改：`src-tauri/src/app/shortcuts.rs`
 - 修改：`src-tauri/src/app/tray.rs`（`on_menu_event` 的 `screenshot`）
 
-- [ ] **步骤 1：在 `shortcuts.rs` 增加 pub 入口，并替换内部 match 分支**
+- [x] **步骤 1：在 `shortcuts.rs` 增加 pub 入口，并替换内部 match 分支**
 
 ```rust
 /// 截图 OCR 后进入翻译链路（全局快捷键 Alt+S 与托盘「截图翻译」共用）。
@@ -385,7 +385,7 @@ pub fn trigger_ocr_translate(app: &tauri::AppHandle) {
 Some(ShortcutAction::OcrTranslate) => trigger_ocr_translate(app),
 ```
 
-- [ ] **步骤 2：tray 事件**
+- [x] **步骤 2：tray 事件**
 
 ```rust
 "screenshot" => {
@@ -393,7 +393,7 @@ Some(ShortcutAction::OcrTranslate) => trigger_ocr_translate(app),
 }
 ```
 
-- [ ] **步骤 3：编译与单测**
+- [x] **步骤 3：编译与单测**
 
 ```bash
 cd src-tauri && cargo test --lib
@@ -402,7 +402,7 @@ cd src-tauri && cargo build
 
 预期：PASS / 编译成功（shortcuts 现有 classify 测试不受影响）
 
-- [ ] **步骤 4：Commit**
+- [x] **步骤 4：Commit**
 
 ```bash
 git add src-tauri/src/app/shortcuts.rs src-tauri/src/app/tray.rs
@@ -418,7 +418,7 @@ git commit -m "feat(tray): 截图翻译入口复用 OcrTranslate 路径"
 - 修改：`src-tauri/src/ui/config.rs`
 - 测试：`tray.rs` 可增 `menu_item_text` / 模式相关纯函数测试（无需 Tauri App）
 
-- [ ] **步骤 1：编写失败的展示文案测试（TextOnly / Native）**
+- [x] **步骤 1：编写失败的展示文案测试（TextOnly / Native）**
 
 ```rust
 #[test]
@@ -442,7 +442,7 @@ fn menu_item_text_respects_accel_mode_shape() {
 
 将任务 1 的 `menu_item_text` 重构为可测的 `format_tray_label(mode, label, accel)`，内部 `TRAY_ACCEL_MODE` 仅作为默认入参。
 
-- [ ] **步骤 2：实现 `apply_accelerators_to_handles`**
+- [x] **步骤 2：实现 `apply_accelerators_to_handles`**
 
 ```rust
 pub fn refresh_tray_menu_accelerators(app: &tauri::AppHandle) {
@@ -516,7 +516,7 @@ item.set_accelerator(native)...
 
 `setup_tray` 创建 item 时：先用 `menu_accelerator` + `format_tray_label` + `menu_item_accelerator_arg` 填入初始值，与 refresh 同源。
 
-- [ ] **步骤 3：`save_app_config` 挂钩**
+- [x] **步骤 3：`save_app_config` 挂钩**
 
 在 `src-tauri/src/ui/config.rs` 中，`replace_global_shortcuts` 与 `config_store.save` 成功之后、`emit("app-config:changed")` 前后均可；推荐放在 `apply_interface_language_locked` **之后**（语言路径会 set_text 中文常量，refresh 再写加速键/TextOnly 文案，避免被盖掉）。
 
@@ -530,7 +530,7 @@ app.emit("app-config:changed", &saved_config)...
 
 `refresh` 内部已 `log::warn`，**不**把加速键刷新失败升级为 `save_app_config` 的 `Err`。
 
-- [ ] **步骤 4：测试与编译**
+- [x] **步骤 4：测试与编译**
 
 ```bash
 cd src-tauri && cargo test menu_ item_text_respects_accel_mode_shape menu_accelerator -- --nocapture
@@ -539,7 +539,7 @@ cd src-tauri && cargo build
 
 预期：PASS / 编译成功
 
-- [ ] **步骤 5：Commit**
+- [x] **步骤 5：Commit**
 
 ```bash
 git add src-tauri/src/app/tray.rs src-tauri/src/ui/config.rs
@@ -554,7 +554,7 @@ git commit -m "feat(tray): 加速键展示与配置保存热更新"
 - 修改：`src-tauri/src/ui/i18n.rs`（若任务 2 只 set 纯 label，本任务在 apply 末尾调 `refresh_tray_menu_accelerators`）
 - 修改：`src-tauri/src/app/tray.rs`（文件头注释写清降级开关）
 
-- [ ] **步骤 1：`apply_interface_language_locked` 在更新完托盘中文 label / tooltip 后调用**
+- [x] **步骤 1：`apply_interface_language_locked` 在更新完托盘中文 label / tooltip 后调用**
 
 ```rust
 // 菜单 set_text 常量之后：
@@ -564,7 +564,7 @@ crate::app::tray::refresh_tray_menu_accelerators(app);
 
 避免：语言切换 set_text 掉 TextOnly 下的 `\tAlt+D` 后缀后加速键展示丢失。
 
-- [ ] **步骤 2：在 `tray.rs` 顶部注释固化选型**
+- [x] **步骤 2：在 `tray.rs` 顶部注释固化选型**
 
 ```rust
 // 加速键策略：
@@ -574,14 +574,14 @@ crate::app::tray::refresh_tray_menu_accelerators(app);
 // 4) 不默认 tray.set_menu 重建；仅当 set_accelerator 在目标环境不可用时再考虑重建
 ```
 
-- [ ] **步骤 3：编译**
+- [x] **步骤 3：编译**
 
 ```bash
 cd src-tauri && cargo test --lib
 cd src-tauri && cargo build
 ```
 
-- [ ] **步骤 4：Commit**
+- [x] **步骤 4：Commit**
 
 ```bash
 git add src-tauri/src/ui/i18n.rs src-tauri/src/app/tray.rs
@@ -597,9 +597,9 @@ git commit -m "fix(tray): 语言切换后重刷加速键展示"
 - 修改：`docs/superpowers/specs/2026-07-16-tray-native-menu-design.md`（状态可改为「实现中/已实现」由执行阶段处理）
 - 本 plan 复选框执行时回填
 
-- [ ] **步骤 1：README 一句能力同步（有则改、无则跳过新增大段）**
+- [x] **步骤 1：README 一句能力同步（有则改、无则跳过新增大段）**
 
-- [ ] **步骤 2：手工验收（Windows，执行阶段）**
+- [x] **步骤 2：手工验收（Windows，执行阶段）**
 
 按 spec §9.2：
 
@@ -611,7 +611,7 @@ git commit -m "fix(tray): 语言切换后重刷加速键展示"
 6. 全局快捷键仍可用；无双绑报错  
 7. **抢键抽检**：不打开托盘菜单时按 `Alt+D` 等，确认仍由 global-shortcut 处理、无异常双触发；若系统 accelerator 抢键，将 `TRAY_ACCEL_MODE` 改为 `TextOnly` 并回归 1–6  
 
-- [ ] **步骤 3：Commit**
+- [x] **步骤 3：Commit**
 
 ```bash
 git add README.md docs/superpowers/specs/2026-07-16-tray-native-menu-design.md docs/superpowers/plans/2026-07-16-tray-native-menu.md
