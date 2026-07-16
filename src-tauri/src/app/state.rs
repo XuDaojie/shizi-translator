@@ -46,6 +46,8 @@ pub struct AppState {
     // 最近一次纯识别成功的源图（进程内单槽），供 OCR 窗「重新识别」。
     // 仅 recognize_image_full 成功路径由 ui 写入；翻译路径不写；不落盘。
     last_ocr_image: Arc<Mutex<Option<CapturedImage>>>,
+    // OCR 窗截图纯识别：临时渠道 id。仅 RecognizeOnly 路径读取；不落盘。
+    ocr_session_service_id: Arc<Mutex<Option<String>>>,
     // 启动时快捷键注册失败的冲突列表。best-effort 注册后，被其他应用占用的
     // 快捷键记录于此，供设置页拉取展示；保存配置全量成功后清空。
     shortcut_conflicts: Arc<Mutex<Vec<ShortcutBindingError>>>,
@@ -82,6 +84,7 @@ impl AppState {
             current_cancel_token: Arc::new(Mutex::new(None)),
             last_translation_input: Arc::new(Mutex::new(None)),
             last_ocr_image: Arc::new(Mutex::new(None)),
+            ocr_session_service_id: Arc::new(Mutex::new(None)),
             shortcut_conflicts: Arc::new(Mutex::new(Vec::new())),
             session_source_lang: Arc::new(Mutex::new(default_source_lang)),
             session_target_lang: Arc::new(Mutex::new(default_target_lang)),
@@ -302,6 +305,35 @@ impl AppState {
             .lock()
             .map_err(|_| "OCR 图像缓存锁已损坏".to_string())?;
         Ok(slot.clone())
+    }
+
+    pub fn set_ocr_session_service_id(&self, id: Option<String>) -> Result<(), String> {
+        let mut g = self
+            .ocr_session_service_id
+            .lock()
+            .map_err(|_| "OCR 会话渠道锁已损坏".to_string())?;
+        *g = id.filter(|s| !s.is_empty());
+        Ok(())
+    }
+
+    pub fn peek_ocr_session_service_id(&self) -> Result<Option<String>, String> {
+        let g = self
+            .ocr_session_service_id
+            .lock()
+            .map_err(|_| "OCR 会话渠道锁已损坏".to_string())?;
+        Ok(g.clone())
+    }
+
+    pub fn take_ocr_session_service_id(&self) -> Result<Option<String>, String> {
+        let mut g = self
+            .ocr_session_service_id
+            .lock()
+            .map_err(|_| "OCR 会话渠道锁已损坏".to_string())?;
+        Ok(g.take())
+    }
+
+    pub fn clear_ocr_session_service_id(&self) -> Result<(), String> {
+        self.set_ocr_session_service_id(None)
     }
 
     pub fn clear_current_cancel_token(&self) -> Result<(), String> {
@@ -792,5 +824,36 @@ mod tests {
         assert_eq!(state.next_interface_language_revision(), 1);
         assert_eq!(cloned.next_interface_language_revision(), 2);
         assert_eq!(state.interface_language_revision(), 2);
+    }
+
+    #[test]
+    fn ocr_session_service_id_set_take_clears() {
+        let state = app_state();
+        assert_eq!(state.take_ocr_session_service_id().unwrap(), None);
+        state
+            .set_ocr_session_service_id(Some("vision-1".into()))
+            .unwrap();
+        assert_eq!(
+            state.take_ocr_session_service_id().unwrap().as_deref(),
+            Some("vision-1")
+        );
+        assert_eq!(state.take_ocr_session_service_id().unwrap(), None);
+    }
+
+    #[test]
+    fn ocr_session_service_id_clear_and_overwrite() {
+        let state = app_state();
+        state
+            .set_ocr_session_service_id(Some("a".into()))
+            .unwrap();
+        state
+            .set_ocr_session_service_id(Some("b".into()))
+            .unwrap();
+        assert_eq!(
+            state.peek_ocr_session_service_id().unwrap().as_deref(),
+            Some("b")
+        );
+        state.clear_ocr_session_service_id().unwrap();
+        assert_eq!(state.peek_ocr_session_service_id().unwrap(), None);
     }
 }
