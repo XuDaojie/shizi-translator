@@ -13,11 +13,43 @@
 
 ## 核心功能
 
-### 手动翻译
+<table>
+  <tr>
+    <td align="center" width="33%" valign="middle">
+      <!-- 输入翻译演示 GIF 待补充 -->
+    </td>
+    <td align="center" width="33%" valign="middle">
+      <img src="asserts/2.gif" alt="截图翻译演示" width="100%" />
+    </td>
+    <td align="center" width="33%" valign="middle">
+      <img src="asserts/1.gif" alt="划词翻译演示" width="100%" />
+    </td>
+  </tr>
+  <tr>
+    <td align="center"><b>输入翻译</b></td>
+    <td align="center"><b>截图翻译</b></td>
+    <td align="center"><b>划词翻译</b></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>启动应用 · 手动输入</sub></td>
+    <td align="center"><code>Alt+S</code></td>
+    <td align="center"><code>Alt+D</code></td>
+  </tr>
+</table>
+
+### 输入翻译
 
 1. 启动应用，默认显示翻译弹窗。
 2. 在输入框输入要翻译的文本。
-3. 点击"翻译"。
+3. 点击「翻译」。
+
+### 截图翻译
+
+1. 按 `Alt+S`，整屏冻结为 overlay 画面，鼠标变为十字。
+2. 拖动选择要识别的矩形区域。
+3. 松开鼠标后，Shizi 调用当前启用的 OCR 引擎识别选区文字并自动翻译。
+
+> Esc、右键或选区过小（&lt;3px）会取消本次截图，不进入翻译。Windows OCR 依赖系统语言包，中英混合需安装对应 OCR 语言包。
 
 ### 划词翻译
 
@@ -26,14 +58,6 @@
 3. Shizi 会尝试读取选中文本并自动翻译。
 
 > 当前划词复制只尽力保护纯文本剪贴板，不保证完整恢复图片、文件、HTML、RTF 等非文本剪贴板格式。
-
-### 截图 OCR 翻译
-
-1. 按 `Alt+S`，整屏冻结为 overlay 画面，鼠标变为十字。
-2. 拖动选择要识别的矩形区域。
-3. 松开鼠标后，Shizi 调用当前启用的 OCR 引擎识别选区文字并自动翻译。
-
-> Esc、右键或选区过小（<3px）会取消本次截图，不进入翻译。Windows OCR 依赖系统语言包，中英混合需安装对应 OCR 语言包。
 
 ### 独立文字识别
 
