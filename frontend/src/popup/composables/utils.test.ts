@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { batchIdFromSession, copyText } from './utils'
+import { applyPendingSourceIfCurrent, batchIdFromSession, copyText } from './utils'
 
 describe('batchIdFromSession', () => {
   it('从 batchId:serviceId 形式的 sessionId 提取 batchId', () => {
@@ -42,5 +42,25 @@ describe('copyText', () => {
     })
     const ok = await copyText('hello')
     expect(ok).toBe(false)
+  })
+})
+
+describe('applyPendingSourceIfCurrent', () => {
+  it('原文版本变化后忽略迟到的 pending 结果', async () => {
+    let resolvePending!: (text: string) => void
+    const pending = new Promise<string>((resolve) => { resolvePending = resolve })
+    let revision = 0
+    let sourceText = '新原文'
+
+    const request = applyPendingSourceIfCurrent(
+      () => pending,
+      () => revision,
+      (text) => { sourceText = text },
+    )
+    revision += 1
+    resolvePending('旧原文')
+    await request
+
+    expect(sourceText).toBe('新原文')
   })
 })

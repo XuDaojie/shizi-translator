@@ -1,4 +1,8 @@
-use std::{thread, time::Duration};
+use std::{
+    sync::atomic::{AtomicBool, Ordering},
+    thread,
+    time::Duration,
+};
 
 use serde::Serialize;
 use tauri::{Manager, State, WebviewWindow, WindowEvent};
@@ -19,6 +23,9 @@ use crate::{
         web_popup::{show_translation_error, show_translation_popup, start_translation_from_input},
     },
 };
+
+// ponytail: 单应用只需一个划词复制任务；若未来支持多席位会话，再下沉到 AppState。
+static SELECTION_COPY_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 
 /// 仅全局作用域的快捷键参与 all-or-nothing 注册；程序快捷键在窗口聚焦时另行挂载。
 pub fn register_global_shortcuts(
@@ -309,8 +316,8 @@ fn classify_shortcut(shortcut: &Shortcut, config: &AppConfig) -> Option<Shortcut
 /// 曾误改为 Pressed 触发（5f83c56），导致浏览器页面内容划词复制大面积失效：
 /// Pressed 时物理 Alt 仍按着，物理 Alt keydown 激活了 Chrome 菜单栏，而 enigo
 /// 合成的 Alt keyup 无法取消菜单栏，Ctrl+C 落在菜单栏上不复制页面 selection
-/// （系统 Edit 控件不受影响，故输入框划词仍正常）。Released 触发时物理 Alt 已
-/// 松开，菜单栏已被物理 keyup 取消，问题消失。不要为追求「按下即响应」改回 Pressed。
+/// （系统 Edit 控件不受影响，故输入框划词仍正常）。Released 只保证主键已松开；
+/// `copy_selected_text` 还会等待所有物理修饰键松开。不要为追求「按下即响应」改回 Pressed。
 fn should_handle_shortcut_state(state: ShortcutState) -> bool {
     state == ShortcutState::Released
 }
@@ -364,25 +371,31 @@ pub fn handle_global_shortcut(
 }
 
 fn handle_selection_translate(app: &tauri::AppHandle) {
-    let app_handle = app.clone();
-    tauri::async_runtime::spawn(async move {
-        thread::sleep(Duration::from_millis(40));
+    if !try_begin_selection_copy(&SELECTION_COPY_IN_PROGRESS) {
+        return;
+    }
 
+    let app_handle = app.clone();
+    thread::spawn(move || {
         let restore_clipboard = app_handle.state::<AppState>().config_store.get()
             .ok()
             .map(|config| config.restore_clipboard)
             .unwrap_or(true);
 
-        let selected_text = match copy_selected_text(restore_clipboard) {
-            Ok(text) => text,
-            Err(error) => {
-                show_translation_error(&app_handle, error.to_string());
-                return;
+        match copy_selected_text(restore_clipboard) {
+            Ok(text) => {
+                start_popup_translation(app_handle, TranslationInput::SelectedText(text))
             }
-        };
-
-        start_popup_translation(app_handle, TranslationInput::SelectedText(selected_text));
+            Err(error) => {
+                log::warn!("划词翻译未触发: {error}");
+            }
+        }
+        SELECTION_COPY_IN_PROGRESS.store(false, Ordering::SeqCst);
     });
+}
+
+fn try_begin_selection_copy(in_progress: &AtomicBool) -> bool {
+    !in_progress.swap(true, Ordering::SeqCst)
 }
 
 fn handle_clipboard_translate(app: &tauri::AppHandle) {
@@ -426,6 +439,7 @@ fn start_popup_translation(app_handle: tauri::AppHandle, input: TranslationInput
 mod tests {
     use super::*;
     use crate::core::config::AppConfig;
+    use std::sync::atomic::AtomicBool;
 
     fn config_with(bindings: &[(&str, &str)]) -> AppConfig {
         let mut config = AppConfig::default();
@@ -550,5 +564,13 @@ mod tests {
             friendly_register_error("其他注册错误"),
             "快捷键注册失败"
         );
+    }
+
+    #[test]
+    fn selection_copy_allows_only_one_in_flight_task() {
+        let in_progress = AtomicBool::new(false);
+
+        assert!(try_begin_selection_copy(&in_progress));
+        assert!(!try_begin_selection_copy(&in_progress));
     }
 }

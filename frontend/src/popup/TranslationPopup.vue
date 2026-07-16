@@ -13,7 +13,7 @@ import {
   createMainWindowReadyGate,
   doubleRaf,
 } from './composables/mainWindowReady'
-import { getTauriApis } from './composables/utils'
+import { applyPendingSourceIfCurrent, getTauriApis } from './composables/utils'
 import { POPUP_MESSAGE_KEYS } from './composables/resultCardMeta'
 import { toast } from '@/lib/toast'
 import { matchShortcutKeys } from '@/lib/matchShortcut'
@@ -24,6 +24,7 @@ import { locale, reloadCurrentLocale, t, type MessageKey, type MessageParams } f
 const logger = createLogger('translate')
 let disposed = false
 let unlistenLanguageChanged: (() => void) | null = null
+let sourceRevision = 0
 
 const applyDocumentLanguageAndTitle = async (): Promise<void> => {
   document.documentElement.lang = locale.value
@@ -160,6 +161,7 @@ const updateBatchStatus = (): void => {
 /* === 事件分派 === */
 const onStarted = (payload: TranslationEventPayload, isNewBatch: boolean): void => {
   if (isNewBatch) {
+    sourceRevision += 1
     if (payload.sourceText !== undefined) sourceText.value = payload.sourceText
     charCount.value = sourceText.value.length
     sourceBadge.value = payload.sourceType ?? null
@@ -351,6 +353,7 @@ const persistSessionLanguages = async (): Promise<void> => {
 
 /* === 原文输入 === */
 const onSourceInput = (): void => {
+  sourceRevision += 1
   charCount.value = sourceText.value.length
   if (!sourceText.value.trim()) {
     cards.forEach((c) => {
@@ -365,11 +368,14 @@ const applyPendingSourceText = async (): Promise<void> => {
   const apis = getTauriApis()
   if (!apis) return
   try {
-    const text = await apis.invoke<string>('take_pending_source_text')
-    if (text) {
-      sourceText.value = text
-      charCount.value = text.length
-    }
+    await applyPendingSourceIfCurrent(
+      () => apis.invoke<string | null>('take_pending_source_text'),
+      () => sourceRevision,
+      (text) => {
+        sourceText.value = text
+        charCount.value = text.length
+      },
+    )
   } catch (e) {
     toast.error(t('popup.error.pendingSourceFailed'), String(e))
   }
@@ -431,9 +437,6 @@ onMounted(() => {
   void runColdStartReady()
   void collectEdgeTranslateEnv()
   void applyPendingSourceText()
-  window.addEventListener('focus', () => {
-    void applyPendingSourceText()
-  })
   window.addEventListener('keydown', onAppShortcutKeydown)
 })
 </script>

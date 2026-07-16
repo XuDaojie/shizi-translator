@@ -15,7 +15,7 @@ pub enum SelectionError {
     ClipboardUnavailable,
     #[error("无法模拟 Ctrl+C，请检查系统权限或手动复制后再翻译")]
     CopyShortcutFailed,
-    #[error("未读取到选中文本，请先选中文本后再按 Alt+T")]
+    #[error("未读取到选中文本，请先选中文本后再按划词翻译快捷键")]
     EmptySelection,
     #[error("剪贴板中没有可翻译的文本")]
     EmptyClipboard,
@@ -35,6 +35,7 @@ fn normalize_clipboard_text(text: Option<String>) -> Result<String, SelectionErr
 }
 
 pub fn copy_selected_text(restore_clipboard: bool) -> Result<String, SelectionError> {
+    keyboard::wait_until_modifiers_released();
     let snapshot = clipboard::capture_text_snapshot();
     let sentinel = selection_sentinel();
     clipboard::write_text(&sentinel)?;

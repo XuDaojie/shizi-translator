@@ -30,6 +30,16 @@ export function batchIdFromSession(sessionId: unknown): string | null {
   return sessionId.slice(0, idx)
 }
 
+export async function applyPendingSourceIfCurrent(
+  load: () => Promise<string | null>,
+  getRevision: () => number,
+  apply: (text: string) => void,
+): Promise<void> {
+  const revision = getRevision()
+  const text = await load()
+  if (text && revision === getRevision()) apply(text)
+}
+
 /** 朗读：speechSynthesis 不可用时静默忽略（旧 translate.js 用 toast 提示，由调用方决定）。 */
 export function speakText(text: string, lang: string): void {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) return
