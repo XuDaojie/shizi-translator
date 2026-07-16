@@ -13,6 +13,12 @@ pub struct OcrRunMeta {
     pub latency_ms: u64,
     pub http_status: Option<u16>,
     pub scaled: bool,
+    /// PDF 打开路径：识别的源页码（1-based）；图片路径为 None。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_page: Option<u32>,
+    /// PDF 打开路径：文档总页数；图片路径为 None。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_page_count: Option<u32>,
 }
 
 /// 纯识别（不翻译）完整响应：正文 + 元信息 + UI 预览 PNG。
@@ -68,6 +74,8 @@ mod tests {
             latency_ms: 42,
             http_status: Some(200),
             scaled: false,
+            source_page: None,
+            source_page_count: None,
         };
         let s = m.info_summary();
         assert!(s.contains("openai-vision"));
@@ -88,11 +96,16 @@ mod tests {
             latency_ms: 0,
             http_status: None,
             scaled: false,
+            source_page: None,
+            source_page_count: None,
         };
         let v = serde_json::to_value(&m).unwrap();
         assert!(v.get("sourceWidth").is_some());
         assert!(v.get("latencyMs").is_some());
         assert!(v.get("httpStatus").is_some());
+        // 可选页数字段为 None 时不序列化
+        assert!(v.get("sourcePage").is_none());
+        assert!(v.get("sourcePageCount").is_none());
     }
 
     #[test]
@@ -117,6 +130,8 @@ mod tests {
                 latency_ms: 0,
                 http_status: None,
                 scaled: false,
+                source_page: None,
+                source_page_count: None,
             },
             preview_png_base64: "eA==".into(),
         };

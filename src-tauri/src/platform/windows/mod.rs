@@ -126,6 +126,8 @@ pub async fn recognize_image_full(
             None
         },
         scaled,
+        source_page: None,
+        source_page_count: None,
     };
 
     log::info!("OCR 纯识别: {}", meta.info_summary());

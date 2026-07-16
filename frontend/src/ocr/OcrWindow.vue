@@ -301,8 +301,14 @@ onUnmounted(() => {
     <main class="grid min-h-0 flex-1 grid-cols-1 gap-0 md:grid-cols-2">
       <!-- 左：预览 -->
       <section class="flex min-h-0 flex-col border-b border-border md:border-b-0 md:border-r">
-        <div class="shrink-0 px-4 py-2 text-xs font-medium text-muted-foreground">
-          图片预览
+        <div class="flex shrink-0 items-center gap-2 px-4 py-2">
+          <span class="text-xs font-medium text-muted-foreground">图片预览</span>
+          <span
+            v-if="meta?.sourcePage && meta?.sourcePageCount"
+            class="text-xs text-muted-foreground"
+          >
+            已识别第 {{ meta.sourcePage }} 页（共 {{ meta.sourcePageCount }} 页）
+          </span>
         </div>
         <div class="flex min-h-0 flex-1 items-center justify-center bg-muted/40 p-4">
           <img
@@ -379,6 +385,12 @@ onUnmounted(() => {
         <div class="flex gap-1">
           <dt>模型</dt>
           <dd class="font-medium text-foreground">{{ meta.model || '—' }}</dd>
+        </div>
+        <div v-if="meta.sourcePage && meta.sourcePageCount" class="flex gap-1">
+          <dt>页码</dt>
+          <dd class="font-medium text-foreground">
+            第 {{ meta.sourcePage }} / {{ meta.sourcePageCount }} 页
+          </dd>
         </div>
       </dl>
       <p v-else class="text-xs text-muted-foreground">

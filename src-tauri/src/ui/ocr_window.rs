@@ -140,7 +140,8 @@ pub async fn recognize_clipboard_image(
     Ok(full.response)
 }
 
-/// 前端 invoke：文件选择器选图并识别；用户取消返回 `Ok(None)`。
+/// 前端 invoke：文件选择器选图/PDF 并识别；用户取消返回 `Ok(None)`。
+/// PDF 仅渲染第 1 页，meta 填充 `source_page`/`source_page_count`；渲染失败不写缓存。
 #[tauri::command]
 pub async fn pick_and_recognize_image(
     app: AppHandle,
@@ -151,7 +152,11 @@ pub async fn pick_and_recognize_image(
     let path = tauri::async_runtime::spawn_blocking(move || {
         app2.dialog()
             .file()
-            .add_filter("Images", &["png", "jpg", "jpeg", "webp", "bmp"])
+            .add_filter(
+                "图片与 PDF",
+                &["png", "jpg", "jpeg", "webp", "bmp", "pdf"],
+            )
+            .add_filter("PDF", &["pdf"])
             .blocking_pick_file()
     })
     .await
@@ -162,11 +167,26 @@ pub async fn pick_and_recognize_image(
     };
     let path = file_path.into_path().map_err(|e| e.to_string())?;
     let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
-    // 禁止 log 文件内容 / base64；仅记路径与尺寸
-    log::info!("OCR 文件读图: path={}", path.display());
+    // 禁止 log 文件内容 / base64；仅记路径
+    log::info!("OCR 文件读入: path={}", path.display());
 
-    let image = load_image_file_bytes(&bytes).map_err(|e| e.to_string())?;
-    log::info!("OCR 文件尺寸: {}x{}", image.width, image.height);
+    let (image, pdf_pages): (CapturedImage, Option<u32>) =
+        if crate::core::ocr::pdf_detect::looks_like_pdf(Some(&path), &bytes) {
+            let rendered = crate::platform::render_pdf_first_page(&bytes)
+                .await
+                .map_err(|e| friendly_ocr_error(OcrTranslationError::from(e)))?;
+            log::info!(
+                "PDF 首页: pages={} {}x{}",
+                rendered.page_count,
+                rendered.image.width,
+                rendered.image.height
+            );
+            (rendered.image, Some(rendered.page_count))
+        } else {
+            let image = load_image_file_bytes(&bytes).map_err(|e| e.to_string())?;
+            log::info!("OCR 文件尺寸: {}x{}", image.width, image.height);
+            (image, None)
+        };
 
     let config = state.config_store.get().map_err(|e| e.to_string())?;
     let full = recognize_image_full(
@@ -177,10 +197,16 @@ pub async fn pick_and_recognize_image(
     )
     .await
     .map_err(|e| friendly_ocr_error(OcrTranslationError::from(e)))?;
+    // source_image 是栅格图（PDF 已渲染为位图），不是原始 PDF 字节
     if let Err(e) = state.set_last_ocr_image(full.source_image) {
         log::warn!("写入 last_ocr_image 失败: {e}");
     }
-    Ok(Some(full.response))
+    let mut response = full.response;
+    if let Some(n) = pdf_pages {
+        response.meta.source_page = Some(1);
+        response.meta.source_page_count = Some(n);
+    }
+    Ok(Some(response))
 }
 
 /// 对最近一次纯识别成功的源图再跑一遍 OCR。

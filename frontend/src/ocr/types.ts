@@ -10,6 +10,10 @@ export interface OcrRunMeta {
   latencyMs: number
   httpStatus?: number | null
   scaled: boolean
+  /** PDF 打开路径：识别的源页码（1-based）；图片路径可缺省 */
+  sourcePage?: number | null
+  /** PDF 打开路径：文档总页数；图片路径可缺省 */
+  sourcePageCount?: number | null
 }
 
 /** 纯识别完整响应（与后端 RecognizeImageResponse camelCase 对齐）。 */
