@@ -18,20 +18,23 @@ pub async fn recognize_region(
     Err(OcrTranslationError::Capture(CaptureError::UnsupportedPlatform))
 }
 
+/// `service_id`：OCR 窗临时渠道；`None` 时仅用配置中 enabled 引擎。
 pub async fn recognize_image_full(
     _image: CapturedImage,
     _hints: OcrHints,
     _ocr_services: &[crate::core::config::types::OcrServiceInstanceConfig],
-    _model_hint: Option<String>,
+    _service_id: Option<String>,
 ) -> Result<RecognizeImageFullResult, OcrError> {
     Err(OcrError::UnsupportedPlatform)
 }
 
+/// `service_id`：OCR 窗临时渠道；`None` 时仅用配置中 enabled 引擎。
 pub async fn recognize_cropped_full(
     _frame: &CapturedImage,
     _region: (u32, u32, u32, u32),
     _hints: OcrHints,
     _ocr_services: &[crate::core::config::types::OcrServiceInstanceConfig],
+    _service_id: Option<String>,
 ) -> Result<RecognizeImageFullResult, OcrTranslationError> {
     Err(OcrTranslationError::Ocr(OcrError::UnsupportedPlatform))
 }
@@ -96,7 +99,7 @@ mod tests {
             height: 1,
             format: CapturedImageFormat::Bgra8,
         };
-        let error = recognize_cropped_full(&frame, (0, 0, 1, 1), OcrHints::default(), &[])
+        let error = recognize_cropped_full(&frame, (0, 0, 1, 1), OcrHints::default(), &[], None)
             .await
             .expect_err("非 windows 平台应返回错误");
         assert!(matches!(

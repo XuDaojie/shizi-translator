@@ -182,6 +182,7 @@ pub async fn submit_capture_region(
                 region,
                 OcrHints::default(),
                 &config.ocr_services,
+                None,
             )
             .await;
             let _ = state.finish_capture();

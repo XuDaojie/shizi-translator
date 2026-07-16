@@ -11,7 +11,7 @@ use crate::core::{
     ocr::{
         image_encode::{encode_captured_image_png_info, encode_png_unscaled},
         meta::{OcrRunMeta, RecognizeImageFullResult, RecognizeImageResponse},
-        resolve::{resolve_ocr_engine, ResolvedOcrEngine},
+        resolve::{resolve_ocr_engine, resolve_ocr_engine_for, ResolvedOcrEngine},
         vision_openai::VisionOcrEngine,
         OcrEngine, OcrError, OcrHints,
     },
@@ -55,13 +55,13 @@ pub async fn recognize_region(
 }
 
 /// 纯识别编排：OCR 正文 + 运行元信息 + 预览 PNG base64（不进入翻译链路）。
-/// `model_hint` 保留签名兼容，实际 model 从 resolve 结果取。
+/// `service_id`：OCR 窗临时渠道；`None` 时仅用配置中 enabled 引擎。
 /// 成功时携带源图拷贝，供 ui 层写 last_ocr_image（本函数不碰 AppState）。
 pub async fn recognize_image_full(
     image: CapturedImage,
     hints: OcrHints,
     ocr_services: &[crate::core::config::types::OcrServiceInstanceConfig],
-    _model_hint: Option<String>,
+    service_id: Option<String>,
 ) -> Result<RecognizeImageFullResult, OcrError> {
     let start = Instant::now();
     let source_image = image.clone(); // 入口缓存用
@@ -70,7 +70,7 @@ pub async fn recognize_image_full(
     let preview_png = encode_png_unscaled(&image)?;
     let preview_b64 = STANDARD.encode(&preview_png);
 
-    let resolved = resolve_ocr_engine(ocr_services)?;
+    let resolved = resolve_ocr_engine_for(ocr_services, service_id.as_deref())?;
     let (result, model, vision_encode) = match resolved {
         ResolvedOcrEngine::WindowsMedia => {
             log::info!("OCR 纯识别引擎: windows-media-ocr");
@@ -146,11 +146,13 @@ pub async fn recognize_image_full(
 }
 
 /// 裁剪后纯识别（与 recognize_region 对称，不进入翻译）。
+/// `service_id`：OCR 窗临时渠道；`None` 时仅用配置中 enabled 引擎。
 pub async fn recognize_cropped_full(
     frame: &CapturedImage,
     region: (u32, u32, u32, u32),
     hints: OcrHints,
     ocr_services: &[crate::core::config::types::OcrServiceInstanceConfig],
+    service_id: Option<String>,
 ) -> Result<RecognizeImageFullResult, OcrTranslationError> {
     let cropped = frame.crop(region.0, region.1, region.2, region.3)?;
     log::debug!(
@@ -160,7 +162,7 @@ pub async fn recognize_cropped_full(
         region.2,
         region.3
     );
-    recognize_image_full(cropped, hints, ocr_services, None)
+    recognize_image_full(cropped, hints, ocr_services, service_id)
         .await
         .map_err(Into::into)
 }
@@ -190,7 +192,7 @@ mod tests {
     #[tokio::test]
     async fn recognize_cropped_full_no_engine_configured() {
         let frame = tiny_frame();
-        let err = recognize_cropped_full(&frame, (0, 0, 1, 1), OcrHints::default(), &[])
+        let err = recognize_cropped_full(&frame, (0, 0, 1, 1), OcrHints::default(), &[], None)
             .await
             .expect_err("无 OCR 服务应失败");
         assert!(matches!(
