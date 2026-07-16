@@ -46,6 +46,12 @@ fn tray_icon_image(app: &tauri::App) -> tauri::Result<Image<'static>> {
     tray_icon_image_for_scale(scale_factor)
 }
 
+// 加速键策略：
+// 1) 默认 TrayAccelMode::Native + MenuItem::set_accelerator 原位更新（Tauri 2.11+）
+// 2) 禁止 tray 内 GlobalShortcut::register（与 shortcuts.rs 双绑）
+// 3) 若实机抢键：将 TRAY_ACCEL_MODE 改为 TextOnly（文案 \t 拼接，accelerator 恒 None）
+// 4) 不默认 tray.set_menu 重建；仅当 set_accelerator 在目标环境不可用时再考虑重建
+
 /// 托盘加速键展示模式。Native = 系统 MenuItem accelerator；TextOnly = 文案拼接、不注册 accelerator。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrayAccelMode {
