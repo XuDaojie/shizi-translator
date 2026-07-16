@@ -100,11 +100,14 @@ pub async fn start_ocr_capture_flow(app: AppHandle, state: AppState) {
 }
 
 /// 前端 invoke：启动截图框选纯识别。
+/// `service_id` 写入会话槽，供 overlay RecognizeOnly 提交时 `take` 使用。
 #[tauri::command]
 pub async fn start_ocr_capture(
     app: AppHandle,
     state: State<'_, AppState>,
+    service_id: Option<String>,
 ) -> Result<(), String> {
+    state.set_ocr_session_service_id(service_id)?;
     start_ocr_capture_flow(app, state.inner().clone()).await;
     Ok(())
 }
@@ -113,6 +116,7 @@ pub async fn start_ocr_capture(
 #[tauri::command]
 pub async fn recognize_clipboard_image(
     state: State<'_, AppState>,
+    service_id: Option<String>,
 ) -> Result<RecognizeImageResponse, String> {
     let image = read_clipboard_image()?
         .ok_or_else(|| "剪贴板中没有图片".to_string())?;
@@ -122,9 +126,14 @@ pub async fn recognize_clipboard_image(
         image.height
     );
     let config = state.config_store.get().map_err(|e| e.to_string())?;
-    let full = recognize_image_full(image, OcrHints::default(), &config.ocr_services, None)
-        .await
-        .map_err(|e| friendly_ocr_error(OcrTranslationError::from(e)))?;
+    let full = recognize_image_full(
+        image,
+        OcrHints::default(),
+        &config.ocr_services,
+        service_id,
+    )
+    .await
+    .map_err(|e| friendly_ocr_error(OcrTranslationError::from(e)))?;
     if let Err(e) = state.set_last_ocr_image(full.source_image) {
         log::warn!("写入 last_ocr_image 失败: {e}");
     }
@@ -136,6 +145,7 @@ pub async fn recognize_clipboard_image(
 pub async fn pick_and_recognize_image(
     app: AppHandle,
     state: State<'_, AppState>,
+    service_id: Option<String>,
 ) -> Result<Option<RecognizeImageResponse>, String> {
     let app2 = app.clone();
     let path = tauri::async_runtime::spawn_blocking(move || {
@@ -159,9 +169,14 @@ pub async fn pick_and_recognize_image(
     log::info!("OCR 文件尺寸: {}x{}", image.width, image.height);
 
     let config = state.config_store.get().map_err(|e| e.to_string())?;
-    let full = recognize_image_full(image, OcrHints::default(), &config.ocr_services, None)
-        .await
-        .map_err(|e| friendly_ocr_error(OcrTranslationError::from(e)))?;
+    let full = recognize_image_full(
+        image,
+        OcrHints::default(),
+        &config.ocr_services,
+        service_id,
+    )
+    .await
+    .map_err(|e| friendly_ocr_error(OcrTranslationError::from(e)))?;
     if let Err(e) = state.set_last_ocr_image(full.source_image) {
         log::warn!("写入 last_ocr_image 失败: {e}");
     }
@@ -173,15 +188,21 @@ pub async fn pick_and_recognize_image(
 #[tauri::command]
 pub async fn rerecognize_last_image(
     state: State<'_, AppState>,
+    service_id: Option<String>,
 ) -> Result<RecognizeImageResponse, String> {
     let image = state
         .clone_last_ocr_image()?
         .ok_or_else(|| RERECOGNIZE_NO_IMAGE_MSG.to_string())?;
     log::info!("OCR 重新识别: {}x{}", image.width, image.height);
     let config = state.config_store.get().map_err(|e| e.to_string())?;
-    let full = recognize_image_full(image, OcrHints::default(), &config.ocr_services, None)
-        .await
-        .map_err(|e| friendly_ocr_error(OcrTranslationError::from(e)))?;
+    let full = recognize_image_full(
+        image,
+        OcrHints::default(),
+        &config.ocr_services,
+        service_id,
+    )
+    .await
+    .map_err(|e| friendly_ocr_error(OcrTranslationError::from(e)))?;
     if let Err(e) = state.set_last_ocr_image(full.source_image) {
         log::warn!("写入 last_ocr_image 失败: {e}");
     }

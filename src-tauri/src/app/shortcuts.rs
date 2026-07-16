@@ -358,6 +358,8 @@ pub fn handle_global_shortcut(
                     log::warn!("打开文字识别窗口失败: {e}");
                 }
                 let state = app_handle.state::<AppState>().inner().clone();
+                // 快捷键无前端 service_id：显式清槽，避免残留上次 OCR 窗截图的临时 id。
+                let _ = state.set_ocr_session_service_id(None);
                 crate::ui::ocr_window::start_ocr_capture_flow(app_handle, state).await;
             });
         }
