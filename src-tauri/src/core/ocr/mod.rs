@@ -1,5 +1,6 @@
 pub mod image_encode;
 pub mod meta;
+pub mod pdf_detect;
 pub mod resolve;
 pub mod vision_openai;
 
