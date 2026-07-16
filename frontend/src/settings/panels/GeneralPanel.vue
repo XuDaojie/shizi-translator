@@ -7,14 +7,20 @@ import {
   DevOnly,
 } from '../components'
 import type { AppSettings } from '../types'
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { FolderOpen, RefreshCw } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
+import { Dialog } from '@/components/ui/dialog'
 import { t } from '@/i18n'
 import { toast } from '@/lib/toast'
+import {
+  invokeCheckForUpdate,
+  invokeOpenUrl,
+  type CheckUpdateResult,
+} from '@/lib/tauri'
 import { useSettings } from '../stores/settings'
 
-defineProps<{
+const props = defineProps<{
   state: AppSettings
 }>()
 
@@ -39,6 +45,68 @@ const closeActionOptions = computed(() => [
   { label: t('settings.option.minimize'), value: 'minimize' },
   { label: t('settings.option.quit'), value: 'quit' },
 ])
+
+const checking = ref(false)
+const updateDialogOpen = ref(false)
+const pendingUpdate = ref<CheckUpdateResult | null>(null)
+const appVersion = ref('…')
+
+const updateDialogDescription = computed(() => {
+  const result = pendingUpdate.value
+  if (!result) return ''
+  const prerelease = result.isPrerelease
+    ? t('settings.dialog.updatePrereleaseSuffix')
+    : ''
+  return t('settings.dialog.updateDescription', {
+    latest: result.latestVersion ?? '',
+    current: result.currentVersion,
+    prerelease,
+  })
+})
+
+onMounted(async () => {
+  try {
+    const tauri = (window as unknown as {
+      __TAURI__?: { app?: { getVersion?: () => Promise<string> } }
+    }).__TAURI__
+    const v = await tauri?.app?.getVersion?.()
+    if (v) appVersion.value = v
+  } catch { /* vite only */ }
+})
+
+async function handleCheckUpdate() {
+  if (checking.value) return
+  checking.value = true
+  try {
+    const result = await invokeCheckForUpdate(props.state.general.updateChannel)
+    if (result.status === 'up_to_date') {
+      toast.success(t('settings.toast.upToDate', { version: result.currentVersion }))
+    } else if (result.status === 'update_available') {
+      pendingUpdate.value = result
+      updateDialogOpen.value = true
+    } else {
+      toast.error(
+        t('settings.toast.checkUpdateFailed'),
+        result.message ?? '',
+      )
+    }
+  } catch (e) {
+    toast.error(t('settings.toast.checkUpdateFailed'), String(e))
+  } finally {
+    checking.value = false
+  }
+}
+
+async function goDownload() {
+  const url = pendingUpdate.value?.releaseUrl
+  updateDialogOpen.value = false
+  if (!url) return
+  try {
+    await invokeOpenUrl(url)
+  } catch (e) {
+    toast.error(t('settings.toast.openUrlFailed'), String(e))
+  }
+}
 
 const refreshLanguages = async () => {
   try { await refreshInterfaceLanguages() } catch (error) { toast.error(t('settings.toast.refreshFailed'), String(error)) }
@@ -133,14 +201,34 @@ const openDirectory = async () => {
     >
       <SettingSelect v-model="state.general.updateChannel" :options="updateChannelOptions" />
     </SettingRow>
-    <DevOnly>
-      <SettingRow
-        :title="t('settings.field.autoCheckUpdate')"
-        :description="t('settings.description.autoCheckUpdate')"
-        status="wip"
-      >
-        <SettingSwitch v-model="state.general.autoCheckUpdate" :aria-label="t('settings.field.autoCheckUpdate')" />
-      </SettingRow>
-    </DevOnly>
+    <SettingRow
+      :title="t('settings.field.autoCheckUpdate')"
+      :description="t('settings.description.autoCheckUpdate')"
+    >
+      <SettingSwitch v-model="state.general.autoCheckUpdate" :aria-label="t('settings.field.autoCheckUpdate')" />
+    </SettingRow>
+    <SettingRow
+      :title="t('settings.field.currentAppVersion')"
+      :description="t('settings.description.version')"
+    >
+      <span class="text-sm text-muted-foreground font-mono">v{{ appVersion }}</span>
+    </SettingRow>
+    <SettingRow :title="t('settings.button.checkUpdate')" description="">
+      <Button size="sm" :disabled="checking" @click="handleCheckUpdate">
+        <RefreshCw :class="['h-3.5 w-3.5', checking && 'animate-spin']" />
+        {{ t('settings.button.checkUpdate') }}
+      </Button>
+    </SettingRow>
+    <Dialog
+      v-model:open="updateDialogOpen"
+      :title="t('settings.dialog.updateTitle')"
+      :description="updateDialogDescription"
+      width="420px"
+    >
+      <div class="flex justify-end gap-2">
+        <Button variant="ghost" @click="updateDialogOpen = false">{{ t('settings.button.later') }}</Button>
+        <Button @click="goDownload">{{ t('settings.button.goDownload') }}</Button>
+      </div>
+    </Dialog>
   </SettingGroup>
 </template>
