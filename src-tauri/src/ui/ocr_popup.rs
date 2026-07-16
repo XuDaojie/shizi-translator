@@ -132,6 +132,18 @@ pub fn friendly_ocr_error(error: OcrTranslationError) -> String {
         OcrTranslationError::Ocr(OcrError::Http(ref d)) => {
             format!("OCR 识别失败：网络错误（{d}）。请确认当前启用的文字识别服务配置正确。")
         }
+        OcrTranslationError::Ocr(OcrError::UnknownService(_)) => {
+            "OCR 识别失败：渠道已不存在，请重新选择。".to_string()
+        }
+        OcrTranslationError::Ocr(OcrError::PdfOpenFailed(_)) => {
+            "OCR 识别失败：无法打开 PDF 文件。".to_string()
+        }
+        OcrTranslationError::Ocr(OcrError::PdfEmptyDocument) => {
+            "OCR 识别失败：PDF 中没有可识别的页面。".to_string()
+        }
+        OcrTranslationError::Ocr(OcrError::PdfRenderFailed(_)) => {
+            "OCR 识别失败：PDF 页面渲染失败。".to_string()
+        }
     }
 }
 
@@ -286,6 +298,32 @@ mod tests {
                 CaptureError::ImageConversionFailed("boom".to_string())
             )),
             "截图失败：图像转换失败（boom）"
+        );
+    }
+
+    #[test]
+    fn friendly_unknown_service_and_pdf_errors() {
+        assert!(
+            friendly_ocr_error(OcrTranslationError::Ocr(OcrError::UnknownService(
+                "abc".into()
+            )))
+            .contains("渠道")
+        );
+        assert!(
+            friendly_ocr_error(OcrTranslationError::Ocr(OcrError::PdfOpenFailed(
+                "x".into()
+            )))
+            .contains("PDF")
+        );
+        assert!(
+            friendly_ocr_error(OcrTranslationError::Ocr(OcrError::PdfEmptyDocument))
+                .contains("页")
+        );
+        assert!(
+            friendly_ocr_error(OcrTranslationError::Ocr(OcrError::PdfRenderFailed(
+                "x".into()
+            )))
+            .contains("渲染")
         );
     }
 }

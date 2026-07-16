@@ -72,6 +72,14 @@ pub enum OcrError {
     Api { message: String, retryable: bool },
     #[error("OCR 网络错误：{0}")]
     Http(String),
+    #[error("OCR 渠道不存在：{0}")]
+    UnknownService(String),
+    #[error("无法打开 PDF 文件：{0}")]
+    PdfOpenFailed(String),
+    #[error("PDF 中没有可识别的页面")]
+    PdfEmptyDocument,
+    #[error("PDF 页面渲染失败：{0}")]
+    PdfRenderFailed(String),
 }
 
 #[async_trait::async_trait]
@@ -103,5 +111,20 @@ mod error_tests {
 
         let http = OcrError::Http("timeout".into());
         assert!(http.to_string().contains("timeout") || http.to_string().contains("网络"));
+    }
+
+    #[test]
+    fn pdf_and_unknown_service_variants_display() {
+        let u = OcrError::UnknownService("svc-x".into());
+        assert!(u.to_string().contains("svc-x") || u.to_string().contains("渠道"));
+
+        let open = OcrError::PdfOpenFailed("bad".into());
+        assert!(open.to_string().contains("PDF") || open.to_string().contains("打开"));
+
+        let empty = OcrError::PdfEmptyDocument;
+        assert!(empty.to_string().contains("页") || empty.to_string().contains("PDF"));
+
+        let render = OcrError::PdfRenderFailed("x".into());
+        assert!(render.to_string().contains("渲染") || render.to_string().contains("PDF"));
     }
 }
