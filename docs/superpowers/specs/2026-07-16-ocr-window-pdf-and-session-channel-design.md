@@ -1,7 +1,7 @@
 # 文字识别窗：PDF 首頁 OCR + 会话级渠道切换
 
 - 日期：2026-07-16
-- 状态：已设计，待实现
+- 状态：已实现
 - 前置：`2026-07-15-multimodal-ocr-runtime-design.md`、`2026-07-15-services-drag-detail-ocr-design.md`、OCR 独立窗口已接通
 
 ## 1. 背景与目标

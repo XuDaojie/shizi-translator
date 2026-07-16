@@ -243,6 +243,14 @@ pub struct OcrWord {
 - OCR 与翻译服务实例独立配置；识别出的纯文本仍走统一 `TranslationInput` / 多服务翻译批次。
 - 引擎解析与调用在 Rust 侧完成，前端只管理实例启用状态与配置。
 
+### 文字识别窗：会话级渠道与 PDF 首页
+
+独立文字识别窗口在上述「唯一启用」规则之上做了**薄扩展**（不影响 `Alt+S` 截图翻译）：
+
+1. **会话级临时渠道**：OCR 窗前端持有 `selectedOcrServiceId`（不落盘）。识别相关 command 透传可选 `service_id`；`resolve_ocr_engine_for(services, Some(id))` 按实例 id 建引擎并**忽略** `enabled`。无 id 时仍走唯一启用规则。
+2. **截图纯识别槽**：`start_ocr_capture` 将临时 id 写入 `AppState.ocr_session_service_id`；`submit_capture_region(RecognizeOnly)` 读取后清除；`Translate` 路径永不读该槽。
+3. **打开 PDF**：文件选择器支持 `pdf`；经扩展名/魔数分支后，Windows 上用 `Windows.Data.Pdf` 栅格化**第 1 页**为 `CapturedImage`，再进现有 `recognize_image_full`。`OcrRunMeta` 可选 `sourcePage` / `sourcePageCount` 供前端提示页数。剪贴板仍仅位图，不扩展 PDF。
+
 ## Windows OCR 技术路线
 
 ### Windows.Media.Ocr

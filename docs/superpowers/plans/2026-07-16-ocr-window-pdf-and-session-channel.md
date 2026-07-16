@@ -59,7 +59,7 @@
 - 修改：`src-tauri/src/core/ocr/mod.rs`
 - 修改：`src-tauri/src/ui/ocr_popup.rs`
 
-- [ ] **步骤 1：编写失败的测试**
+- [x] **步骤 1：编写失败的测试**
 
 在 `mod.rs` 的 `error_tests` 中追加：
 
@@ -110,7 +110,7 @@ fn friendly_unknown_service_and_pdf_errors() {
 }
 ```
 
-- [ ] **步骤 2：运行测试验证失败**
+- [x] **步骤 2：运行测试验证失败**
 
 ```powershell
 cd src-tauri; cargo test --lib ocr::error_tests::pdf_and_unknown_service_variants_display -- --nocapture
@@ -118,7 +118,7 @@ cd src-tauri; cargo test --lib ocr::error_tests::pdf_and_unknown_service_variant
 
 预期：FAIL（变体未定义）。
 
-- [ ] **步骤 3：最少实现**
+- [x] **步骤 3：最少实现**
 
 在 `OcrError` 枚举中增加：
 
@@ -150,7 +150,7 @@ OcrTranslationError::Ocr(OcrError::PdfRenderFailed(_)) => {
 }
 ```
 
-- [ ] **步骤 4：运行测试验证通过**
+- [x] **步骤 4：运行测试验证通过**
 
 ```powershell
 cd src-tauri; cargo test --lib ocr::error_tests::pdf_and_unknown_service_variants_display ocr_popup::tests::friendly_unknown_service_and_pdf_errors -- --nocapture
@@ -158,7 +158,7 @@ cd src-tauri; cargo test --lib ocr::error_tests::pdf_and_unknown_service_variant
 
 预期：PASS。
 
-- [ ] **步骤 5：Commit**
+- [x] **步骤 5：Commit**
 
 ```bash
 git add src-tauri/src/core/ocr/mod.rs src-tauri/src/ui/ocr_popup.rs
@@ -173,7 +173,7 @@ git commit -m "feat(ocr): 增加 PDF 与未知渠道错误变体及友好文案"
 - 修改：`src-tauri/src/core/ocr/resolve.rs`
 - 修改：`src-tauri/src/core/ocr/mod.rs`（导出）
 
-- [ ] **步骤 1：编写失败的测试**
+- [x] **步骤 1：编写失败的测试**
 
 在 `resolve.rs` 的 `tests` 中追加（复用已有 `svc` helper）：
 
@@ -228,7 +228,7 @@ fn resolve_ocr_engine_delegates_to_for_none() {
 }
 ```
 
-- [ ] **步骤 2：运行测试验证失败**
+- [x] **步骤 2：运行测试验证失败**
 
 ```powershell
 cd src-tauri; cargo test --lib ocr::resolve::tests::resolve_for_by_id_ignores_enabled -- --nocapture
@@ -236,7 +236,7 @@ cd src-tauri; cargo test --lib ocr::resolve::tests::resolve_for_by_id_ignores_en
 
 预期：FAIL（`resolve_ocr_engine_for` 未定义）。
 
-- [ ] **步骤 3：最少实现**
+- [x] **步骤 3：最少实现**
 
 ```rust
 /// OCR 引擎解析。
@@ -286,7 +286,7 @@ pub fn resolve_ocr_engine_for(...) -> Result<..., OcrError> {
 pub use resolve::{resolve_ocr_engine, resolve_ocr_engine_for, ResolvedOcrEngine, VisionOcrConfig};
 ```
 
-- [ ] **步骤 4：运行测试验证通过**
+- [x] **步骤 4：运行测试验证通过**
 
 ```powershell
 cd src-tauri; cargo test --lib ocr::resolve::tests -- --nocapture
@@ -294,7 +294,7 @@ cd src-tauri; cargo test --lib ocr::resolve::tests -- --nocapture
 
 预期：全部 PASS。
 
-- [ ] **步骤 5：Commit**
+- [x] **步骤 5：Commit**
 
 ```bash
 git add src-tauri/src/core/ocr/resolve.rs src-tauri/src/core/ocr/mod.rs
@@ -310,7 +310,7 @@ git commit -m "feat(ocr): resolve_ocr_engine_for 支持按 id 忽略 enabled"
 - 修改：`src-tauri/src/platform/unsupported.rs`
 - 修改：所有 `recognize_image_full(..., None)` 调用点（暂仍传 `None`，行为不变）
 
-- [ ] **步骤 1：改签名并接线**
+- [x] **步骤 1：改签名并接线**
 
 将：
 
@@ -360,7 +360,7 @@ pub async fn recognize_cropped_full(
 
 `unsupported.rs` 同步签名，仍返回 `UnsupportedPlatform`。
 
-- [ ] **步骤 2：编译与既有测试**
+- [x] **步骤 2：编译与既有测试**
 
 ```powershell
 cd src-tauri; cargo test --lib -- --nocapture
@@ -368,7 +368,7 @@ cd src-tauri; cargo test --lib -- --nocapture
 
 预期：PASS（调用点仍传 `None`）。
 
-- [ ] **步骤 3：Commit**
+- [x] **步骤 3：Commit**
 
 ```bash
 git add src-tauri/src/platform/windows/mod.rs src-tauri/src/platform/unsupported.rs
@@ -382,7 +382,7 @@ git commit -m "refactor(ocr): recognize_image_full 第 4 参改为 service_id ov
 **文件：**
 - 修改：`src-tauri/src/app/state.rs`
 
-- [ ] **步骤 1：编写失败的测试**
+- [x] **步骤 1：编写失败的测试**
 
 在 `state.rs` 的 `tests` 中追加：
 
@@ -419,7 +419,7 @@ fn ocr_session_service_id_clear_and_overwrite() {
 }
 ```
 
-- [ ] **步骤 2：运行测试验证失败**
+- [x] **步骤 2：运行测试验证失败**
 
 ```powershell
 cd src-tauri; cargo test --lib app::state::tests::ocr_session_service_id_set_take_clears -- --nocapture
@@ -427,7 +427,7 @@ cd src-tauri; cargo test --lib app::state::tests::ocr_session_service_id_set_tak
 
 预期：FAIL。
 
-- [ ] **步骤 3：最少实现**
+- [x] **步骤 3：最少实现**
 
 在 `AppState` 结构体增加字段：
 
@@ -471,7 +471,7 @@ pub fn clear_ocr_session_service_id(&self) -> Result<(), String> {
 }
 ```
 
-- [ ] **步骤 4：运行测试验证通过**
+- [x] **步骤 4：运行测试验证通过**
 
 ```powershell
 cd src-tauri; cargo test --lib app::state::tests::ocr_session_service_id -- --nocapture
@@ -479,7 +479,7 @@ cd src-tauri; cargo test --lib app::state::tests::ocr_session_service_id -- --no
 
 预期：PASS。
 
-- [ ] **步骤 5：Commit**
+- [x] **步骤 5：Commit**
 
 ```bash
 git add src-tauri/src/app/state.rs
@@ -495,7 +495,7 @@ git commit -m "feat(ocr): AppState 增加 OCR 会话临时渠道槽"
 - 修改：`src-tauri/src/ui/overlay.rs`
 - 修改：`src-tauri/src/app/shortcuts.rs`（若直接调 `start_ocr_capture_flow`：无 id → 槽写 `None`）
 
-- [ ] **步骤 1：扩展 command 签名**
+- [x] **步骤 1：扩展 command 签名**
 
 ```rust
 #[tauri::command]
@@ -563,7 +563,7 @@ let _ = state.set_ocr_session_service_id(None);
 crate::ui::ocr_window::start_ocr_capture_flow(app_handle, state).await;
 ```
 
-- [ ] **步骤 2：overlay RecognizeOnly 读槽**
+- [x] **步骤 2：overlay RecognizeOnly 读槽**
 
 ```rust
 CapturePurpose::RecognizeOnly => {
@@ -596,7 +596,7 @@ if purpose == CapturePurpose::RecognizeOnly {
 }
 ```
 
-- [ ] **步骤 3：单测「Translate 不依赖槽」**（逻辑级，无 Tauri）
+- [x] **步骤 3：单测「Translate 不依赖槽」**（逻辑级，无 Tauri）
 
 若难以测 overlay 整函数，至少保证：
 
@@ -618,7 +618,7 @@ rg "ocr_session" src-tauri/src/ui/overlay.rs
 
 `rg` 应仅出现在 RecognizeOnly / cancel 分支。
 
-- [ ] **步骤 4：Commit**
+- [x] **步骤 4：Commit**
 
 ```bash
 git add src-tauri/src/ui/ocr_window.rs src-tauri/src/ui/overlay.rs src-tauri/src/app/shortcuts.rs
@@ -635,7 +635,7 @@ git commit -m "feat(ocr): OCR 窗 command 透传 service_id 且会话槽仅 Reco
 - 修改：`frontend/src/ocr/OcrWindow.vue`
 - 修改：`frontend/src/ocr/types.ts`（可选类型）
 
-- [ ] **步骤 1：编写失败的 vitest**
+- [x] **步骤 1：编写失败的 vitest**
 
 `frontend/src/ocr/sessionChannel.ts`（先写测试再实现）：
 
@@ -694,7 +694,7 @@ describe('buildOcrChannelOptions', () => {
 })
 ```
 
-- [ ] **步骤 2：运行测试验证失败**
+- [x] **步骤 2：运行测试验证失败**
 
 ```powershell
 npm run test -- frontend/src/ocr/sessionChannel.test.ts
@@ -702,7 +702,7 @@ npm run test -- frontend/src/ocr/sessionChannel.test.ts
 
 预期：FAIL（模块不存在）。
 
-- [ ] **步骤 3：实现纯函数**
+- [x] **步骤 3：实现纯函数**
 
 ```ts
 // frontend/src/ocr/sessionChannel.ts
@@ -741,7 +741,7 @@ export function reconcileSelectedOcrServiceId(
 
 可选：为 `reconcile` 补一条 vitest。
 
-- [ ] **步骤 4：改造 `OcrWindow.vue`**
+- [x] **步骤 4：改造 `OcrWindow.vue`**
 
 要点：
 
@@ -818,7 +818,7 @@ onMounted(() => {
 
 **禁止**在切换渠道时 `invokeSaveAppConfig` / 改 enabled。
 
-- [ ] **步骤 5：类型检查与单测**
+- [x] **步骤 5：类型检查与单测**
 
 ```powershell
 npm run test -- frontend/src/ocr/sessionChannel.test.ts
@@ -827,7 +827,7 @@ npm run typecheck
 
 预期：PASS。
 
-- [ ] **步骤 6：Commit**
+- [x] **步骤 6：Commit**
 
 ```bash
 git add frontend/src/ocr/sessionChannel.ts frontend/src/ocr/sessionChannel.test.ts frontend/src/ocr/OcrWindow.vue frontend/src/ocr/types.ts
@@ -842,7 +842,7 @@ git commit -m "feat(ocr): 文字识别窗会话级渠道下拉并透传 service_
 - 创建：`src-tauri/src/core/ocr/pdf_detect.rs`
 - 修改：`src-tauri/src/core/ocr/mod.rs`
 
-- [ ] **步骤 1：编写失败的测试**
+- [x] **步骤 1：编写失败的测试**
 
 ```rust
 // pdf_detect.rs
@@ -876,7 +876,7 @@ mod tests {
 }
 ```
 
-- [ ] **步骤 2：运行测试验证失败**
+- [x] **步骤 2：运行测试验证失败**
 
 ```powershell
 cd src-tauri; cargo test --lib ocr::pdf_detect -- --nocapture
@@ -884,7 +884,7 @@ cd src-tauri; cargo test --lib ocr::pdf_detect -- --nocapture
 
 预期：FAIL。
 
-- [ ] **步骤 3：实现**
+- [x] **步骤 3：实现**
 
 ```rust
 use std::path::Path;
@@ -907,7 +907,7 @@ pub fn looks_like_pdf(path: Option<&Path>, bytes: &[u8]) -> bool {
 
 `mod.rs`：`pub mod pdf_detect;`
 
-- [ ] **步骤 4：测试通过 + Commit**
+- [x] **步骤 4：测试通过 + Commit**
 
 ```powershell
 cd src-tauri; cargo test --lib ocr::pdf_detect -- --nocapture
@@ -929,7 +929,7 @@ git commit -m "feat(ocr): PDF 路径与魔数检测纯函数"
 - 修改：`src-tauri/src/platform/unsupported.rs`
 - 修改：`src-tauri/src/platform/mod.rs`
 
-- [ ] **步骤 1：Cargo feature**
+- [x] **步骤 1：Cargo feature**
 
 在 `src-tauri/Cargo.toml` 的 `windows` features 数组加入：
 
@@ -939,7 +939,7 @@ git commit -m "feat(ocr): PDF 路径与魔数检测纯函数"
 
 （`Storage_Streams`、`Foundation`、`Graphics_Imaging` 已存在则可复用解码。）
 
-- [ ] **步骤 2：定义 API + unsupported**
+- [x] **步骤 2：定义 API + unsupported**
 
 ```rust
 // 可放 core 旁或 platform 公共类型
@@ -965,7 +965,7 @@ pub fn render_pdf_first_page(_bytes: &[u8]) -> Result<PdfFirstPage, OcrError> {
 Err(OcrError::PdfOpenFailed("当前平台暂不支持 PDF 识别".into()))
 ```
 
-- [ ] **步骤 3：Windows 实现要点（`platform/windows/pdf.rs`）**
+- [x] **步骤 3：Windows 实现要点（`platform/windows/pdf.rs`）**
 
 实现约束（实现时按此清单，WinRT 细节可微调但行为不变）：
 
@@ -991,7 +991,7 @@ pub async fn render_pdf_first_page(bytes: &[u8]) -> Result<PdfFirstPage, OcrErro
 
 `platform/mod.rs` 导出。
 
-- [ ] **步骤 4：Windows 单测（有 fixture）**
+- [x] **步骤 4：Windows 单测（有 fixture）**
 
 在 `pdf.rs`：
 
@@ -1037,7 +1037,7 @@ mod tests {
 
 若 CI 无 WinRT PDF 能力导致失败，用 `#[ignore]` 并在注释写明「本机 Windows 手动 `cargo test -- --ignored`」——**优先不 ignore**，因开发机为 Windows。
 
-- [ ] **步骤 5：运行测试**
+- [x] **步骤 5：运行测试**
 
 ```powershell
 cd src-tauri; cargo test --lib pdf -- --nocapture
@@ -1045,7 +1045,7 @@ cd src-tauri; cargo test --lib pdf -- --nocapture
 
 预期：PASS（Windows）。
 
-- [ ] **步骤 6：Commit**
+- [x] **步骤 6：Commit**
 
 ```bash
 git add src-tauri/Cargo.toml src-tauri/src/platform src-tauri/tests/fixtures/minimal-one-page.pdf
@@ -1062,7 +1062,7 @@ git commit -m "feat(ocr): WinRT 渲染 PDF 第 1 页为 CapturedImage"
 - 修改：`frontend/src/ocr/types.ts`
 - 修改：`frontend/src/ocr/OcrWindow.vue`（页数展示）
 
-- [ ] **步骤 1：meta 可选字段**
+- [x] **步骤 1：meta 可选字段**
 
 ```rust
 // OcrRunMeta
@@ -1081,7 +1081,7 @@ sourcePage?: number | null
 sourcePageCount?: number | null
 ```
 
-- [ ] **步骤 2：pick 分支**
+- [x] **步骤 2：pick 分支**
 
 ```rust
 .add_filter("图片与 PDF", &["png", "jpg", "jpeg", "webp", "bmp", "pdf"])
@@ -1120,7 +1120,7 @@ if let Some(n) = pdf_pages {
 
 图片路径回归：现有 `load_image_file_bytes` 测试保持。
 
-- [ ] **步骤 3：前端页数提示**
+- [x] **步骤 3：前端页数提示**
 
 在预览标题或 footer 增加：
 
@@ -1130,7 +1130,7 @@ if let Some(n) = pdf_pages {
 </span>
 ```
 
-- [ ] **步骤 4：测试**
+- [x] **步骤 4：测试**
 
 ```powershell
 cd src-tauri; cargo test --lib -- --nocapture
@@ -1138,7 +1138,7 @@ npm run typecheck
 npm run test -- frontend/src/ocr/sessionChannel.test.ts
 ```
 
-- [ ] **步骤 5：Commit**
+- [x] **步骤 5：Commit**
 
 ```bash
 git add src-tauri/src/core/ocr/meta.rs src-tauri/src/ui/ocr_window.rs frontend/src/ocr/types.ts frontend/src/ocr/OcrWindow.vue
@@ -1154,7 +1154,7 @@ git commit -m "feat(ocr): 打开文件支持 PDF 首页识别并展示页数"
 - 若存在：`docs/architecture/*ocr*` 短补
 - 规格状态：编码完成后将 spec 状态改为「已实现」（本任务编码阶段做；计划阶段只列项）
 
-- [ ] **步骤 1：全量自动验证**
+- [x] **步骤 1：全量自动验证**
 
 ```powershell
 cd src-tauri; cargo test --lib
@@ -1165,22 +1165,24 @@ npm run typecheck
 
 预期：全部通过。
 
-- [ ] **步骤 2：手动验收清单（开发者勾选）**
+- [x] **步骤 2：手动验收清单（开发者勾选）**
 
-| # | 步骤 | 期望 |
-|---|---|---|
-| 1 | OCR 窗打开多页 PDF | 仅第 1 页预览/正文；有页数则显示「第 1 页 / 共 N 页」 |
-| 2 | 打开 png/jpg | 与改前一致 |
-| 3 | 下拉选未启用视觉渠道后识别 | 成功或按 Key/协议正确报错；设置页 enabled 未变 |
-| 4 | 识别中尝试切换渠道 | 下拉 disabled |
-| 5 | 切换渠道不自动重跑 | 正文不变直至再次识别 |
-| 6 | 关闭 OCR 窗再开 | 下拉回到设置页启用项 |
-| 7 | Alt+S 截图翻译 | 仍用 enabled 引擎，不受 OCR 窗临时选择影响 |
-| 8 | 剪贴板位图 | 仍可用；无 PDF 扩展 |
-| 9 | 损坏 PDF | 中文错误条，无脏预览 |
-| 10 | 重新识别 | 使用当前下拉渠道 |
+> 自动验证已通过（`cargo test --lib` / `cargo build` / `npm run test` / `npm run typecheck`）。下表供本机 GUI 验收时勾选，编码阶段不必跑通 GUI。
 
-- [ ] **步骤 3：文档 commit**
+| # | 步骤 | 期望 | 开发者 |
+|---|---|---|---|
+| 1 | OCR 窗打开多页 PDF | 仅第 1 页预览/正文；有页数则显示「第 1 页 / 共 N 页」 | [ ] |
+| 2 | 打开 png/jpg | 与改前一致 | [ ] |
+| 3 | 下拉选未启用视觉渠道后识别 | 成功或按 Key/协议正确报错；设置页 enabled 未变 | [ ] |
+| 4 | 识别中尝试切换渠道 | 下拉 disabled | [ ] |
+| 5 | 切换渠道不自动重跑 | 正文不变直至再次识别 | [ ] |
+| 6 | 关闭 OCR 窗再开 | 下拉回到设置页启用项 | [ ] |
+| 7 | Alt+S 截图翻译 | 仍用 enabled 引擎，不受 OCR 窗临时选择影响 | [ ] |
+| 8 | 剪贴板位图 | 仍可用；无 PDF 扩展 | [ ] |
+| 9 | 损坏 PDF | 中文错误条，无脏预览 | [ ] |
+| 10 | 重新识别 | 使用当前下拉渠道 | [ ] |
+
+- [x] **步骤 3：文档 commit**
 
 ```bash
 git add README.md docs/
