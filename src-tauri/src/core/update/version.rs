@@ -1,4 +1,14 @@
+use super::github::RELEASES_PAGE_FALLBACK;
 use super::types::{CheckUpdateResult, ReleaseInfo, SelectedRelease, UpdateChannel};
+
+/// `html_url` 须为 https；否则回退到 releases 列表页。
+fn resolve_release_url(html_url: &str) -> String {
+    if html_url.starts_with("https://") {
+        html_url.to_string()
+    } else {
+        RELEASES_PAGE_FALLBACK.to_string()
+    }
+}
 
 pub fn parse_tag_version(tag: &str) -> Option<semver::Version> {
     let trimmed = tag.trim();
@@ -63,13 +73,14 @@ pub fn evaluate_check(
     };
 
     let latest_str = latest.version.to_string();
+    let release_url = Some(resolve_release_url(&latest.html_url));
     if is_update_available(current_version, &latest_str) {
         CheckUpdateResult {
             status: "update_available".into(),
             current_version: current_version.to_string(),
             latest_version: Some(latest_str),
             release_name: latest.name,
-            release_url: Some(latest.html_url),
+            release_url,
             is_prerelease: Some(latest.is_prerelease),
             message: None,
         }
@@ -79,7 +90,7 @@ pub fn evaluate_check(
             current_version: current_version.to_string(),
             latest_version: Some(latest_str),
             release_name: latest.name,
-            release_url: Some(latest.html_url),
+            release_url,
             is_prerelease: Some(latest.is_prerelease),
             message: None,
         }
@@ -185,5 +196,39 @@ mod tests {
             draft: true,
         }];
         assert!(select_latest_for_channel(&releases, UpdateChannel::Stable).is_none());
+    }
+
+    #[test]
+    fn resolve_release_url_requires_https() {
+        assert_eq!(
+            resolve_release_url("https://github.com/XuDaojie/shizi-translator/releases/tag/v1.0.0"),
+            "https://github.com/XuDaojie/shizi-translator/releases/tag/v1.0.0"
+        );
+        assert_eq!(
+            resolve_release_url("http://evil.example/x"),
+            RELEASES_PAGE_FALLBACK
+        );
+        assert_eq!(resolve_release_url(""), RELEASES_PAGE_FALLBACK);
+        assert_eq!(
+            resolve_release_url("ftp://example.com/x"),
+            RELEASES_PAGE_FALLBACK
+        );
+    }
+
+    #[test]
+    fn evaluate_check_falls_back_release_url_when_not_https() {
+        let releases = vec![ReleaseInfo {
+            tag_name: "v9.9.9".into(),
+            name: Some("next".into()),
+            html_url: "http://not-https.example/release".into(),
+            prerelease: false,
+            draft: false,
+        }];
+        let result = evaluate_check("0.1.0", &releases, UpdateChannel::Stable);
+        assert_eq!(result.status, "update_available");
+        assert_eq!(
+            result.release_url.as_deref(),
+            Some(RELEASES_PAGE_FALLBACK)
+        );
     }
 }

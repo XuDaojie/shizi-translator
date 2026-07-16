@@ -6,4 +6,5 @@ pub mod ocr_popup;
 pub mod ocr_window;
 pub mod overlay;
 pub mod service_probe;
+pub mod update;
 pub mod web_popup;

@@ -34,6 +34,7 @@ use ui::{
         show_overlay, submit_capture_region,
     },
     service_probe::{list_service_models, validate_service_credential},
+    update::check_for_update,
     web_popup::{
         cancel_translation, get_session_languages, retry_translation, save_edge_translate_env,
         set_session_languages, start_translation, take_pending_source_text,
@@ -114,6 +115,7 @@ pub fn run() {
             get_interface_language_snapshot,
             refresh_interface_languages,
             open_language_pack_directory,
+            check_for_update,
         ])
         .setup(|app| {
             let config_store = ConfigStore::load(app.handle())
