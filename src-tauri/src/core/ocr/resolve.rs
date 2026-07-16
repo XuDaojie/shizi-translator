@@ -23,6 +23,24 @@ pub enum ResolvedOcrEngine {
 pub fn resolve_ocr_engine(
     services: &[OcrServiceInstanceConfig],
 ) -> Result<ResolvedOcrEngine, OcrError> {
+    resolve_ocr_engine_for(services, None)
+}
+
+/// OCR 引擎解析。
+/// - `override_id = Some(id)`：按 id 查找实例，**不检查 enabled**；缺失 → UnknownService。
+/// - `override_id = None`：仅 enabled（与历史行为一致）。
+pub fn resolve_ocr_engine_for(
+    services: &[OcrServiceInstanceConfig],
+    override_id: Option<&str>,
+) -> Result<ResolvedOcrEngine, OcrError> {
+    if let Some(id) = override_id {
+        let service = services
+            .iter()
+            .find(|s| s.id == id)
+            .ok_or_else(|| OcrError::UnknownService(id.to_string()))?;
+        return map_service(service);
+    }
+
     let enabled: Vec<&OcrServiceInstanceConfig> =
         services.iter().filter(|s| s.enabled).collect();
 
@@ -149,5 +167,54 @@ mod tests {
     fn resolve_vision_missing_key_is_auth() {
         let err = resolve_ocr_engine(&[svc("v", "openai-vision", true, None)]).unwrap_err();
         assert!(matches!(err, OcrError::Auth(_)));
+    }
+
+    #[test]
+    fn resolve_for_by_id_ignores_enabled() {
+        let list = vec![
+            svc("w", "windows-media-ocr", true, None),
+            svc("v", "openai-vision", false, Some("sk-test")),
+        ];
+        let r = resolve_ocr_engine_for(&list, Some("v")).unwrap();
+        match r {
+            ResolvedOcrEngine::VisionOpenAiCompatible(c) => {
+                assert_eq!(c.api_key, "sk-test");
+                assert_eq!(c.model, "gpt-4o");
+            }
+            _ => panic!("expected vision by id"),
+        }
+    }
+
+    #[test]
+    fn resolve_for_missing_id_is_unknown_service() {
+        let list = vec![svc("w", "windows-media-ocr", true, None)];
+        let err = resolve_ocr_engine_for(&list, Some("nope")).unwrap_err();
+        assert!(matches!(err, OcrError::UnknownService(id) if id == "nope"));
+    }
+
+    #[test]
+    fn resolve_for_none_uses_enabled_only() {
+        let list = vec![
+            svc("w", "windows-media-ocr", false, None),
+            svc("v", "openai-vision", true, Some("sk")),
+        ];
+        let r = resolve_ocr_engine_for(&list, None).unwrap();
+        assert!(matches!(r, ResolvedOcrEngine::VisionOpenAiCompatible(_)));
+    }
+
+    #[test]
+    fn resolve_for_by_id_vision_missing_key_is_auth() {
+        let list = vec![svc("v", "openai-vision", false, None)];
+        let err = resolve_ocr_engine_for(&list, Some("v")).unwrap_err();
+        assert!(matches!(err, OcrError::Auth(_)));
+    }
+
+    #[test]
+    fn resolve_ocr_engine_delegates_to_for_none() {
+        let list = vec![svc("w", "windows-media-ocr", true, None)];
+        assert_eq!(
+            resolve_ocr_engine(&list).unwrap(),
+            resolve_ocr_engine_for(&list, None).unwrap()
+        );
     }
 }

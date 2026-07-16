@@ -11,7 +11,7 @@ pub use image_encode::{
 #[allow(unused_imports)]
 pub use meta::{OcrRunMeta, RecognizeImageFullResult, RecognizeImageResponse};
 #[allow(unused_imports)]
-pub use resolve::{resolve_ocr_engine, ResolvedOcrEngine, VisionOcrConfig};
+pub use resolve::{resolve_ocr_engine, resolve_ocr_engine_for, ResolvedOcrEngine, VisionOcrConfig};
 
 use crate::core::capture::CapturedImage;
 
