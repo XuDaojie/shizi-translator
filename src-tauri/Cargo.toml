@@ -30,7 +30,7 @@ tokio-util = "0.7"
 log = "0.4"
 tauri-plugin-log = "2"
 tauri-plugin-dialog = "2"
-tauri-plugin-mcp-bridge = "0.2"
+tauri-plugin-mcp-bridge = "0.12"
 zip = "2"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 sys-locale = "0.3"
