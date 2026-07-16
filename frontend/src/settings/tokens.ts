@@ -103,7 +103,7 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     description: 'Edge 浏览器默认翻译引擎，免 Key，复用浏览器环境信息调用。',
     builtin: true,
     defaultModel: '',
-    iconifyId: 'simple-icons:microsoftedge',
+    iconifyId: 'simple-icons:microsofttranslator',
     category: 'ml',
     keyRequired: false,
     protocols: [MICROSOFT_EDGE],
