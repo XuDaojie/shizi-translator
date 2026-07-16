@@ -10,7 +10,7 @@
   <img src="src-tauri/icons/icon-1024.png" alt="柿子翻译 Logo" width="96" />
 </p>
 
-**柿子翻译**（英文名 **Shizi**，简称 **柿子**）是一款开源的 Windows 桌面翻译软件，支持输入翻译、划词翻译与截图 OCR 翻译，可接入 OpenAI 兼容接口、Claude、Microsoft Edge 等翻译服务。
+**柿子翻译**（拼音 **Shizi**，简称 **柿子**）是一款开源的 Windows 桌面翻译软件，支持输入翻译、划词翻译与截图 OCR 翻译，可接入 OpenAI 兼容接口、Claude、Microsoft Edge 等翻译服务。
 
 灵感来自 macOS 平台的 [Bob](https://bobtranslate.com/)，基于 [Tauri 2](https://tauri.app/)、Rust 与 Vue 3 构建。
 
@@ -243,7 +243,7 @@ cd src-tauri && cargo test
 
 除另有说明外，本项目源代码依据 [GNU General Public License v3.0](LICENSE) 仅第 3 版（`GPL-3.0-only`）发布。分发修改版本时，须按许可证提供对应源代码。
 
-`Shizi` / 柿子 / 柿子翻译 名称与 Logo 的商标权及相关品牌权利不随 GPL 授权。
+`Shizi`（柿子拼音）/ 柿子 / 柿子翻译 名称与 Logo 的商标权及相关品牌权利不随 GPL 授权。
 
 ## 致谢
 
