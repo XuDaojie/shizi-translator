@@ -125,10 +125,12 @@ pub fn friendly_ocr_error(error: OcrTranslationError) -> String {
             format!("OCR 识别失败：认证失败（{d}）。请在「设置 → 文字识别」检查 API Key。")
         }
         OcrTranslationError::Ocr(OcrError::Api { ref message, .. }) => {
-            format!("OCR 识别失败：{message}")
+            format!(
+                "OCR 识别失败：{message}。请确认「设置 → 服务 → 文字识别」当前启用的引擎与模型可用。"
+            )
         }
         OcrTranslationError::Ocr(OcrError::Http(ref d)) => {
-            format!("OCR 识别失败：网络错误（{d}）")
+            format!("OCR 识别失败：网络错误（{d}）。请确认当前启用的文字识别服务配置正确。")
         }
     }
 }
@@ -225,7 +227,7 @@ mod tests {
                 message: "rate limit".to_string(),
                 retryable: true,
             })),
-            "OCR 识别失败：rate limit"
+            "OCR 识别失败：rate limit。请确认「设置 → 服务 → 文字识别」当前启用的引擎与模型可用。"
         );
     }
 
@@ -235,7 +237,7 @@ mod tests {
             friendly_ocr_error(OcrTranslationError::Ocr(OcrError::Http(
                 "timeout".to_string()
             ))),
-            "OCR 识别失败：网络错误（timeout）"
+            "OCR 识别失败：网络错误（timeout）。请确认当前启用的文字识别服务配置正确。"
         );
     }
 

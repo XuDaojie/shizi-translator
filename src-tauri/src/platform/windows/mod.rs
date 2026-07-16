@@ -39,9 +39,15 @@ pub async fn recognize_region(
     let resolved = resolve_ocr_engine(ocr_services)?;
     match resolved {
         ResolvedOcrEngine::WindowsMedia => {
+            log::info!("OCR 截图翻译引擎: windows-media-ocr");
             recognize_cropped_for_translation(frame, region, &WindowsOcrEngine, hints).await
         }
         ResolvedOcrEngine::VisionOpenAiCompatible(cfg) => {
+            log::info!(
+                "OCR 截图翻译引擎: {} model={}",
+                cfg.service_type,
+                cfg.model
+            );
             let engine = VisionOcrEngine::new(cfg).map_err(OcrTranslationError::from)?;
             recognize_cropped_for_translation(frame, region, &engine, hints).await
         }
@@ -67,10 +73,16 @@ pub async fn recognize_image_full(
     let resolved = resolve_ocr_engine(ocr_services)?;
     let (result, model, vision_encode) = match resolved {
         ResolvedOcrEngine::WindowsMedia => {
+            log::info!("OCR 纯识别引擎: windows-media-ocr");
             let r = WindowsOcrEngine.recognize(image, hints).await?;
             (r, None, None)
         }
         ResolvedOcrEngine::VisionOpenAiCompatible(cfg) => {
+            log::info!(
+                "OCR 纯识别引擎: {} model={}",
+                cfg.service_type,
+                cfg.model
+            );
             let model = Some(cfg.model.clone());
             // 与 vision 内部双 encode，可接受（plan 锁定）
             let enc = encode_captured_image_png_info(&image)?;

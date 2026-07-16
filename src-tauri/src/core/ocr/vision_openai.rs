@@ -14,14 +14,25 @@ pub const DEFAULT_OCR_PROMPT: &str =
 /// DeepSeek-OCR 官方推荐默认任务句（与 frontend `DEFAULT_DEEPSEEK_OCR_PROMPT` 对齐）。
 pub const DEFAULT_DEEPSEEK_OCR_PROMPT: &str = "Free OCR.";
 pub const VISION_OCR_TIMEOUT_SECS: u64 = 60;
+/// 默认视觉 OCR 输出上限；多数 OpenAI 兼容端点可接受 2048。
 pub const VISION_OCR_MAX_TOKENS: u32 = 2048;
+/// 智谱 GLM 视觉 `max_tokens` 上限（实测合法范围 [1,1024]，2048 直接 400）。
+pub const ZHIPU_VISION_OCR_MAX_TOKENS: u32 = 1024;
 /// OCR 固定 temperature=0，降低采样随机导致的结果漂移与胡话。
 pub const VISION_OCR_TEMPERATURE: f32 = 0.0;
 
 /// **临时**开关：`true` 时 debug 输出完整请求体/响应体（含 base64 图）。
 /// 仅用于排查 OCR 问题；修完后务必改回 `false`，恢复 `sanitize_request_body_for_log`。
 /// Authorization 始终走 `format_auth_header_for_log`，不写 Key 明文。
-const VISION_OCR_TEMP_LOG_FULL_BODY: bool = true;
+const VISION_OCR_TEMP_LOG_FULL_BODY: bool = false;
+
+/// 按 OCR 服务类型选择 `max_tokens`，避免供应商硬上限导致整次识别失败。
+pub(crate) fn vision_ocr_max_tokens(service_type: &str) -> u32 {
+    match service_type {
+        "zhipu-vl" => ZHIPU_VISION_OCR_MAX_TOKENS,
+        _ => VISION_OCR_MAX_TOKENS,
+    }
+}
 
 pub struct VisionOcrEngine {
     config: VisionOcrConfig,
@@ -51,7 +62,13 @@ impl VisionOcrEngine {
     ///   content = [image_url, text]（图在前）。此前对 DeepSeek-OCR 传 `detail=high`
     ///   且 text-before-image 时，大图易返回 `}}]}}]` 退化串。
     /// - 不用 system 放主指令；`temperature=0` 压采样随机。
-    pub(crate) fn build_request_body(model: &str, prompt: &str, data_url: &str) -> serde_json::Value {
+    /// - `max_tokens` 由调用方按服务类型传入（见 `vision_ocr_max_tokens`）。
+    pub(crate) fn build_request_body(
+        model: &str,
+        prompt: &str,
+        data_url: &str,
+        max_tokens: u32,
+    ) -> serde_json::Value {
         let deepseek_ocr = is_deepseek_ocr_model(model);
         let image_part = if deepseek_ocr {
             serde_json::json!({
@@ -81,7 +98,7 @@ impl VisionOcrEngine {
             "model": model,
             "stream": false,
             "temperature": VISION_OCR_TEMPERATURE,
-            "max_tokens": VISION_OCR_MAX_TOKENS,
+            "max_tokens": max_tokens,
             "messages": [
                 {
                     "role": "user",
@@ -183,7 +200,15 @@ impl OcrEngine for VisionOcrEngine {
         let data_url = png_to_data_url(&encoded.png);
         let system = effective_ocr_prompt(&self.config.model, &self.config.ocr_prompt);
         let endpoint = self.endpoint();
-        let body = Self::build_request_body(&self.config.model, system, &data_url);
+        let max_tokens = vision_ocr_max_tokens(&self.config.service_type);
+        let body = Self::build_request_body(&self.config.model, system, &data_url, max_tokens);
+        log::info!(
+            "Vision OCR 引擎: service_type={} model={} max_tokens={} endpoint={}",
+            self.config.service_type,
+            self.config.model,
+            max_tokens,
+            endpoint
+        );
         log::debug!("Vision OCR 请求诊断: POST {endpoint}");
         log::debug!(
             "Vision OCR 请求头: Authorization={}, Content-Type=application/json",
@@ -398,11 +423,27 @@ mod tests {
     use super::*;
 
     #[test]
+    fn zhipu_vl_max_tokens_is_capped_to_1024() {
+        // 智谱 GLM 视觉：max_tokens 合法范围 [1,1024]；2048 会 400
+        assert_eq!(vision_ocr_max_tokens("zhipu-vl"), 1024);
+        assert_eq!(vision_ocr_max_tokens("openai-vision"), 2048);
+        assert_eq!(vision_ocr_max_tokens("siliconflow-vision"), 2048);
+        let body = VisionOcrEngine::build_request_body(
+            "glm-4v-flash",
+            DEFAULT_OCR_PROMPT,
+            "data:image/png;base64,AAA",
+            vision_ocr_max_tokens("zhipu-vl"),
+        );
+        assert_eq!(body["max_tokens"], 1024);
+    }
+
+    #[test]
     fn request_body_is_non_streaming_with_image_url() {
         let body = VisionOcrEngine::build_request_body(
             "gpt-4o",
             DEFAULT_OCR_PROMPT,
             "data:image/png;base64,AAA",
+            VISION_OCR_MAX_TOKENS,
         );
         assert_eq!(body["stream"], false);
         assert_eq!(body["temperature"], 0.0);
@@ -428,6 +469,7 @@ mod tests {
             "gpt-4o",
             "sys",
             "data:image/png;base64,AAA",
+            VISION_OCR_MAX_TOKENS,
         );
         assert_eq!(
             body["messages"][0]["content"][1]["image_url"]["detail"],
@@ -441,6 +483,7 @@ mod tests {
             "m",
             "FULL_PROMPT_BEFORE_IMAGE",
             "data:image/png;base64,XYZ",
+            VISION_OCR_MAX_TOKENS,
         );
         let parts = body["messages"][0]["content"].as_array().expect("parts");
         assert_eq!(parts.len(), 2);
@@ -455,6 +498,7 @@ mod tests {
             "deepseek-ai/DeepSeek-OCR",
             "Free OCR.",
             "data:image/png;base64,AAA",
+            VISION_OCR_MAX_TOKENS,
         );
         let parts = body["messages"][0]["content"].as_array().expect("parts");
         assert_eq!(parts[0]["type"], "image_url");
@@ -547,7 +591,12 @@ mod tests {
     fn sanitize_request_body_redacts_data_url_keeps_structure() {
         let long_b64 = "A".repeat(200);
         let data_url = format!("data:image/png;base64,{long_b64}");
-        let body = VisionOcrEngine::build_request_body("gpt-4o", "sys-prompt-full", &data_url);
+        let body = VisionOcrEngine::build_request_body(
+            "gpt-4o",
+            "sys-prompt-full",
+            &data_url,
+            VISION_OCR_MAX_TOKENS,
+        );
         let sanitized = sanitize_request_body_for_log(&body);
         let s = sanitized.to_string();
 
@@ -571,7 +620,7 @@ mod tests {
     #[test]
     fn sanitize_request_body_non_data_url_records_scheme_and_len() {
         let url = "https://example.com/img.png?token=secret";
-        let body = VisionOcrEngine::build_request_body("m", "s", url);
+        let body = VisionOcrEngine::build_request_body("m", "s", url, VISION_OCR_MAX_TOKENS);
         let sanitized = sanitize_request_body_for_log(&body);
         let out = sanitized["messages"][0]["content"][1]["image_url"]["url"]
             .as_str()
