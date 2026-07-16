@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use tauri::{
     image::Image,
-    menu::{Menu, MenuItem},
+    menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{TrayIcon, TrayIconBuilder, TrayIconEvent},
     Manager,
 };
@@ -104,7 +104,6 @@ pub fn menu_accelerator(shortcuts: &HashMap<String, String>, id: &str) -> Option
         .map(|s| s.to_string())
 }
 
-#[allow(dead_code)]
 fn menu_item_text(label: &str, accel: Option<&str>) -> String {
     match (TRAY_ACCEL_MODE, accel) {
         (TrayAccelMode::TextOnly, Some(keys)) => format!("{label}\t{keys}"),
@@ -112,7 +111,6 @@ fn menu_item_text(label: &str, accel: Option<&str>) -> String {
     }
 }
 
-#[allow(dead_code)]
 fn menu_item_accelerator_arg(accel: Option<&str>) -> Option<&str> {
     match TRAY_ACCEL_MODE {
         TrayAccelMode::Native => accel,
@@ -120,29 +118,67 @@ fn menu_item_accelerator_arg(accel: Option<&str>) -> Option<&str> {
     }
 }
 
+fn create_bound_menu_item(
+    app: &tauri::App,
+    binding: &TrayMenuBinding,
+    shortcuts: &HashMap<String, String>,
+) -> tauri::Result<MenuItem<tauri::Wry>> {
+    let accel = binding
+        .shortcut_id
+        .and_then(|id| menu_accelerator(shortcuts, id));
+    let accel_ref = accel.as_deref();
+    let text = menu_item_text(binding.label, accel_ref);
+    let accel_arg = menu_item_accelerator_arg(accel_ref);
+    MenuItem::with_id(app, binding.menu_id, text, true, accel_arg)
+}
+
 #[derive(Clone)]
 pub struct TrayI18nHandles {
     pub tray: TrayIcon,
-    pub translate: MenuItem<tauri::Wry>,
+    pub selection: MenuItem<tauri::Wry>,
+    pub screenshot: MenuItem<tauri::Wry>,
+    pub ocr: MenuItem<tauri::Wry>,
     pub settings: MenuItem<tauri::Wry>,
     pub quit: MenuItem<tauri::Wry>,
     pub settings_title: Arc<RwLock<String>>,
 }
 
 pub fn setup_tray(app: &tauri::App) -> tauri::Result<TrayI18nHandles> {
-    let translate_item = MenuItem::with_id(app, "translate", "翻译", true, None::<&str>)?;
-    // 不做完整 i18n：固定中文，不接入 TrayI18nHandles / apply_interface_language
-    let ocr_item = MenuItem::with_id(app, "ocr", "文字识别", true, None::<&str>)?;
-    let settings_item = MenuItem::with_id(app, "settings", "设置", true, None::<&str>)?;
-    let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&translate_item, &ocr_item, &settings_item, &quit_item])?;
+    let shortcuts = app
+        .state::<AppState>()
+        .config_store
+        .get()
+        .map(|c| c.shortcuts)
+        .unwrap_or_default();
+
+    let bindings = tray_menu_bindings();
+    let selection_item = create_bound_menu_item(app, &bindings[0], &shortcuts)?;
+    let screenshot_item = create_bound_menu_item(app, &bindings[1], &shortcuts)?;
+    let ocr_item = create_bound_menu_item(app, &bindings[2], &shortcuts)?;
+    let settings_item = create_bound_menu_item(app, &bindings[3], &shortcuts)?;
+    let quit_item = MenuItem::with_id(app, "quit", TRAY_LABEL_QUIT, true, None::<&str>)?;
+    let sep1 = PredefinedMenuItem::separator(app)?;
+    let sep2 = PredefinedMenuItem::separator(app)?;
+    // 顺序：划词翻译 / 截图翻译 / 文字识别 → 分隔 → 偏好设置 → 分隔 → 退出 shizi
+    let menu = Menu::with_items(
+        app,
+        &[
+            &selection_item,
+            &screenshot_item,
+            &ocr_item,
+            &sep1,
+            &settings_item,
+            &sep2,
+            &quit_item,
+        ],
+    )?;
 
     let tray = TrayIconBuilder::new()
         .icon(tray_icon_image(app)?)
         .tooltip("Shizi - 翻译助手")
         .menu(&menu)
         .on_menu_event(|app, event| match event.id.as_ref() {
-            "translate" => {
+            "selection" => {
                 let state = app.state::<AppState>();
                 match state.config_store.get() {
                     Ok(config) => {
@@ -153,14 +189,14 @@ pub fn setup_tray(app: &tauri::App) -> tauri::Result<TrayI18nHandles> {
                     Err(e) => show_translation_error(app, e.to_string()),
                 }
             }
+            "screenshot" => {
+                crate::app::shortcuts::trigger_ocr_translate(app);
+            }
             "ocr" => {
                 // 仅打开文字识别窗口，不启动截图
                 if let Err(e) = show_ocr_window(app) {
                     log::warn!("打开文字识别窗口失败: {e}");
                 }
-            }
-            "screenshot" => {
-                crate::app::shortcuts::trigger_ocr_translate(app);
             }
             "settings" => {
                 let _ = show_settings_window(app);
@@ -177,7 +213,9 @@ pub fn setup_tray(app: &tauri::App) -> tauri::Result<TrayI18nHandles> {
 
     Ok(TrayI18nHandles {
         tray,
-        translate: translate_item,
+        selection: selection_item,
+        screenshot: screenshot_item,
+        ocr: ocr_item,
         settings: settings_item,
         quit: quit_item,
         settings_title: Arc::new(RwLock::new("Shizi 设置".into())),

@@ -1,5 +1,11 @@
 use crate::{
-    app::{state::AppState, tray::TrayI18nHandles},
+    app::{
+        state::AppState,
+        tray::{
+            TrayI18nHandles, TRAY_LABEL_OCR, TRAY_LABEL_QUIT, TRAY_LABEL_SCREENSHOT,
+            TRAY_LABEL_SELECTION, TRAY_LABEL_SETTINGS,
+        },
+    },
     core::i18n::{resolve_locale, resolve_messages, scan_language_packs, LanguageSnapshot},
 };
 use serde::Serialize;
@@ -102,17 +108,26 @@ pub(crate) fn apply_interface_language_locked(
     let messages = resolve_messages(&snapshot.locale, &scan);
     let handles = app.state::<TrayI18nHandles>();
 
+    // 托盘菜单项固定中文，界面语言切换不再改菜单项语言（tooltip 仍走 i18n）
     handles
-        .translate
-        .set_text(&messages["tray.translate"])
-        .map_err(|error| format!("无法更新托盘翻译菜单: {error}"))?;
+        .selection
+        .set_text(TRAY_LABEL_SELECTION)
+        .map_err(|error| format!("无法更新托盘划词翻译菜单: {error}"))?;
+    handles
+        .screenshot
+        .set_text(TRAY_LABEL_SCREENSHOT)
+        .map_err(|error| format!("无法更新托盘截图翻译菜单: {error}"))?;
+    handles
+        .ocr
+        .set_text(TRAY_LABEL_OCR)
+        .map_err(|error| format!("无法更新托盘文字识别菜单: {error}"))?;
     handles
         .settings
-        .set_text(&messages["tray.settings"])
-        .map_err(|error| format!("无法更新托盘设置菜单: {error}"))?;
+        .set_text(TRAY_LABEL_SETTINGS)
+        .map_err(|error| format!("无法更新托盘偏好设置菜单: {error}"))?;
     handles
         .quit
-        .set_text(&messages["tray.quit"])
+        .set_text(TRAY_LABEL_QUIT)
         .map_err(|error| format!("无法更新托盘退出菜单: {error}"))?;
     handles
         .tray
