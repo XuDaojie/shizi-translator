@@ -165,6 +165,8 @@ pub fn run() {
             let _ = ensure_popup_window(app.handle(), &config);
             let _ = ensure_overlay(app.handle());
 
+            crate::ui::update::spawn_startup_update_check(app.handle().clone());
+
             Ok(())
         })
         .run(tauri::generate_context!())
