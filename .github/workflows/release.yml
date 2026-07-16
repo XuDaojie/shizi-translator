@@ -86,6 +86,8 @@ jobs:
           tag_name: ${{ steps.meta.outputs.tag }}
           name: ${{ steps.meta.outputs.tag }}
           prerelease: ${{ steps.meta.outputs.prerelease }}
+          # 由 GitHub 根据上一个 tag 到本 tag 的 commits/PRs 自动生成更新说明
+          generate_release_notes: true
           files: src-tauri/target/release/bundle/nsis/*-setup.exe
           fail_on_unmatched_files: true
         env:
