@@ -1,8 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { Button } from '@/components/ui/button'
+import { Select } from '@/components/ui/select'
 import { getTauriApis, copyText } from '@/popup/composables/utils'
 import { createLogger } from '@public/logger.js'
+import type { AppConfig, OcrServiceInstanceConfig } from '@/types/config'
+import {
+  buildOcrChannelOptions,
+  reconcileSelectedOcrServiceId,
+} from './sessionChannel'
 import type { OcrRunMeta, OcrStatus, RecognizeImageResponse } from './types'
 
 const logger = createLogger('ocr')
@@ -16,13 +22,23 @@ const engineSummary = ref('')
 const copyHint = ref('')
 const hasLastImage = ref(false)
 
+/** 会话级 OCR 渠道：仅影响本窗 invoke，不写 config / 不改 enabled */
+const ocrServices = ref<OcrServiceInstanceConfig[]>([])
+const selectedOcrServiceId = ref<string | null>(null)
+
 const isLoading = computed(() => status.value === 'loading')
 const hasPreview = computed(() => Boolean(previewUrl.value))
 const hasText = computed(() => text.value.length > 0)
 const canRerecognize = computed(() => hasLastImage.value && !isLoading.value)
+const channelOptions = computed(() => buildOcrChannelOptions(ocrServices.value))
+const channelSelectValue = computed(() => selectedOcrServiceId.value ?? '')
+const canSelectChannel = computed(
+  () => channelOptions.value.length > 0 && !isLoading.value,
+)
 
 let unlistenResult: (() => void) | null = null
 let unlistenFailed: (() => void) | null = null
+let unlistenConfig: (() => void) | null = null
 let disposed = false
 
 function formatBytes(n: number | null | undefined): string {
@@ -57,6 +73,30 @@ function applyError(message: string): void {
   logger.warn('OCR 识别失败', errorMessage.value)
 }
 
+/** 与 Rust 命令参数对齐：键名 service_id（snake_case），非 serviceId */
+function serviceIdArg(): { service_id: string | null } {
+  return { service_id: selectedOcrServiceId.value }
+}
+
+function onChannelChange(value: string): void {
+  selectedOcrServiceId.value = value || null
+}
+
+async function loadOcrServices(): Promise<void> {
+  const apis = getTauriApis()
+  if (!apis) return
+  try {
+    const cfg = await apis.invoke<AppConfig>('get_app_config')
+    ocrServices.value = cfg.ocrServices ?? []
+    selectedOcrServiceId.value = reconcileSelectedOcrServiceId(
+      ocrServices.value,
+      selectedOcrServiceId.value,
+    )
+  } catch (e) {
+    logger.warn('加载 OCR 服务列表失败', String(e))
+  }
+}
+
 async function onCapture(): Promise<void> {
   const apis = getTauriApis()
   if (!apis) {
@@ -67,7 +107,7 @@ async function onCapture(): Promise<void> {
   errorMessage.value = ''
   copyHint.value = ''
   try {
-    await apis.invoke('start_ocr_capture')
+    await apis.invoke('start_ocr_capture', serviceIdArg())
     // 结果由 ocr:recognize-result / ocr:recognize-failed 事件回传
   } catch (e) {
     applyError(String(e))
@@ -84,7 +124,10 @@ async function onOpenFile(): Promise<void> {
   errorMessage.value = ''
   copyHint.value = ''
   try {
-    const result = await apis.invoke<RecognizeImageResponse | null>('pick_and_recognize_image')
+    const result = await apis.invoke<RecognizeImageResponse | null>(
+      'pick_and_recognize_image',
+      serviceIdArg(),
+    )
     if (result == null) {
       // 用户取消文件选择，保持 idle（若此前有成功结果则回到 success）
       status.value = meta.value ? 'success' : 'idle'
@@ -106,7 +149,10 @@ async function onClipboard(): Promise<void> {
   errorMessage.value = ''
   copyHint.value = ''
   try {
-    const result = await apis.invoke<RecognizeImageResponse>('recognize_clipboard_image')
+    const result = await apis.invoke<RecognizeImageResponse>(
+      'recognize_clipboard_image',
+      serviceIdArg(),
+    )
     applySuccess(result)
   } catch (e) {
     applyError(String(e))
@@ -123,7 +169,10 @@ async function onRerecognize(): Promise<void> {
   errorMessage.value = ''
   copyHint.value = ''
   try {
-    const result = await apis.invoke<RecognizeImageResponse>('rerecognize_last_image')
+    const result = await apis.invoke<RecognizeImageResponse>(
+      'rerecognize_last_image',
+      serviceIdArg(),
+    )
     applySuccess(result)
   } catch (e) {
     applyError(String(e))
@@ -166,13 +215,19 @@ async function setupListeners(): Promise<void> {
     const u2 = await apis.listen<string>('ocr:recognize-failed', (ev) => {
       applyError(String(ev.payload))
     })
+    // 配置变更只刷新渠道列表与选中项，不自动重跑 OCR
+    const u3 = await apis.listen('app-config:changed', () => {
+      void loadOcrServices()
+    })
     if (disposed) {
       u1()
       u2()
+      u3()
       return
     }
     unlistenResult = u1
     unlistenFailed = u2
+    unlistenConfig = u3
   } catch (e) {
     logger.warn('注册 OCR 事件监听失败', String(e))
   }
@@ -180,6 +235,7 @@ async function setupListeners(): Promise<void> {
 
 onMounted(() => {
   void setWindowTitle()
+  void loadOcrServices()
   void setupListeners()
 })
 
@@ -187,8 +243,10 @@ onUnmounted(() => {
   disposed = true
   unlistenResult?.()
   unlistenFailed?.()
+  unlistenConfig?.()
   unlistenResult = null
   unlistenFailed = null
+  unlistenConfig = null
 })
 </script>
 
@@ -214,6 +272,14 @@ onUnmounted(() => {
         >
           重新识别
         </Button>
+        <Select
+          :model-value="channelSelectValue"
+          :options="channelOptions"
+          :disabled="!canSelectChannel"
+          placeholder="选择 OCR 渠道"
+          class="h-8 min-w-[10rem] max-w-[14rem]"
+          @update:model-value="onChannelChange"
+        />
       </div>
       <div class="ml-auto min-w-0 truncate text-xs text-muted-foreground" :title="engineSummary">
         <span v-if="isLoading" class="text-primary">识别中…</span>
