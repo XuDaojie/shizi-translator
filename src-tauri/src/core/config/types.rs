@@ -48,6 +48,17 @@ fn default_log_level() -> String {
     "info".to_string()
 }
 
+fn default_update_channel() -> String {
+    "stable".to_string()
+}
+
+fn normalize_update_channel(value: String) -> String {
+    match value.trim() {
+        "beta" => "beta".to_string(),
+        _ => "stable".to_string(),
+    }
+}
+
 fn default_history_limit() -> usize {
     500
 }
@@ -211,6 +222,10 @@ pub struct AppConfig {
     pub collect_usage: bool,
     #[serde(default = "default_log_level")]
     pub log_level: String,
+    #[serde(default = "default_update_channel")]
+    pub update_channel: String,
+    #[serde(default = "default_true")]
+    pub auto_check_update: bool,
 }
 
 impl ServiceInstanceConfig {
@@ -303,6 +318,8 @@ impl AppConfig {
             overlay_precreate: true,
             collect_usage: true,
             log_level: default_log_level(),
+            update_channel: default_update_channel(),
+            auto_check_update: true,
         }
         .normalized()
     }
@@ -328,6 +345,7 @@ impl AppConfig {
             self.history_limit = default_history_limit();
         }
         self.log_level = normalize_log_level(self.log_level);
+        self.update_channel = normalize_update_channel(self.update_channel);
         self
     }
 
@@ -1027,5 +1045,33 @@ mod tests {
             .ocr_services
             .iter()
             .any(|s| s.service_type == "windows-media-ocr" && s.enabled));
+    }
+
+    #[test]
+    fn app_config_defaults_update_fields() {
+        let config = AppConfig::default();
+        assert_eq!(config.update_channel, "stable");
+        assert!(config.auto_check_update);
+    }
+
+    #[test]
+    fn app_config_missing_update_fields_deserialize_to_defaults() {
+        let json = r#"{
+            "targetLang": "zh-CN",
+            "services": [],
+            "ocrServices": []
+        }"#;
+        let config: AppConfig = serde_json::from_str(json).expect("deserialize");
+        let config = config.normalized();
+        assert_eq!(config.update_channel, "stable");
+        assert!(config.auto_check_update);
+    }
+
+    #[test]
+    fn app_config_normalized_rejects_invalid_update_channel() {
+        let mut config = AppConfig::default();
+        config.update_channel = "nightly".into();
+        let config = config.normalized();
+        assert_eq!(config.update_channel, "stable");
     }
 }
