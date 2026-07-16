@@ -22,8 +22,9 @@ pub(crate) const RERECOGNIZE_NO_IMAGE_MSG: &str =
     "没有可重新识别的图像，请先截图、打开文件或从剪贴板识别。";
 
 /// 前端 invoke：打开文字识别窗口。
+/// async：Windows 上同步 command 里首次 `WebviewWindowBuilder::build` 会死锁（wry#583）。
 #[tauri::command]
-pub fn open_ocr_window(app: AppHandle) -> Result<(), String> {
+pub async fn open_ocr_window(app: AppHandle) -> Result<(), String> {
     show_ocr_window(&app)
 }
 

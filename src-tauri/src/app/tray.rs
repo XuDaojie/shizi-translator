@@ -8,7 +8,9 @@ use tauri::{
 };
 
 use crate::app::state::AppState;
-use crate::app::window::{show_ocr_window, show_settings_window, show_window};
+use crate::app::window::{
+    request_show_ocr_window, request_show_settings_window, show_window,
+};
 use crate::ui::web_popup::{show_translation_error, show_translation_popup};
 
 fn tray_icon_size(scale_factor: f64) -> u32 {
@@ -258,13 +260,12 @@ pub fn setup_tray(app: &tauri::App) -> tauri::Result<TrayI18nHandles> {
                 crate::app::shortcuts::trigger_ocr_translate(app);
             }
             "ocr" => {
-                // 仅打开文字识别窗口，不启动截图
-                if let Err(e) = show_ocr_window(app) {
-                    log::warn!("打开文字识别窗口失败: {e}");
-                }
+                // 仅打开文字识别窗口，不启动截图。
+                // 独立线程：托盘菜单回调里同步 build WebView 会在 Windows 上死锁。
+                request_show_ocr_window(app);
             }
             "settings" => {
-                let _ = show_settings_window(app);
+                request_show_settings_window(app);
             }
             "quit" => app.exit(0),
             _ => {}

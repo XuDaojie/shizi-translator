@@ -17,14 +17,24 @@ fn close_to_hide(window: &WebviewWindow) {
     });
 }
 
+fn present_window(window: &WebviewWindow) -> Result<(), String> {
+    window.show().map_err(|error| error.to_string())?;
+    window.unminimize().map_err(|error| error.to_string())?;
+    window.set_focus().map_err(|error| error.to_string())?;
+    Ok(())
+}
+
 pub fn show_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
-        let _ = window.show();
-        let _ = window.unminimize();
-        let _ = window.set_focus();
+        let _ = present_window(&window);
     }
 }
 
+/// 创建设置窗口（若尚不存在）。
+///
+/// **Windows 注意**：`WebviewWindowBuilder::build` 在同步 command / 托盘与菜单事件回调里
+/// 调用会死锁（WebView2 / wry#583）。首次创建须在 `async` command 或独立线程中执行；
+/// 见 [`request_show_settings_window`]。
 pub fn ensure_settings_window(app: &tauri::AppHandle) -> Result<WebviewWindow, String> {
     if let Some(window) = app.get_webview_window(SETTINGS_LABEL) {
         return Ok(window);
@@ -56,17 +66,28 @@ pub fn ensure_settings_window(app: &tauri::AppHandle) -> Result<WebviewWindow, S
     Ok(window)
 }
 
+/// 打开设置窗。已存在则仅 show；首次会 `ensure` 创建。
+/// 供 async command / 已脱离主事件回调栈的上下文使用。
 pub fn show_settings_window(app: &tauri::AppHandle) -> Result<(), String> {
     let window = ensure_settings_window(app)?;
-    window.show().map_err(|error| error.to_string())?;
-    window.unminimize().map_err(|error| error.to_string())?;
-    window.set_focus().map_err(|error| error.to_string())?;
-    Ok(())
+    present_window(&window)
+}
+
+/// 托盘 / 同步快捷键等事件回调用：在独立线程打开，避免 Windows 上首次建窗死锁。
+/// 不阻塞调用方，也不在主线程上 `recv` 等待创建完成。
+pub fn request_show_settings_window(app: &tauri::AppHandle) {
+    let app = app.clone();
+    std::thread::spawn(move || {
+        if let Err(error) = show_settings_window(&app) {
+            log::warn!("打开设置失败: {error}");
+        }
+    });
 }
 
 pub const OCR_LABEL: &str = "ocr";
 pub const OCR_URL: &str = "ocr.html";
 
+/// 创建文字识别窗口（若尚不存在）。Windows 首次创建约束同 [`ensure_settings_window`]。
 pub fn ensure_ocr_window(app: &tauri::AppHandle) -> Result<WebviewWindow, String> {
     if let Some(window) = app.get_webview_window(OCR_LABEL) {
         return Ok(window);
@@ -86,12 +107,20 @@ pub fn ensure_ocr_window(app: &tauri::AppHandle) -> Result<WebviewWindow, String
     Ok(window)
 }
 
+/// 打开文字识别窗。已存在则仅 show；首次会 `ensure` 创建。
 pub fn show_ocr_window(app: &tauri::AppHandle) -> Result<(), String> {
     let window = ensure_ocr_window(app)?;
-    window.show().map_err(|error| error.to_string())?;
-    window.unminimize().map_err(|error| error.to_string())?;
-    window.set_focus().map_err(|error| error.to_string())?;
-    Ok(())
+    present_window(&window)
+}
+
+/// 托盘 / 同步事件回调用：独立线程打开，避免 Windows 首次建窗死锁。
+pub fn request_show_ocr_window(app: &tauri::AppHandle) {
+    let app = app.clone();
+    std::thread::spawn(move || {
+        if let Err(error) = show_ocr_window(&app) {
+            log::warn!("打开文字识别窗口失败: {error}");
+        }
+    });
 }
 
 /// 隐藏文字识别窗口。纯识别截图前调用，避免窗口内容进帧；幂等。

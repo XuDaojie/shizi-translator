@@ -9,7 +9,7 @@ use app::{
     shortcuts::{handle_global_shortcut, register_global_shortcuts_at_startup},
     state::AppState,
     tray::{setup_tray, TrayI18nHandles},
-    window::{ensure_ocr_window, ensure_settings_window, setup_close_to_hide},
+    window::setup_close_to_hide,
 };
 use core::{
     config::ConfigStore,
@@ -158,10 +158,9 @@ pub fn run() {
                 .state::<AppState>()
                 .set_shortcut_conflicts(shortcut_conflicts);
 
-            // 按窗口策略预创建弹窗与 overlay
+            // 按窗口策略预创建弹窗与 overlay。
+            // 设置页 / 文字识别窗口故意不在启动时创建：首次 open 时再 ensure，避免多占 WebView 进程。
             let _ = ensure_popup_window(app.handle(), &config);
-            let _ = ensure_settings_window(app.handle());
-            let _ = ensure_ocr_window(app.handle());
             let _ = ensure_overlay(app.handle());
 
             Ok(())

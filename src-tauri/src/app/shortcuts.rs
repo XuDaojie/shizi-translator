@@ -11,7 +11,7 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use crate::{
     app::{
         state::AppState,
-        window::{show_settings_window, OCR_LABEL, SETTINGS_LABEL},
+        window::{request_show_settings_window, OCR_LABEL, SETTINGS_LABEL},
     },
     core::{
         config::AppConfig,
@@ -357,10 +357,9 @@ pub fn handle_global_shortcut(
             });
         }
         Some(ShortcutAction::OpenSettings) => {
-            // 程序快捷键：仅在窗口聚焦期间注册，此处直接打开设置
-            if let Err(error) = show_settings_window(app) {
-                log::warn!("打开设置失败: {error}");
-            }
+            // 程序快捷键：仅在窗口聚焦期间注册。
+            // 独立线程打开：快捷键回调里同步 build WebView 会在 Windows 上死锁。
+            request_show_settings_window(app);
         }
         None => {}
     }

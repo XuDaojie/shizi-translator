@@ -10,8 +10,9 @@ use crate::{
 use std::process::Command;
 use tauri::Emitter;
 
+/// async：Windows 上同步 command 里 `WebviewWindowBuilder::build` 会死锁（wry#583）。
 #[tauri::command]
-pub fn open_settings(app: tauri::AppHandle) -> Result<(), String> {
+pub async fn open_settings(app: tauri::AppHandle) -> Result<(), String> {
     show_settings_window(&app)
 }
 
