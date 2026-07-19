@@ -8,6 +8,7 @@ import LanguageToolbar from './components/LanguageToolbar.vue'
 import ResultCard from './components/ResultCard.vue'
 import StatusBar from './components/StatusBar.vue'
 import { useTranslationEvents, type CardState, type TranslationEventPayload } from './composables/useTranslationEvents'
+import { enabledPayloads, syncCardsFromEnabledServices } from './composables/cardConfigSync'
 import { usePopupHeight } from './composables/usePopupHeight'
 import {
   createMainWindowReadyGate,
@@ -211,71 +212,20 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onAppShortcutKeydown)
 })
 
-/* === 卡片配置同步（复刻旧 refreshCardsFromConfig + syncServiceCards） === */
-const enabledPayloads = (config: AppConfig): Array<{ serviceInstanceId: string; serviceType: string; serviceName: string; protocol: string; modelName: string }> =>
-  (config.services || [])
-    .filter((s) => s.enabled)
-    .map((s) => ({
-      serviceInstanceId: s.id,
-      serviceType: s.serviceType,
-      serviceName: s.name,
-      protocol: s.protocol || '',
-      modelName: s.protocol === 'microsoft_edge' ? '' : (s.model || ''),
-    }))
-
+/* === 卡片配置同步：按 config.services 启用顺序重建 Map（结果卡展示序） === */
 const refreshCardsFromConfig = (config: AppConfig): void => {
   const payloads = enabledPayloads(config)
-  const enabledIds = new Set(payloads.map((p) => p.serviceInstanceId))
   if (isTranslating.value) {
     pendingConfigRefresh.value = config
-    cards.forEach((card, id) => {
-      if (!enabledIds.has(id) && card.status !== 'translating') cards.delete(id)
-    })
-    payloads.forEach((p) => {
-      const card = cards.get(p.serviceInstanceId)
-      if (card) {
-        card.serviceName = p.serviceName
-        card.serviceType = p.serviceType
-        card.protocol = p.protocol
-        card.modelName = p.modelName
-      }
-    })
+    syncCardsFromEnabledServices(cards, payloads, { isTranslating: true })
     return
   }
   pendingConfigRefresh.value = null
-  cards.forEach((card, id) => {
-    if (!enabledIds.has(id) && card.status !== 'translating') cards.delete(id)
-  })
-  payloads.forEach((p) => {
-    let card = cards.get(p.serviceInstanceId)
-    if (!card) {
-      card = {
-        serviceInstanceId: p.serviceInstanceId,
-        serviceName: p.serviceName,
-        serviceType: p.serviceType,
-        protocol: p.protocol,
-        modelName: p.modelName,
-        text: '',
-        status: 'pending',
-        collapsed: true, // 空闲默认收缩
-        collapseUserOverride: false,
-        expanded: false,
-        hasOverflow: false,
-        showActions: false,
-        usage: null,
-        detectedSourceLang: null,
-        errorTitleKey: null,
-        errorMessage: '',
-      }
-      cards.set(p.serviceInstanceId, card)
-    } else {
-      card.serviceName = p.serviceName
-      card.serviceType = p.serviceType
-      card.protocol = p.protocol
-      card.modelName = p.modelName
-    }
-  })
+  syncCardsFromEnabledServices(cards, payloads, { isTranslating: false })
 }
+
+/** 供模板 v-for：与 cards Map 迭代序一致（由 sync 保证 = 启用服务序）。 */
+const orderedCards = computed(() => Array.from(cards.values()))
 
 const applyPendingConfigRefresh = (): void => {
   if (!pendingConfigRefresh.value) return
@@ -476,7 +426,7 @@ onMounted(() => {
 
       <div class="results">
         <ResultCard
-          v-for="card in cards.values()"
+          v-for="card in orderedCards"
           :key="card.serviceInstanceId"
           :card="card"
           :target-lang="sessionTargetLang"
