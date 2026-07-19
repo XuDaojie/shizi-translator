@@ -69,24 +69,49 @@ pub fn hide_popup(app: &tauri::AppHandle) {
     }
 }
 
-/// 唤起弹窗：复用 main 翻译窗口并定位。
-/// 光标上下文不可用时退化为不重新定位（保留上一次位置或默认）。
-pub fn show_popup(app: &tauri::AppHandle, _config: &AppConfig) -> Result<(), String> {
+/// 翻译弹窗唤起时的定位策略。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PopupPositionMode {
+    /// 跟随光标并钳制到工作区（划词 / 截图译 / 快捷键触发）。
+    #[default]
+    NearCursor,
+    /// 不改坐标：保留上一次位置；首次创建依赖 `tauri.conf` 的 `center`。
+    /// 托盘手动打开空弹窗等「非上下文触发」入口使用。
+    Restore,
+}
+
+/// 唤起弹窗：复用 main 翻译窗口。
+/// - [`PopupPositionMode::NearCursor`]：按光标定位；光标上下文不可用时不改位置。
+/// - [`PopupPositionMode::Restore`]：不重新定位（上次位置或默认居中）。
+pub fn show_popup(
+    app: &tauri::AppHandle,
+    _config: &AppConfig,
+    mode: PopupPositionMode,
+) -> Result<(), String> {
     let window = app
         .get_webview_window(POPUP_LABEL)
         .ok_or_else(|| "翻译弹窗未创建".to_string())?;
 
-    let scale = window.scale_factor().unwrap_or(1.0);
-
-    if let Some((cx, cy, wx, wy, ww, wh)) = cursor_logical_context(scale) {
-        const POPUP_W: f64 = 420.0;
-        const POPUP_H: f64 = 480.0;
-        let pos = compute_popup_position(
-            LogicalPos { x: cx, y: cy },
-            LogicalSize { width: POPUP_W, height: POPUP_H },
-            LogicalRect { x: wx, y: wy, width: ww, height: wh },
-        );
-        let _ = window.set_position(LogicalPosition::new(pos.x, pos.y));
+    if mode == PopupPositionMode::NearCursor {
+        let scale = window.scale_factor().unwrap_or(1.0);
+        if let Some((cx, cy, wx, wy, ww, wh)) = cursor_logical_context(scale) {
+            const POPUP_W: f64 = 420.0;
+            const POPUP_H: f64 = 480.0;
+            let pos = compute_popup_position(
+                LogicalPos { x: cx, y: cy },
+                LogicalSize {
+                    width: POPUP_W,
+                    height: POPUP_H,
+                },
+                LogicalRect {
+                    x: wx,
+                    y: wy,
+                    width: ww,
+                    height: wh,
+                },
+            );
+            let _ = window.set_position(LogicalPosition::new(pos.x, pos.y));
+        }
     }
 
     let _ = window.show();

@@ -11,7 +11,8 @@ use crate::app::state::AppState;
 use crate::app::window::{
     request_show_ocr_window, request_show_settings_window, show_window,
 };
-use crate::ui::web_popup::{show_translation_error, show_translation_popup};
+use crate::app::popup_window::PopupPositionMode;
+use crate::ui::web_popup::{show_translation_error, show_translation_popup_with};
 
 fn tray_icon_size(scale_factor: f64) -> u32 {
     match (16.0 * scale_factor).round() as u32 {
@@ -246,10 +247,13 @@ pub fn setup_tray(app: &tauri::App) -> tauri::Result<TrayI18nHandles> {
         .menu(&menu)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "selection" => {
+                // 托盘打开：保留上次位置（首次为 conf 居中），不跟随鼠标到托盘角。
                 let state = app.state::<AppState>();
                 match state.config_store.get() {
                     Ok(config) => {
-                        if let Err(e) = show_translation_popup(app, &config) {
+                        if let Err(e) =
+                            show_translation_popup_with(app, &config, PopupPositionMode::Restore)
+                        {
                             show_translation_error(app, e);
                         }
                     }
