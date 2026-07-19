@@ -50,5 +50,7 @@ export interface AppConfig {
   logLevel: LogLevel;
   updateChannel: 'stable' | 'beta';
   autoCheckUpdate: boolean;
+  /** 登录系统后自动启动（Windows Run 键）。旧 config 可能缺省。 */
+  launchAtLogin?: boolean;
   shortcuts: Record<string, string>;
 }

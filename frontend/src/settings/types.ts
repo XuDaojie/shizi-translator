@@ -3,14 +3,11 @@ import type { ServiceProtocolId } from '@/types/config';
 export type ThemeMode = 'light' | 'dark' | 'system'
 export type UILanguage = 'auto' | 'zh-CN' | 'zh-TW' | 'en-US' | 'ja-JP' | 'ko-KR' | 'fr-FR' | 'de-DE' | 'es-ES' | (string & {})
 export type UpdateChannel = 'stable' | 'beta'
-export type CloseAction = 'minimize' | 'quit'
 export type LogLevel = 'error' | 'warn' | 'info' | 'debug'
 
 export interface GeneralSettings {
+  /** 开机自启（已接后端 launchAtLogin → Windows Run）。 */
   launchAtLogin: boolean
-  startMinimized: boolean
-  showTrayIcon: boolean
-  closeAction: CloseAction
   /** 主翻译弹窗是否预创建（后端已实现，接 save_app_config.popupPrecreate）。 */
   popupPrecreate: boolean
   /** 截图 OCR overlay 窗口是否预创建（后端已实现，接 save_app_config.overlayPrecreate）。 */

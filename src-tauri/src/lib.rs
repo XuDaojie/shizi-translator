@@ -17,7 +17,10 @@ use core::{
 };
 use tauri::Manager;
 use ui::{
-    config::{get_app_config, get_shortcut_conflicts, open_settings, open_url, save_app_config},
+    config::{
+        get_app_config, get_shortcut_conflicts, is_autostart_launch, open_settings, open_url,
+        save_app_config,
+    },
     history::{clear_translation_history, list_translation_history},
     i18n::{
         apply_interface_language, get_interface_language_snapshot, open_language_pack_directory,
@@ -98,6 +101,7 @@ pub fn run() {
             take_pending_source_text,
             get_app_config,
             save_app_config,
+            is_autostart_launch,
             get_shortcut_conflicts,
             list_translation_history,
             clear_translation_history,
@@ -164,6 +168,11 @@ pub fn run() {
             // 设置页 / 文字识别窗口故意不在启动时创建：首次 open 时再 ensure，避免多占 WebView 进程。
             let _ = ensure_popup_window(app.handle(), &config);
             let _ = ensure_overlay(app.handle());
+
+            // 用当前 exe 路径刷新 Run 项（升级后路径变化时仍能自启）；失败不挡启动。
+            if let Err(error) = crate::app::autostart::apply(config.launch_at_login) {
+                log::warn!("同步开机启动失败: {error}");
+            }
 
             crate::ui::update::spawn_startup_update_check(app.handle().clone());
 

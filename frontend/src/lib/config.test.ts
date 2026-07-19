@@ -26,9 +26,6 @@ const makeInstance = (over: Partial<ServiceInstance>): ServiceInstance => ({
 const makeState = (services: ServiceInstance[]): AppSettings => ({
   general: {
     launchAtLogin: false,
-    startMinimized: false,
-    showTrayIcon: true,
-    closeAction: 'minimize',
     theme: 'light',
     language: 'auto',
     updateChannel: 'stable',
@@ -87,6 +84,7 @@ describe('projectToAppConfig', () => {
     expect(config.overlayPrecreate).toBe(false);
     expect(config.collectUsage).toBe(true);
     expect(config.logLevel).toBe('info');
+    expect(config.launchAtLogin).toBe(false);
     expect(config.services.map((s) => s.id)).toEqual(['deepseek-1', 'zhipu-1']);
     expect(config.services[0]).toMatchObject({
       serviceType: 'deepseek',
@@ -217,6 +215,12 @@ describe('projectToAppConfig', () => {
     const config = projectToAppConfig(state);
     expect(config.updateChannel).toBe('beta');
     expect(config.autoCheckUpdate).toBe(false);
+  });
+
+  it('投影 launchAtLogin', () => {
+    const state = makeState([]);
+    state.general.launchAtLogin = true;
+    expect(projectToAppConfig(state).launchAtLogin).toBe(true);
   });
 });
 

@@ -41,11 +41,6 @@ const updateChannelOptions = computed(() => [
   { label: 'Beta', value: 'beta' },
 ])
 
-const closeActionOptions = computed(() => [
-  { label: t('settings.option.minimize'), value: 'minimize' },
-  { label: t('settings.option.quit'), value: 'quit' },
-])
-
 const checking = ref(false)
 const updateDialogOpen = ref(false)
 const pendingUpdate = ref<CheckUpdateResult | null>(null)
@@ -126,27 +121,6 @@ const openDirectory = async () => {
       :description="t('settings.description.launchAtLogin')"
     >
       <SettingSwitch v-model="state.general.launchAtLogin" :aria-label="t('settings.field.launchAtLogin')" />
-    </SettingRow>
-    <SettingRow
-      :title="t('settings.field.startMinimized')"
-      :description="t('settings.description.startMinimized')"
-    >
-      <SettingSwitch v-model="state.general.startMinimized" :aria-label="t('settings.field.startMinimized')" />
-    </SettingRow>
-    <SettingRow
-      :title="t('settings.field.showTrayIcon')"
-      :description="t('settings.description.showTrayIcon')"
-    >
-      <SettingSwitch v-model="state.general.showTrayIcon" :aria-label="t('settings.field.showTrayIcon')" />
-    </SettingRow>
-    <SettingRow
-      :title="t('settings.field.closeBehavior')"
-      :description="t('settings.description.closeBehavior')"
-    >
-      <SettingSelect
-        v-model="state.general.closeAction"
-        :options="closeActionOptions"
-      />
     </SettingRow>
   </SettingGroup>
 

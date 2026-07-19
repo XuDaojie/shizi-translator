@@ -226,6 +226,9 @@ pub struct AppConfig {
     pub update_channel: String,
     #[serde(default = "default_true")]
     pub auto_check_update: bool,
+    /// 登录 Windows 后自动启动（HKCU Run；默认关闭，用户显式开启）。
+    #[serde(default)]
+    pub launch_at_login: bool,
 }
 
 impl ServiceInstanceConfig {
@@ -320,6 +323,7 @@ impl AppConfig {
             log_level: default_log_level(),
             update_channel: default_update_channel(),
             auto_check_update: true,
+            launch_at_login: false,
         }
         .normalized()
     }
@@ -442,6 +446,17 @@ mod tests {
         assert_eq!(config.services.len(), 1);
         assert_eq!(config.services[0].id, "default");
         assert!(config.services[0].enabled);
+    }
+
+    #[test]
+    fn default_launch_at_login_false_and_missing_field_deserializes() {
+        let config = AppConfig::default();
+        assert!(!config.launch_at_login);
+        let json = r#"{"targetLang":"zh-CN"}"#;
+        let parsed: AppConfig = serde_json::from_str(json).unwrap();
+        assert!(!parsed.launch_at_login);
+        let roundtrip = serde_json::to_value(config).unwrap();
+        assert_eq!(roundtrip["launchAtLogin"], false);
     }
 
     #[test]

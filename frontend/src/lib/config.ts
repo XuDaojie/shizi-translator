@@ -77,6 +77,7 @@ export function projectToAppConfig(state: AppSettings): AppConfig {
     logLevel: state.advanced.logLevel,
     updateChannel: state.general.updateChannel,
     autoCheckUpdate: state.general.autoCheckUpdate,
+    launchAtLogin: state.general.launchAtLogin,
     shortcuts: Object.fromEntries(
       state.shortcut.bindings.map((binding) => [binding.id, binding.keys.trim()]),
     ),

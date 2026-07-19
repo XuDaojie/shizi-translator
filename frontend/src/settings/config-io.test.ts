@@ -5,9 +5,6 @@ import type { AppSettings } from './types'
 const baseState: AppSettings = {
   general: {
     launchAtLogin: true,
-    startMinimized: false,
-    showTrayIcon: true,
-    closeAction: 'minimize',
     popupPrecreate: false,
     overlayPrecreate: false,
     theme: 'system',

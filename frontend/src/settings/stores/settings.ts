@@ -157,10 +157,7 @@ const buildDefaults = (): AppSettings => {
   const instances = seedInstances()
   return {
     general: {
-      launchAtLogin: true,
-      startMinimized: false,
-      showTrayIcon: true,
-      closeAction: 'minimize',
+      launchAtLogin: false,
       popupPrecreate: true,
       overlayPrecreate: true,
       theme: 'system',
@@ -448,8 +445,18 @@ const loadFromStorage = (): AppSettings => {
       services = defaults.services
     }
 
+    const g = { ...defaults.general, ...(parsed.general ?? {}) }
     return {
-      general: { ...defaults.general, ...parsed.general },
+      // 只保留当前 GeneralSettings 字段，丢掉历史死开关（startMinimized 等）
+      general: {
+        launchAtLogin: Boolean(g.launchAtLogin),
+        popupPrecreate: g.popupPrecreate ?? defaults.general.popupPrecreate,
+        overlayPrecreate: g.overlayPrecreate ?? defaults.general.overlayPrecreate,
+        theme: g.theme ?? defaults.general.theme,
+        language: g.language ?? defaults.general.language,
+        updateChannel: g.updateChannel === 'beta' ? 'beta' : 'stable',
+        autoCheckUpdate: g.autoCheckUpdate ?? defaults.general.autoCheckUpdate,
+      },
       translation: {
         ...defaults.translation,
         ...parsed.translation,
@@ -748,6 +755,8 @@ export const useSettings = () => ({
         backend.updateChannel === 'beta' ? 'beta' : 'stable'
       state.general.autoCheckUpdate =
         backend.autoCheckUpdate ?? state.general.autoCheckUpdate
+      state.general.launchAtLogin =
+        backend.launchAtLogin ?? state.general.launchAtLogin
       applyInterfaceLanguageSnapshot(languageSnapshot)
       state.translation.defaultSourceLang =
         backend.defaultSourceLang ?? state.translation.defaultSourceLang

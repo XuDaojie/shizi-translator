@@ -418,7 +418,12 @@ const initCards = async (): Promise<void> => {
 }
 
 const runColdStartReady = async (): Promise<void> => {
+  let silentAutostart = false
   try {
+    const apis = getTauriApis()
+    if (apis) {
+      silentAutostart = Boolean(await apis.invoke<boolean>('is_autostart_launch'))
+    }
     await initCards()
     await nextTick()
     await popupHeight.adjustNow()
@@ -427,7 +432,12 @@ const runColdStartReady = async (): Promise<void> => {
   } catch (e) {
     logger.warn('冷启动 ready 流水线异常，仍尝试 show', String(e))
   } finally {
-    await readyGate.notifyReady()
+    if (silentAutostart) {
+      // 开机自启：仅托盘驻留，不强制弹出翻译窗
+      readyGate.dispose()
+    } else {
+      await readyGate.notifyReady()
+    }
   }
 }
 

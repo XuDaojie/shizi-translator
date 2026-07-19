@@ -69,6 +69,12 @@ pub fn save_app_config(
     ));
     let _ = state.set_shortcut_conflicts(Vec::new());
 
+    crate::app::autostart::apply(saved_config.launch_at_login).map_err(|error| {
+        ShortcutBindingError::global(format!(
+            "配置已保存，但同步开机启动失败: {error}"
+        ))
+    })?;
+
     apply_interface_language_locked(&app, &state, &saved_config.interface_language, true, true)
         .map_err(|error| {
             ShortcutBindingError::global(format!(
@@ -83,6 +89,12 @@ pub fn save_app_config(
         .map_err(|error| ShortcutBindingError::global(format!("无法广播配置变更: {error}")))?;
 
     Ok(saved_config)
+}
+
+/// 当前进程是否由开机自启拉起（带 `--autostart`）。
+#[tauri::command]
+pub fn is_autostart_launch() -> bool {
+    crate::app::autostart::is_autostart_process()
 }
 
 #[tauri::command]

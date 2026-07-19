@@ -11,7 +11,7 @@
 ## 托盘与窗口生命周期
 
 - `CloseRequested` → `hide()`；托盘「退出」才真正退出（`app/window.rs`、`app/tray.rs`）。
-- `main`：`tauri.conf.json` 中 `visible: false`；冷启动由前端 `TranslationPopup`：`initCards` → 至少一次 `setSize` → 双 rAF → `show` + `setFocus`（约 2s 超时强制 show）；热唤起走 `show_popup`。
+- `main`：`tauri.conf.json` 中 `visible: false`；冷启动由前端 `TranslationPopup`：`initCards` → 至少一次 `setSize` → 双 rAF → `show` + `setFocus`（约 2s 超时强制 show）；带 `--autostart`（开机自启）时跳过 show，仅托盘驻留；热唤起走 `show_popup`。
 - 弹窗：`decorations(false)` + `transparent(true)` + `resizable(false)`；`.toolbar` 用 `data-tauri-drag-region`；`.popup` 宽 420px；高度 `usePopupHeight` + `ResizeObserver` 动态 `setSize`（宽 452，高 h+32，上限屏高 80%）。相关 window 权限见 `capabilities/default.json`。
 - 设置页：弹窗设置按钮 / 托盘「设置」/ `open_settings`。
 
@@ -19,7 +19,8 @@
 
 - 事实来源：`config.json` 的 `services[]`（`protocol` / `endpoint` / `model` / `apiKey` / `enabled`）。旧单 provider 路径已废弃。
 - 协议 id：`openai_chat` / `claude_messages` / `mock` / `microsoft_edge`。映射在 `core/translation/protocol.rs` 的 `provider_for_service`；未知协议报错。`microsoft_edge` 经 `BatchTranslateProvider` + `StreamingAdapter` 适配流式。
-- `AppConfig` 另含 `updateChannel`（`stable`/`beta`）与 `autoCheckUpdate`（默认 `true`）；前后端经 `projectToAppConfig` / `syncFromBackend` 同步。
+- `AppConfig` 另含 `updateChannel`（`stable`/`beta`）、`autoCheckUpdate`（默认 `true`）、`launchAtLogin`（默认 `false`）；前后端经 `projectToAppConfig` / `syncFromBackend` 同步。
+- 开机自启：`launchAtLogin` → `app/autostart.rs` 写 HKCU `...\Run\Shizi`（命令带 `--autostart`）；`save_app_config` 与启动 setup 均同步；托盘/关窗 hide 为硬编码产品行为，设置页不再提供「最小化启动 / 托盘显隐 / 关闭行为」开关。
 - 设置页挂载 `settings.syncFromBackend()`：后端 `services` 空 → 前端 `projectToAppConfig` 覆盖写回；非空 → `mergeBackendIntoServices` 按 id 合并（后端覆盖 enabled/apiKey/endpoint/model/protocol；前端保留 prompts/keyStatus/chainOfThought/pulledModels/note）。
 - `save_app_config` 后广播 `app-config:changed`；弹窗同步卡片（翻译中不新增未参与批次的服务卡）。
 - Dev-only：`ServiceMeta.protocols.length === 0` 与 `<DevOnly>`（`import.meta.env.DEV`）在 release 隐藏、dev 可见。自动检查更新已落地，**不再**列为 wip / DevOnly（主题 / 思维链 / 反思等仍可能 DevOnly）。
