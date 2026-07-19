@@ -32,14 +32,18 @@ pub struct OpenAiCompatibleConfig {
 const DEFAULT_MAX_TOKENS: u32 = 4096;
 
 /// OpenAI 兼容端思维链注入形态（阶段 A：仅 Effort / EnableThinking）。
-/// `off` 或未知模型 → 全部字段不序列化（JSON 中键不存在）。
+/// 多数模型在 `off`/未知时 → `None`（JSON 中键不存在）。
+/// Qwen3 等混合思考模型默认会思考：`off` 时须显式 `enable_thinking: false`。
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ThinkingParams {
     None,
     /// 根级 `reasoning_effort`（OpenAI o 系列 / gpt-5 等）。
     OpenAiEffort { effort: &'static str },
-    /// `enable_thinking` + `thinking_budget`（Qwen3 / QwQ 等混合思考）。
-    EnableThinking { budget: u32 },
+    /// `enable_thinking`；开启时可附带 `thinking_budget`（Qwen3 / QwQ 等）。
+    EnableThinking {
+        enable: bool,
+        budget: Option<u32>,
+    },
 }
 
 fn map_effort_level(level: &str) -> &'static str {
@@ -68,7 +72,8 @@ fn is_openai_reasoning_model(model: &str) -> bool {
     base.starts_with("o1") || base.starts_with("o3") || base.starts_with("o4")
 }
 
-/// Qwen 混合思考：可按请求开关 `enable_thinking`。
+/// Qwen 混合思考：可按请求开关 `enable_thinking`（含 Qwen3 / 3.5 / 3.6 / QwQ）。
+/// 硅基流动等端点上此类模型**默认开启思考**，`off` 时必须显式写 `false`。
 fn is_qwen_hybrid_thinking(model: &str) -> bool {
     let m = model.to_lowercase();
     m.contains("qwen3")
@@ -86,21 +91,33 @@ fn model_base_name(model: &str) -> String {
         .to_string()
 }
 
-/// 根据模型名 + 用户档位解析线协议字段；未知模型静默为 None。
+/// 根据模型名 + 用户档位解析线协议字段。
 fn resolve_thinking_params(model: &str, chain_of_thought: &str) -> ThinkingParams {
     let level = chain_of_thought.trim();
-    if !matches!(level, "short" | "medium" | "long") {
+    let enabled = matches!(level, "short" | "medium" | "long");
+
+    // Qwen 混合思考：默认会想，关闭时也要写 false（不能「省略字段」）。
+    if is_qwen_hybrid_thinking(model) {
+        return if enabled {
+            ThinkingParams::EnableThinking {
+                enable: true,
+                budget: Some(map_budget_level(level)),
+            }
+        } else {
+            ThinkingParams::EnableThinking {
+                enable: false,
+                budget: None,
+            }
+        };
+    }
+
+    if !enabled {
         return ThinkingParams::None;
     }
 
     if is_openai_reasoning_model(model) {
         return ThinkingParams::OpenAiEffort {
             effort: map_effort_level(level),
-        };
-    }
-    if is_qwen_hybrid_thinking(model) {
-        return ThinkingParams::EnableThinking {
-            budget: map_budget_level(level),
         };
     }
 
@@ -120,10 +137,10 @@ struct ChatCompletionRequest {
     /// OpenAI 推理模型 effort；`off`/不支持时不序列化。
     #[serde(skip_serializing_if = "Option::is_none")]
     reasoning_effort: Option<String>,
-    /// Qwen 等混合思考开关；仅 `true` 时出现，从不默认写 `false`。
+    /// Qwen 等混合思考开关；混合模型在 `off` 时会显式写 `false`。
     #[serde(skip_serializing_if = "Option::is_none")]
     enable_thinking: Option<bool>,
-    /// 与 `enable_thinking` 配套的 token 预算。
+    /// 与 `enable_thinking: true` 配套的 token 预算；关闭时不序列化。
     #[serde(skip_serializing_if = "Option::is_none")]
     thinking_budget: Option<u32>,
 }
@@ -267,7 +284,9 @@ impl OpenAiCompatibleProvider {
             ThinkingParams::OpenAiEffort { effort } => {
                 (Some(effort.to_string()), None, None)
             }
-            ThinkingParams::EnableThinking { budget } => (None, Some(true), Some(budget)),
+            ThinkingParams::EnableThinking { enable, budget } => {
+                (None, Some(enable), budget)
+            }
         };
 
         ChatCompletionRequest {
@@ -767,18 +786,44 @@ mod tests {
     }
 
     #[test]
-    fn resolve_thinking_params_off_is_none() {
+    fn resolve_thinking_params_off_is_none_for_non_qwen() {
         assert_eq!(
             resolve_thinking_params("o3-mini", "off"),
             ThinkingParams::None
         );
         assert_eq!(
-            resolve_thinking_params("Qwen/Qwen3-32B", "off"),
+            resolve_thinking_params("o3-mini", "invalid"),
             ThinkingParams::None
         );
         assert_eq!(
-            resolve_thinking_params("o3-mini", "invalid"),
+            resolve_thinking_params("gpt-4o-mini", "off"),
             ThinkingParams::None
+        );
+    }
+
+    #[test]
+    fn resolve_thinking_params_qwen_off_explicitly_disables() {
+        // 硅基流动 Qwen3 默认开启思考，off 必须 enable=false
+        assert_eq!(
+            resolve_thinking_params("Qwen/Qwen3-32B", "off"),
+            ThinkingParams::EnableThinking {
+                enable: false,
+                budget: None
+            }
+        );
+        assert_eq!(
+            resolve_thinking_params("Qwen/Qwen3.5-32B", "off"),
+            ThinkingParams::EnableThinking {
+                enable: false,
+                budget: None
+            }
+        );
+        assert_eq!(
+            resolve_thinking_params("Qwen/Qwen3.6-35B-A3B", ""),
+            ThinkingParams::EnableThinking {
+                enable: false,
+                budget: None
+            }
         );
     }
 
@@ -807,15 +852,24 @@ mod tests {
     fn resolve_thinking_params_qwen_hybrid_maps_budget() {
         assert_eq!(
             resolve_thinking_params("Qwen/Qwen3-32B", "short"),
-            ThinkingParams::EnableThinking { budget: 1024 }
+            ThinkingParams::EnableThinking {
+                enable: true,
+                budget: Some(1024)
+            }
         );
         assert_eq!(
             resolve_thinking_params("qwq-32b", "medium"),
-            ThinkingParams::EnableThinking { budget: 2048 }
+            ThinkingParams::EnableThinking {
+                enable: true,
+                budget: Some(2048)
+            }
         );
         assert_eq!(
             resolve_thinking_params("qwen-plus-thinking", "long"),
-            ThinkingParams::EnableThinking { budget: 3072 }
+            ThinkingParams::EnableThinking {
+                enable: true,
+                budget: Some(3072)
+            }
         );
     }
 
@@ -840,17 +894,34 @@ mod tests {
     }
 
     #[test]
-    fn request_body_off_omits_all_thinking_fields() {
-        for model in ["gpt-4o-mini", "o3-mini", "Qwen/Qwen3-32B", "deepseek-reasoner"] {
+    fn request_body_off_omits_thinking_fields_for_non_qwen() {
+        for model in ["gpt-4o-mini", "o3-mini", "deepseek-reasoner"] {
             let json = serde_json::to_value(
                 provider_with_model(model).request_body(&request_with_cot("off")),
             )
             .unwrap();
             assert!(
                 !thinking_keys_present(&json),
-                "off 时不得出现 thinking 字段: model={model} json={json}"
+                "非 Qwen off 时不得出现 thinking 字段: model={model} json={json}"
             );
         }
+    }
+
+    #[test]
+    fn request_body_qwen_off_sends_enable_thinking_false() {
+        let json = serde_json::to_value(
+            provider_with_model("Qwen/Qwen3-32B").request_body(&request_with_cot("off")),
+        )
+        .unwrap();
+        assert_eq!(
+            json["enable_thinking"], false,
+            "Qwen3 off 须显式关闭思考: {json}"
+        );
+        assert!(
+            json.get("thinking_budget").is_none(),
+            "关闭时不应带 budget: {json}"
+        );
+        assert!(json.get("reasoning_effort").is_none());
     }
 
     #[test]
@@ -885,6 +956,15 @@ mod tests {
         assert_eq!(json["enable_thinking"], true);
         assert_eq!(json["thinking_budget"], 2048);
         assert!(json.get("reasoning_effort").is_none());
+    }
+
+    #[test]
+    fn request_body_siliconflow_qwen35_off_disables_thinking() {
+        let json = serde_json::to_value(
+            provider_with_model("Qwen/Qwen3.5-32B").request_body(&request_with_cot("off")),
+        )
+        .unwrap();
+        assert_eq!(json["enable_thinking"], false);
     }
 
     #[test]
