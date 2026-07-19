@@ -119,7 +119,8 @@ const languageLabel = (code: string): string => {
 }
 const detectedOrLabel = computed(() => {
   if (detectedLangBadge.value) return languageLabel(detectedLangBadge.value)
-  if (sessionSourceLang.value === 'auto') return t(POPUP_MESSAGE_KEYS.detecting)
+  // 仅在已开始翻译、尚未拿到检测结果时显示「检测中」；刚打开/空闲时显示「自动检测」
+  if (sessionSourceLang.value === 'auto' && isTranslating.value) return t(POPUP_MESSAGE_KEYS.detecting)
   return sourceLangLabel.value
 })
 

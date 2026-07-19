@@ -222,9 +222,11 @@ impl ClaudeProvider {
     /// 消费 SSE 字节流，解析事件并经 forward 闭包（注入 AutoLangHeaderParser）转发。
     /// `message_stop` 或流自然结束时执行 finish：补发 pending 译文与 DetectedSourceLang。
     /// cancel 时直接返回，不执行 finish（取消不应补发）。
+    /// `source_text` 仅在 is_auto 时用于剥离模型回显原文。
     async fn process_stream<S, B, E>(
         stream: S,
         is_auto: bool,
+        source_text: &str,
         on_event: &mut (dyn FnMut(TranslationStreamEvent) + Send),
         cancel: &CancellationToken,
     ) -> Result<(), TranslationError>
@@ -233,7 +235,11 @@ impl ClaudeProvider {
         B: AsRef<[u8]>,
         E: std::fmt::Display,
     {
-        let mut parser = AutoLangHeaderParser::new();
+        let mut parser = if is_auto {
+            AutoLangHeaderParser::with_source(source_text)
+        } else {
+            AutoLangHeaderParser::new()
+        };
         let mut input_tokens: Option<u64> = None;
 
         let mut forward = |ev: TranslationStreamEvent| {
@@ -412,7 +418,14 @@ impl TranslationProvider for ClaudeProvider {
         }
 
         let is_auto = request.source_lang == "auto";
-        Self::process_stream(response.bytes_stream(), is_auto, on_event, cancel).await
+        Self::process_stream(
+            response.bytes_stream(),
+            is_auto,
+            request.source_text(),
+            on_event,
+            cancel,
+        )
+        .await
     }
 }
 
@@ -627,7 +640,7 @@ mod tests {
         let cancel = tokio_util::sync::CancellationToken::new();
         let mut events: Vec<TranslationStreamEvent> = Vec::new();
         let mut on_event = |ev: TranslationStreamEvent| events.push(ev);
-        ClaudeProvider::process_stream(stream, true, &mut on_event, &cancel)
+        ClaudeProvider::process_stream(stream, true, "hello", &mut on_event, &cancel)
             .await
             .expect("process_stream 应成功");
 
@@ -655,7 +668,7 @@ mod tests {
         let cancel = tokio_util::sync::CancellationToken::new();
         let mut events: Vec<TranslationStreamEvent> = Vec::new();
         let mut on_event = |ev: TranslationStreamEvent| events.push(ev);
-        ClaudeProvider::process_stream(stream, true, &mut on_event, &cancel)
+        ClaudeProvider::process_stream(stream, true, "hello", &mut on_event, &cancel)
             .await
             .expect("process_stream 应成功");
 

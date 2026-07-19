@@ -67,30 +67,35 @@ impl TranslationRequest {
 
     pub fn user_prompt(&self) -> String {
         let template = self.prompts.translation_prompt.trim();
-        let source_lang = prompt_language_name(&self.source_lang);
+        let is_auto = self.source_lang == "auto";
+        // auto 时不要把 "Auto Detect" 写进「从 X 翻译到 Y」，弱模型会复读占位符而非翻译。
+        let source_lang = if is_auto {
+            "原文"
+        } else {
+            prompt_language_name(&self.source_lang)
+        };
         let target_lang = prompt_language_name(&self.target_lang);
+        let text = self.source_text();
         let base = if template.is_empty() {
             format!(
                 "请将以下文本完整翻译为{}（保留所有段落、换行与列表项，勿省略任何内容）：\n\n{}",
-                target_lang,
-                self.source_text()
+                target_lang, text
             )
         } else {
             let rendered = template
                 .replace("{source_lang}", source_lang)
                 .replace("{target_lang}", target_lang)
-                .replace("{text}", self.source_text());
+                .replace("{text}", text);
             if template.contains("{text}") {
                 rendered
             } else {
-                format!("{rendered}\n\n{}", self.source_text())
+                format!("{rendered}\n\n{text}")
             }
         };
 
-        if self.source_lang == "auto" {
-            format!(
-                "{base}\n\n请先在第一行用【源语言：语言名称】输出你检测到的原文语言（如：英语、日语、中文），换行后再输出完整译文。"
-            )
+        if is_auto {
+            // 说明极短：长说明会被弱模型整段复读进「译文」。
+            format!("{base}\n\n（请在译文前单独一行写【源语言：英语】这种格式，再写译文。）")
         } else {
             base
         }
@@ -431,11 +436,19 @@ mod tests {
         let request = request_with_source_lang("auto");
         let prompt = request.user_prompt();
         assert!(
-            prompt.contains("【源语言：语言名称】"),
+            prompt.contains("【源语言："),
             "auto 时 user_prompt 应含检测指令: {}",
             prompt
         );
         assert!(prompt.contains("hello"), "应含原文");
+        let text_pos = prompt.find("hello").expect("应含原文");
+        let instr_pos = prompt.find("【源语言：").expect("应含检测指令");
+        assert!(text_pos < instr_pos, "检测说明应在原文后: {}", prompt);
+        assert!(
+            !prompt.contains("Auto Detect"),
+            "auto 时 user_prompt 全文不应出现 Auto Detect: {}",
+            prompt
+        );
     }
 
     #[test]
@@ -445,6 +458,24 @@ mod tests {
         assert!(
             !prompt.contains("【源语言："),
             "具体源语言时不应追加检测指令: {}",
+            prompt
+        );
+    }
+
+    #[test]
+    fn user_prompt_auto_replaces_source_lang_placeholder_without_auto_detect() {
+        let mut request = request_with_source_lang("auto");
+        request.prompts.translation_prompt =
+            "从 {source_lang} 翻译到 {target_lang}:\n{text}".to_string();
+        let prompt = request.user_prompt();
+        assert!(
+            !prompt.contains("Auto Detect"),
+            "占位符替换不得写入 Auto Detect: {}",
+            prompt
+        );
+        assert!(
+            prompt.contains("从 原文 翻译到"),
+            "auto 时 {{source_lang}} 应替换为中性文案: {}",
             prompt
         );
     }
