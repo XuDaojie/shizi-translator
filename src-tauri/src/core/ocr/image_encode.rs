@@ -55,7 +55,8 @@ pub fn encode_captured_image_png_info(image: &CapturedImage) -> Result<EncodePng
     })
 }
 
-/// 兼容旧调用点：仅返回 PNG 字节。
+/// 兼容旧调用点 / 单测：仅返回 PNG 字节。
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn encode_captured_image_png(image: &CapturedImage) -> Result<Vec<u8>, OcrError> {
     Ok(encode_captured_image_png_info(image)?.png)
 }

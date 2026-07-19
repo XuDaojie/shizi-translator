@@ -59,6 +59,8 @@ fn tray_icon_image(app: &tauri::App) -> tauri::Result<Image<'static>> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrayAccelMode {
     Native,
+    /// 实机抢键时把 `TRAY_ACCEL_MODE` 切到此变体（当前默认 Native，仅测试会构造）。
+    #[allow(dead_code)]
     TextOnly,
 }
 

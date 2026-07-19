@@ -34,6 +34,8 @@ pub enum HistoryError {
 
 #[derive(Clone)]
 pub struct HistoryStore {
+    /// 库文件路径；生产路径仅构造时写入，目前由测试/诊断通过 [`Self::path`] 读取。
+    #[allow(dead_code)]
     path: PathBuf,
     conn: Arc<Mutex<Connection>>,
 }
@@ -63,6 +65,7 @@ impl HistoryStore {
         Self::in_memory()
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn path(&self) -> &Path {
         &self.path
     }

@@ -1,10 +1,15 @@
 use super::types::ReleaseInfo;
 
-pub const GITHUB_OWNER_REPO: &str = "XuDaojie/shizi-translator";
+/// GitHub 仓库 `owner/name`；API 与 releases 页 URL 均由此拼出。
+macro_rules! github_owner_repo {
+    () => {
+        "XuDaojie/shizi-translator"
+    };
+}
 pub const RELEASES_API_URL: &str =
-    "https://api.github.com/repos/XuDaojie/shizi-translator/releases?per_page=30";
+    concat!("https://api.github.com/repos/", github_owner_repo!(), "/releases?per_page=30");
 pub const RELEASES_PAGE_FALLBACK: &str =
-    "https://github.com/XuDaojie/shizi-translator/releases";
+    concat!("https://github.com/", github_owner_repo!(), "/releases");
 const REQUEST_TIMEOUT_SECS: u64 = 12;
 
 pub async fn fetch_releases(client: &reqwest::Client) -> Result<Vec<ReleaseInfo>, String> {

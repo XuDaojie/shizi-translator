@@ -316,6 +316,7 @@ impl AppState {
         Ok(())
     }
 
+    #[cfg(test)]
     pub fn peek_ocr_session_service_id(&self) -> Result<Option<String>, String> {
         let g = self
             .ocr_session_service_id

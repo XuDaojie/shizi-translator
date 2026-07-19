@@ -1,5 +1,8 @@
 use std::{
-    sync::{mpsc, OnceLock},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        mpsc, Mutex, OnceLock,
+    },
     thread,
     time::Duration,
 };
@@ -26,6 +29,10 @@ use crate::{
 
 // ponytail: 人工按键频率下单消费者无界队列足够；程序化高频触发时再增加容量限制。
 static SELECTION_COPY_QUEUE: OnceLock<mpsc::Sender<tauri::AppHandle>> = OnceLock::new();
+/// 序列化程序快捷键挂载，避免多窗口 focus 并发 unregister/register 竞态。
+static APP_LOCAL_SYNC_LOCK: Mutex<()> = Mutex::new(());
+/// focus 防抖代数：后到的 Focused 事件会使先前延迟任务作废。
+static APP_LOCAL_FOCUS_GEN: AtomicU64 = AtomicU64::new(0);
 
 /// 仅全局作用域的快捷键参与 all-or-nothing 注册；程序快捷键在窗口聚焦时另行挂载。
 pub fn register_global_shortcuts(
@@ -109,7 +116,13 @@ pub fn replace_global_shortcuts(
 
 /// 主窗 / 设置窗获得或失去焦点时调用：有任一窗口聚焦则注册程序快捷键，否则卸下。
 /// 使用 OS 级热键（聚焦期间有效），避免 WebView 吞掉 `Ctrl+,` 等组合键。
+///
+/// 幂等：已处于目标状态时不反复 unregister/register，避免多窗口 focus 竞态刷 WARN。
 pub fn sync_app_local_shortcuts(app: &tauri::AppHandle, config: &AppConfig) {
+    let _guard = APP_LOCAL_SYNC_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+
     let Ok(entries) = configured_shortcuts(config) else {
         return;
     };
@@ -118,21 +131,30 @@ pub fn sync_app_local_shortcuts(app: &tauri::AppHandle, config: &AppConfig) {
         .filter(|entry| entry.kind == ShortcutKind::AppLocal && entry.action.is_some())
         .collect();
 
-    for entry in &app_locals {
-        let _ = app.global_shortcut().unregister(entry.keys.as_str());
-    }
-
-    if !any_app_window_focused(app) {
-        return;
-    }
+    let want_registered = any_app_window_focused(app);
+    let gs = app.global_shortcut();
 
     for entry in &app_locals {
-        if let Err(error) = app.global_shortcut().register(entry.keys.as_str()) {
-            log::warn!(
-                "程序快捷键「{}」注册失败: {}",
-                entry.id,
-                friendly_register_error(error)
-            );
+        let keys = entry.keys.as_str();
+        let already = gs.is_registered(keys);
+
+        if want_registered {
+            if already {
+                continue;
+            }
+            if let Err(error) = gs.register(keys) {
+                // 并发或重入时另一路可能已注册成功；仅当真未挂上才告警。
+                if gs.is_registered(keys) {
+                    continue;
+                }
+                log::warn!(
+                    "程序快捷键「{}」注册失败: {}",
+                    entry.id,
+                    friendly_register_error(error)
+                );
+            }
+        } else if already {
+            let _ = gs.unregister(keys);
         }
     }
 }
@@ -146,15 +168,20 @@ pub fn sync_app_local_shortcuts_from_state(app: &tauri::AppHandle) {
 }
 
 /// 监听窗口聚焦变化，延迟一拍再同步，避免主窗↔设置窗切换时短暂「双 blur」卸键。
+/// 多窗口同时 Focused 时只保留最后一次延迟任务，减少无意义的重复挂载。
 pub fn attach_app_shortcut_focus_listener(window: &WebviewWindow, app: &tauri::AppHandle) {
     let app_handle = app.clone();
     window.on_window_event(move |event| {
         if !matches!(event, WindowEvent::Focused(_)) {
             return;
         }
+        let gen = APP_LOCAL_FOCUS_GEN.fetch_add(1, Ordering::SeqCst) + 1;
         let app2 = app_handle.clone();
         tauri::async_runtime::spawn(async move {
             tokio::time::sleep(Duration::from_millis(40)).await;
+            if APP_LOCAL_FOCUS_GEN.load(Ordering::SeqCst) != gen {
+                return;
+            }
             sync_app_local_shortcuts_from_state(&app2);
         });
     });
@@ -485,8 +512,9 @@ mod tests {
 
     #[test]
     fn classifies_ocr_recognize_shortcut() {
-        let config = config_with(&[("ocr-recognize", "Alt+O")]);
-        let shortcut = "Alt+O".parse::<Shortcut>().unwrap();
+        // Alt+O 是历史默认，normalize 会清空；测试用非历史键。
+        let config = config_with(&[("ocr-recognize", "Ctrl+Alt+O")]);
+        let shortcut = "Ctrl+Alt+O".parse::<Shortcut>().unwrap();
         assert_eq!(
             classify_shortcut(&shortcut, &config),
             Some(ShortcutAction::OcrRecognize)

@@ -39,7 +39,6 @@ pub fn select_latest_for_channel(
 
             Some(SelectedRelease {
                 version,
-                tag_name: r.tag_name.clone(),
                 name: r.name.clone(),
                 html_url: r.html_url.clone(),
                 is_prerelease,

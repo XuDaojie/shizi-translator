@@ -7,8 +7,11 @@ pub mod vision_openai;
 // cdylib crate-type 无 Rust 外部消费者，pub use re-export 易被判死代码；保留供短路径访问
 #[allow(unused_imports)]
 pub use image_encode::{
-    encode_captured_image_png, encode_captured_image_png_info, encode_png_unscaled, EncodePngInfo,
+    encode_captured_image_png_info, encode_png_unscaled, EncodePngInfo,
 };
+#[cfg(test)]
+#[allow(unused_imports)]
+pub use image_encode::encode_captured_image_png;
 #[allow(unused_imports)]
 pub use meta::{OcrRunMeta, RecognizeImageFullResult, RecognizeImageResponse};
 #[allow(unused_imports)]

@@ -36,18 +36,9 @@ pub struct ReleaseInfo {
 #[derive(Debug, Clone)]
 pub struct SelectedRelease {
     pub version: semver::Version,
-    pub tag_name: String,
     pub name: Option<String>,
     pub html_url: String,
     pub is_prerelease: bool,
-}
-
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum CheckUpdateStatus {
-    UpToDate,
-    UpdateAvailable,
-    Error,
 }
 
 /// 前端约定 camelCase：用 rename_all = "camelCase" 在结果 struct 上。

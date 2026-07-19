@@ -95,13 +95,23 @@ pub async fn write_frontend_log(
         if !should_log(&entry.level, filter) {
             continue;
         }
-        let line = format!(
-            "{} [{}] {} {}",
-            entry.timestamp,
-            entry.level.to_uppercase(),
-            entry.source,
-            entry.message
-        );
+        let line = match &entry.meta {
+            Some(meta) if !meta.is_null() => format!(
+                "{} [{}] {} {} {}",
+                entry.timestamp,
+                entry.level.to_uppercase(),
+                entry.source,
+                entry.message,
+                meta
+            ),
+            _ => format!(
+                "{} [{}] {} {}",
+                entry.timestamp,
+                entry.level.to_uppercase(),
+                entry.source,
+                entry.message
+            ),
+        };
         // best-effort：单条失败跳过，不崩。
         let _ = append_frontend_log(&path, &line, FRONTEND_LOG_MAX_SIZE);
     }
@@ -284,7 +294,6 @@ mod tests {
     #[test]
     fn export_zip_bundles_log_files_and_snapshot() {
         use crate::core::config::AppConfig;
-        use std::io::{Read, Seek, SeekFrom};
         use zip::ZipArchive;
 
         let dir = tempdir().unwrap();
