@@ -5,6 +5,7 @@ import '@/popup/popup-tokens.css';
 import '@/popup/components.css';
 import { initializeI18n } from '@/i18n'
 import { createLogger } from '@public/logger.js'
+import { dismissBootSplash } from '@/shared/bootSplash'
 
 const logger = createLogger('settings')
 
@@ -24,3 +25,4 @@ await Promise.race([
 if (initializationTimer !== undefined) clearTimeout(initializationTimer)
 
 createApp(App).mount('#app');
+void dismissBootSplash()

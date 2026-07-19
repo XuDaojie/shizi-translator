@@ -4,8 +4,58 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Shizi - 设置</title>
+  <!-- 冷启动 splash：须内联，模块 CSS/JS 就绪前即可见；Vue mount 后 dismissBootSplash 淡出移除 -->
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: #f4f5f7;
+    }
+    .boot-splash {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #f4f5f7;
+      transition: opacity 220ms ease;
+    }
+    .boot-splash--hide {
+      opacity: 0;
+      pointer-events: none;
+    }
+    .boot-splash__logo {
+      width: 80px;
+      height: 80px;
+      border-radius: 18px;
+      box-shadow: 0 10px 28px rgba(189, 55, 29, 0.2);
+      animation: boot-splash-breath 1.6s ease-in-out infinite;
+    }
+    @keyframes boot-splash-breath {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.06); opacity: 0.88; }
+    }
+  </style>
 </head>
 <body class="min-h-screen bg-background text-foreground antialiased">
+  <div id="boot-splash" class="boot-splash" aria-hidden="true">
+    <!-- 构图同源 src-tauri/icons/icon.svg -->
+    <svg class="boot-splash__logo" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Shizi">
+      <defs>
+        <linearGradient id="boot-splash-grad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#73852E"/>
+          <stop offset="0.24" stop-color="#D99624"/>
+          <stop offset="0.62" stop-color="#E75B25"/>
+          <stop offset="1" stop-color="#BD371D"/>
+        </linearGradient>
+      </defs>
+      <rect width="128" height="128" rx="28" fill="url(#boot-splash-grad)"/>
+      <text x="7" y="78" fill="#FFF" font-family="Microsoft YaHei, sans-serif" font-size="62" font-weight="700">文</text>
+      <text x="82" y="101" fill="#FFF" font-family="Segoe UI, sans-serif" font-size="49" font-weight="700">A</text>
+      <path d="M64 51h25l-7-6m7 6-7 6M91 66H66l7 6m-7-6 7-6" fill="none" stroke="#FFF3DF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </div>
   <div id="app"></div>
   <script type="module" src="/src/settings/main.ts"></script>
 </body>

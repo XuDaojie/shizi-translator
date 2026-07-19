@@ -14,6 +14,7 @@
 - `main`：`tauri.conf.json` 中 `visible: false`；冷启动由前端 `TranslationPopup`：`initCards` → 至少一次 `setSize` → 双 rAF → `show` + `setFocus`（约 2s 超时强制 show）；带 `--autostart`（开机自启）时跳过 show，仅托盘驻留；热唤起走 `show_popup`。
 - 弹窗：`decorations(false)` + `transparent(true)` + `resizable(false)`；`.toolbar` 用 `data-tauri-drag-region`；`.popup` 宽 420px；高度 `usePopupHeight` + `ResizeObserver` 动态 `setSize`（宽 452，高 h+32，上限屏高 80%）。相关 window 权限见 `capabilities/default.json`。
 - 设置页：弹窗设置按钮 / 托盘「设置」/ `open_settings`。
+- **冷启动 splash**（settings / ocr / translate）：各入口 HTML 内联浅灰底 + 呼吸 Logo（`#boot-splash`）；Vue `mount` 后 `dismissBootSplash`（`frontend/src/shared/bootSplash.ts`：双 rAF → 淡出移除）。hide 再开不重放；不含 overlay。规格见 `docs/superpowers/specs/2026-07-19-window-boot-splash-design.md`。
 
 ## 服务、配置与协议
 
