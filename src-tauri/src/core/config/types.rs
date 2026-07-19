@@ -264,7 +264,8 @@ fn default_shortcuts() -> HashMap<String, String> {
         ("translate-clipboard".to_string(), "Ctrl+Shift+C".to_string()),
         ("word-lookup".to_string(), String::new()),
         ("open-settings".to_string(), "Ctrl+,".to_string()),
-        ("ocr-recognize".to_string(), "Alt+O".to_string()),
+        // 文字识别默认不注册全局快捷键；用户可在设置页自行绑定
+        ("ocr-recognize".to_string(), String::new()),
     ])
 }
 
@@ -281,6 +282,8 @@ fn normalize_shortcuts(mut shortcuts: HashMap<String, String>) -> HashMap<String
             ("translate-selection", "Alt+T") => "Alt+D".to_string(),
             // 历史默认：Alt+O → Alt+E → Alt+S
             ("translate-screenshot", "Alt+O" | "Alt+E") => "Alt+S".to_string(),
+            // 历史默认 Alt+O → 空（默认不设置）
+            ("ocr-recognize", "Alt+O") => String::new(),
             _ => keys,
         };
         normalized.insert(id, keys);
@@ -819,22 +822,30 @@ mod tests {
     }
 
     #[test]
-    fn default_shortcuts_include_ocr_recognize_alt_o() {
+    fn default_shortcuts_ocr_recognize_is_empty() {
         let config = AppConfig::default();
         assert_eq!(
             config.shortcuts.get("ocr-recognize").map(String::as_str),
-            Some("Alt+O")
+            Some("")
         );
     }
 
     #[test]
-    fn normalize_keeps_ocr_recognize_alt_o_while_migrating_screenshot() {
+    fn normalize_migrates_ocr_recognize_alt_o_to_empty_while_migrating_screenshot() {
         let mut config = AppConfig::default();
         config.shortcuts.insert("translate-screenshot".into(), "Alt+O".into());
         config.shortcuts.insert("ocr-recognize".into(), "Alt+O".into());
         let n = config.normalized();
         assert_eq!(n.shortcuts.get("translate-screenshot").unwrap(), "Alt+S");
-        assert_eq!(n.shortcuts.get("ocr-recognize").unwrap(), "Alt+O");
+        assert_eq!(n.shortcuts.get("ocr-recognize").unwrap(), "");
+    }
+
+    #[test]
+    fn normalize_keeps_custom_ocr_recognize_shortcut() {
+        let mut config = AppConfig::default();
+        config.shortcuts.insert("ocr-recognize".into(), "Ctrl+Alt+O".into());
+        let n = config.normalized();
+        assert_eq!(n.shortcuts.get("ocr-recognize").unwrap(), "Ctrl+Alt+O");
     }
 
     #[test]
@@ -842,11 +853,13 @@ mod tests {
         let mut config = AppConfig::default();
         config.shortcuts.insert("translate-selection".to_string(), "Alt+T".to_string());
         config.shortcuts.insert("translate-screenshot".to_string(), "Alt+O".to_string());
+        config.shortcuts.insert("ocr-recognize".to_string(), "Alt+O".to_string());
 
         let config = config.normalized();
 
         assert_eq!(config.shortcuts.get("translate-selection").map(String::as_str), Some("Alt+D"));
         assert_eq!(config.shortcuts.get("translate-screenshot").map(String::as_str), Some("Alt+S"));
+        assert_eq!(config.shortcuts.get("ocr-recognize").map(String::as_str), Some(""));
 
         let mut config = AppConfig::default();
         config.shortcuts.insert("translate-screenshot".to_string(), "Alt+E".to_string());

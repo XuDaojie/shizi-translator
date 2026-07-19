@@ -11,7 +11,7 @@
 ## 托盘与窗口生命周期
 
 - `CloseRequested` → `hide()`；托盘「退出」才真正退出（`app/window.rs`、`app/tray.rs`）。
-- `main`：`tauri.conf.json` 中 `visible: false`；冷启动由前端 `TranslationPopup`：`initCards` → 至少一次 `setSize` → 双 rAF → `show` + `setFocus`（约 2s 超时强制 show）；带 `--autostart`（开机自启）时跳过 show，仅托盘驻留；热唤起走 `show_popup`。
+- `main`：`tauri.conf.json` 中 `visible: false`、`center: true`；冷启动由前端 `TranslationPopup`：`initCards` → 至少一次 `setSize` → 双 rAF → `show` + `setFocus`（约 2s 超时强制 show）；带 `--autostart`（开机自启）时跳过 show，仅托盘驻留；热唤起走 `show_popup`（`NearCursor` 划词/截图译；`Restore` 托盘打开，保留上次位置）。
 - 弹窗：`decorations(false)` + `transparent(true)` + `resizable(false)`；`.toolbar` 用 `data-tauri-drag-region`；`.popup` 宽 420px；高度 `usePopupHeight` + `ResizeObserver` 动态 `setSize`（宽 452，高 h+32，上限屏高 80%）。相关 window 权限见 `capabilities/default.json`。
 - 设置页：弹窗设置按钮 / 托盘「设置」/ `open_settings`。
 - **冷启动 splash**（settings / ocr / translate）：各入口 HTML 内联浅灰底 + 呼吸 Logo（`#boot-splash`）；Vue `mount` 后 `dismissBootSplash`（`frontend/src/shared/bootSplash.ts`：双 rAF → 淡出移除）。hide 再开不重放；不含 overlay。规格见 `docs/superpowers/specs/2026-07-19-window-boot-splash-design.md`。
@@ -44,7 +44,7 @@
 ## 快捷键
 
 - `Alt+D` 划词翻译：主键释放后等修饰键全松再 Ctrl+C；成功取词才 show 弹窗。
-- `Alt+S` 截图 OCR 翻译；`Alt+O` 独立文字识别（不翻译、不写历史）。
+- `Alt+S` 截图 OCR 翻译；独立文字识别默认无快捷键（托盘入口；用户可在设置绑定，不翻译、不写历史）。
 - `CapturePurpose`：`Translate` | `RecognizeOnly`，在 `submit_capture_region` 分叉。
 - 启动注册 best-effort，冲突记入 `shortcut_conflicts`；保存路径 all-or-nothing。新快捷键须同步 `capabilities/default.json`。
 

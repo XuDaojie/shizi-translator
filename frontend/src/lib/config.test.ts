@@ -143,7 +143,7 @@ describe('projectToAppConfig', () => {
     state.shortcut.bindings = [
       { id: 'translate-selection', label: '划词翻译', description: '', keys: ' Alt+D ' },
       { id: 'translate-screenshot', label: '截图翻译', description: '', keys: 'Alt+S' },
-      { id: 'ocr-recognize', label: '文字识别', description: '', keys: 'Alt+O' },
+      { id: 'ocr-recognize', label: '文字识别', description: '', keys: '' },
       { id: 'word-lookup', label: '取词翻译', description: '', keys: '' },
     ];
 
@@ -152,7 +152,7 @@ describe('projectToAppConfig', () => {
     expect(config.shortcuts).toEqual({
       'translate-selection': 'Alt+D',
       'translate-screenshot': 'Alt+S',
-      'ocr-recognize': 'Alt+O',
+      'ocr-recognize': '',
       'word-lookup': '',
     });
   });

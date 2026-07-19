@@ -35,7 +35,7 @@ plugins.md         已装插件/技能清单（变更须同步）
 - **配置事实来源**：`config.json` 的 `services[]`；协议 `openai_chat` / `claude_messages` / `mock` / `microsoft_edge`（`provider_for_service`）。`AppConfig` 另含 `updateChannel`（`stable`/`beta`）、`autoCheckUpdate`（默认 `true`）、`launchAtLogin`（默认 `false`，Windows Run + `--autostart` 静默托盘）。
 - **配置同步**：设置页 `syncFromBackend`；`save_app_config` → `app-config:changed` 刷新弹窗卡片。
 - **批次翻译**：启用服务保序并发；事件带 `serviceInstanceId`；单服务失败不影响其他。
-- **快捷键**：`Alt+D` 划词、`Alt+S` 截图译、`Alt+O` 仅识别；新快捷键同步 capabilities。
+- **快捷键**：`Alt+D` 划词、`Alt+S` 截图译；文字识别默认无快捷键（托盘入口）；新快捷键同步 capabilities。
 - **历史 / 日志**：SQLite 历史与分文件日志；失败 best-effort，不挡翻译主路径。
 - **检查更新**：command `check_for_update`（GitHub Releases + 通道过滤 + semver）；设置页手动检查 → toast/Dialog → `open_url` 浏览器下载；启动时若 `autoCheckUpdate` 则后端 best-effort 检查，有更新才弹系统 dialog（「前往下载」/「稍后」），确认后后端 `open_url`。不做应用内安装、无 updater 插件。
 

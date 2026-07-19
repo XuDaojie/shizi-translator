@@ -272,13 +272,13 @@ describe('settings defaults', () => {
     expect(state.services[1].model).toBe('glm-4-flash');
   });
 });
-  it('默认快捷键使用 Alt+D 和 Alt+S', () => {
+  it('默认快捷键使用 Alt+D 和 Alt+S，文字识别默认不绑定', () => {
     const { state } = useSettings();
 
     expect(Object.fromEntries(state.shortcut.bindings.map((b) => [b.id, b.keys]))).toMatchObject({
       'translate-selection': 'Alt+D',
       'translate-screenshot': 'Alt+S',
-      'ocr-recognize': 'Alt+O',
+      'ocr-recognize': '',
     });
   });
 

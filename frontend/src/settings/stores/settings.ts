@@ -201,7 +201,7 @@ const buildDefaults = (): AppSettings => {
           id: 'ocr-recognize',
           label: '文字识别',
           description: '打开文字识别窗口并框选屏幕区域识别文字。',
-          keys: 'Alt+O',
+          keys: '',
         },
         {
           id: 'word-lookup',
