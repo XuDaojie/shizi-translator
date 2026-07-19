@@ -31,6 +31,84 @@ pub struct OpenAiCompatibleConfig {
 /// 与 max_tokens 无关；此处仅保证未设上限时不会过早因 length 截断。
 const DEFAULT_MAX_TOKENS: u32 = 4096;
 
+/// OpenAI 兼容端思维链注入形态（阶段 A：仅 Effort / EnableThinking）。
+/// `off` 或未知模型 → 全部字段不序列化（JSON 中键不存在）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ThinkingParams {
+    None,
+    /// 根级 `reasoning_effort`（OpenAI o 系列 / gpt-5 等）。
+    OpenAiEffort { effort: &'static str },
+    /// `enable_thinking` + `thinking_budget`（Qwen3 / QwQ 等混合思考）。
+    EnableThinking { budget: u32 },
+}
+
+fn map_effort_level(level: &str) -> &'static str {
+    match level {
+        "short" => "low",
+        "long" => "high",
+        _ => "medium",
+    }
+}
+
+fn map_budget_level(level: &str) -> u32 {
+    match level {
+        "short" => 1024,
+        "long" => 3072,
+        _ => 2048,
+    }
+}
+
+/// OpenAI 推理系：`o1` / `o3` / `o4` / `gpt-5`（不含 `gpt-4o`）。
+fn is_openai_reasoning_model(model: &str) -> bool {
+    let base = model_base_name(model);
+    if base.contains("gpt-5") {
+        return true;
+    }
+    // `o1` / `o1-mini` / `o3-mini` / `o4-mini`；避免误匹配 `gpt-4o`
+    base.starts_with("o1") || base.starts_with("o3") || base.starts_with("o4")
+}
+
+/// Qwen 混合思考：可按请求开关 `enable_thinking`。
+fn is_qwen_hybrid_thinking(model: &str) -> bool {
+    let m = model.to_lowercase();
+    m.contains("qwen3")
+        || m.contains("qwq")
+        || (m.contains("qwen") && m.contains("thinking"))
+}
+
+/// 模型 id 最后一段（`org/name` → `name`）。
+fn model_base_name(model: &str) -> String {
+    model
+        .to_lowercase()
+        .rsplit('/')
+        .next()
+        .unwrap_or(model)
+        .to_string()
+}
+
+/// 根据模型名 + 用户档位解析线协议字段；未知模型静默为 None。
+fn resolve_thinking_params(model: &str, chain_of_thought: &str) -> ThinkingParams {
+    let level = chain_of_thought.trim();
+    if !matches!(level, "short" | "medium" | "long") {
+        return ThinkingParams::None;
+    }
+
+    if is_openai_reasoning_model(model) {
+        return ThinkingParams::OpenAiEffort {
+            effort: map_effort_level(level),
+        };
+    }
+    if is_qwen_hybrid_thinking(model) {
+        return ThinkingParams::EnableThinking {
+            budget: map_budget_level(level),
+        };
+    }
+
+    // deepseek-reasoner / R1 等 always-on：不注入字段，依赖模型默认。
+    // 其它未知模型：静默忽略，避免对普通 chat 端点 400。
+    ThinkingParams::None
+}
+
 /// OpenAI Chat Completions 官方 JSON 为 snake_case（stream_options / max_tokens / include_usage）。
 #[derive(Serialize)]
 struct ChatCompletionRequest {
@@ -39,6 +117,15 @@ struct ChatCompletionRequest {
     stream_options: StreamOptions,
     max_tokens: u32,
     messages: Vec<ChatMessage>,
+    /// OpenAI 推理模型 effort；`off`/不支持时不序列化。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reasoning_effort: Option<String>,
+    /// Qwen 等混合思考开关；仅 `true` 时出现，从不默认写 `false`。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    enable_thinking: Option<bool>,
+    /// 与 `enable_thinking` 配套的 token 预算。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thinking_budget: Option<u32>,
 }
 
 #[derive(Serialize)]
@@ -72,6 +159,10 @@ struct ChatChoice {
 #[derive(Deserialize)]
 struct ChatDelta {
     content: Option<String>,
+    /// DeepSeek / Qwen 等推理模型流式思维链；翻译主路径丢弃，只消费 `content`。
+    #[serde(default)]
+    #[allow(dead_code)]
+    reasoning_content: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -160,6 +251,25 @@ impl OpenAiCompatibleProvider {
     }
 
     fn request_body(&self, request: &TranslationRequest) -> ChatCompletionRequest {
+        let thinking = resolve_thinking_params(
+            &self.config.model,
+            &request.prompts.chain_of_thought,
+        );
+        log::debug!(
+            "OpenAI thinking: model={} level={} wire={:?}",
+            self.config.model,
+            request.prompts.chain_of_thought,
+            thinking
+        );
+
+        let (reasoning_effort, enable_thinking, thinking_budget) = match thinking {
+            ThinkingParams::None => (None, None, None),
+            ThinkingParams::OpenAiEffort { effort } => {
+                (Some(effort.to_string()), None, None)
+            }
+            ThinkingParams::EnableThinking { budget } => (None, Some(true), Some(budget)),
+        };
+
         ChatCompletionRequest {
             model: self.config.model.clone(),
             stream: true,
@@ -177,6 +287,9 @@ impl OpenAiCompatibleProvider {
                     content: request.user_prompt(),
                 },
             ],
+            reasoning_effort,
+            enable_thinking,
+            thinking_budget,
         }
     }
 
@@ -629,6 +742,188 @@ mod tests {
 
         assert_eq!(json["messages"][0]["content"], "sys");
         assert_eq!(json["messages"][1]["content"], "English->中文:hi");
+    }
+
+    fn provider_with_model(model: &str) -> OpenAiCompatibleProvider {
+        OpenAiCompatibleProvider::new(OpenAiCompatibleConfig {
+            api_key: Some("sk-x".to_string()),
+            base_url: "https://api.openai.com/v1".to_string(),
+            model: model.to_string(),
+            timeout_seconds: 60,
+        })
+    }
+
+    fn request_with_cot(level: &str) -> TranslationRequest {
+        let mut req = request();
+        req.prompts.chain_of_thought = level.to_string();
+        req
+    }
+
+    fn thinking_keys_present(json: &serde_json::Value) -> bool {
+        json.get("reasoning_effort").is_some()
+            || json.get("enable_thinking").is_some()
+            || json.get("thinking_budget").is_some()
+            || json.get("thinking").is_some()
+    }
+
+    #[test]
+    fn resolve_thinking_params_off_is_none() {
+        assert_eq!(
+            resolve_thinking_params("o3-mini", "off"),
+            ThinkingParams::None
+        );
+        assert_eq!(
+            resolve_thinking_params("Qwen/Qwen3-32B", "off"),
+            ThinkingParams::None
+        );
+        assert_eq!(
+            resolve_thinking_params("o3-mini", "invalid"),
+            ThinkingParams::None
+        );
+    }
+
+    #[test]
+    fn resolve_thinking_params_openai_reasoning_maps_effort() {
+        assert_eq!(
+            resolve_thinking_params("o3-mini", "short"),
+            ThinkingParams::OpenAiEffort { effort: "low" }
+        );
+        assert_eq!(
+            resolve_thinking_params("o1-preview", "medium"),
+            ThinkingParams::OpenAiEffort { effort: "medium" }
+        );
+        assert_eq!(
+            resolve_thinking_params("gpt-5", "long"),
+            ThinkingParams::OpenAiEffort { effort: "high" }
+        );
+        // gpt-4o 不得误判为推理模型
+        assert_eq!(
+            resolve_thinking_params("gpt-4o-mini", "medium"),
+            ThinkingParams::None
+        );
+    }
+
+    #[test]
+    fn resolve_thinking_params_qwen_hybrid_maps_budget() {
+        assert_eq!(
+            resolve_thinking_params("Qwen/Qwen3-32B", "short"),
+            ThinkingParams::EnableThinking { budget: 1024 }
+        );
+        assert_eq!(
+            resolve_thinking_params("qwq-32b", "medium"),
+            ThinkingParams::EnableThinking { budget: 2048 }
+        );
+        assert_eq!(
+            resolve_thinking_params("qwen-plus-thinking", "long"),
+            ThinkingParams::EnableThinking { budget: 3072 }
+        );
+    }
+
+    #[test]
+    fn resolve_thinking_params_always_on_and_unknown_are_none() {
+        assert_eq!(
+            resolve_thinking_params("deepseek-reasoner", "medium"),
+            ThinkingParams::None
+        );
+        assert_eq!(
+            resolve_thinking_params("deepseek-ai/DeepSeek-R1", "long"),
+            ThinkingParams::None
+        );
+        assert_eq!(
+            resolve_thinking_params("deepseek-chat", "medium"),
+            ThinkingParams::None
+        );
+        assert_eq!(
+            resolve_thinking_params("glm-4-flash", "medium"),
+            ThinkingParams::None
+        );
+    }
+
+    #[test]
+    fn request_body_off_omits_all_thinking_fields() {
+        for model in ["gpt-4o-mini", "o3-mini", "Qwen/Qwen3-32B", "deepseek-reasoner"] {
+            let json = serde_json::to_value(
+                provider_with_model(model).request_body(&request_with_cot("off")),
+            )
+            .unwrap();
+            assert!(
+                !thinking_keys_present(&json),
+                "off 时不得出现 thinking 字段: model={model} json={json}"
+            );
+        }
+    }
+
+    #[test]
+    fn request_body_unknown_model_with_cot_omits_thinking_fields() {
+        let json = serde_json::to_value(
+            provider_with_model("gpt-4o-mini").request_body(&request_with_cot("medium")),
+        )
+        .unwrap();
+        assert!(
+            !thinking_keys_present(&json),
+            "普通 chat 模型开启 CoT 应静默忽略: {json}"
+        );
+    }
+
+    #[test]
+    fn request_body_openai_reasoning_sets_reasoning_effort() {
+        let json = serde_json::to_value(
+            provider_with_model("o3-mini").request_body(&request_with_cot("short")),
+        )
+        .unwrap();
+        assert_eq!(json["reasoning_effort"], "low");
+        assert!(json.get("enable_thinking").is_none());
+        assert!(json.get("thinking_budget").is_none());
+    }
+
+    #[test]
+    fn request_body_qwen_sets_enable_thinking_and_budget() {
+        let json = serde_json::to_value(
+            provider_with_model("Qwen/Qwen3-32B").request_body(&request_with_cot("medium")),
+        )
+        .unwrap();
+        assert_eq!(json["enable_thinking"], true);
+        assert_eq!(json["thinking_budget"], 2048);
+        assert!(json.get("reasoning_effort").is_none());
+    }
+
+    #[test]
+    fn consume_sse_event_ignores_reasoning_content() {
+        let event = r#"data: {"choices":[{"delta":{"reasoning_content":"先分析语法…","content":"你好"}}]}"#;
+        let mut events: Vec<TranslationStreamEvent> = Vec::new();
+        let done = OpenAiCompatibleProvider::consume_sse_event(event, &mut |ev| {
+            events.push(ev);
+        })
+        .unwrap();
+        assert!(!done);
+        let text: String = events
+            .iter()
+            .filter_map(|ev| match ev {
+                TranslationStreamEvent::Delta(t) => Some(t.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(text, "你好");
+        assert!(
+            !text.contains("分析"),
+            "reasoning_content 不得进入译文: {text}"
+        );
+    }
+
+    #[test]
+    fn consume_sse_event_reasoning_only_chunk_emits_no_delta() {
+        let event = r#"data: {"choices":[{"delta":{"reasoning_content":"思考中…"}}]}"#;
+        let mut events: Vec<TranslationStreamEvent> = Vec::new();
+        OpenAiCompatibleProvider::consume_sse_event(event, &mut |ev| {
+            events.push(ev);
+        })
+        .unwrap();
+        assert!(
+            events
+                .iter()
+                .all(|ev| !matches!(ev, TranslationStreamEvent::Delta(_))),
+            "仅 reasoning 的 chunk 不应产生 Delta: {events:?}"
+        );
     }
 
     #[tokio::test]
