@@ -1389,21 +1389,18 @@ const onDragEnd = (): void => {
           </span>
         </button>
         <div v-if="advancedOpen" class="space-y-3 border-t border-border px-3 py-3">
-          <DevOnly>
-            <SettingRow
-              v-if="activeService.category === 'llm'"
-              :title="t('settings.field.chainOfThought')"
-              :description="t('settings.description.chainOfThought')"
-              status="wip"
-              vertical
-            >
-              <SettingSelect
-                :model-value="activeInstance.chainOfThought"
-                :options="chainOfThoughtOptions"
-                @update:model-value="(v) => (activeInstance!.chainOfThought = v as typeof activeInstance.chainOfThought)"
-              />
-            </SettingRow>
-          </DevOnly>
+          <SettingRow
+            v-if="activeService.category === 'llm'"
+            :title="t('settings.field.chainOfThought')"
+            :description="t('settings.description.chainOfThought')"
+            vertical
+          >
+            <SettingSelect
+              :model-value="activeInstance.chainOfThought"
+              :options="chainOfThoughtOptions"
+              @update:model-value="(v) => (activeInstance!.chainOfThought = v as typeof activeInstance.chainOfThought)"
+            />
+          </SettingRow>
 
           <SettingTextarea
             v-if="activeService.category === 'llm'"

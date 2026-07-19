@@ -88,7 +88,7 @@ src-tauri/src/ui/settings_commands.rs
 - 未接通入口已从 UI 隐藏或降级为只读展示。
 - 高级页配置导出/导入已接通（导出剔除 API Key，导入保留本地 Key）。
 - 高级日志系统已落地：前后端独立日志（Shizi.log / frontend.log）、运行时等级切换、API Key 与翻译正文脱敏、5MB 轮转 + 7 天清理、导出 zip。
-- 开发中功能 dev/release 可见性分离（2026-07-12）：未对接渠道与 wip 功能块（思维链 / 反思 / 主题）在 release 包（`npm run tauri build`）隐藏、dev 包可见，`config.json` 数据保留、dev 切回仍可见、已配值后端行为不变；判据 `import.meta.env.DEV`（`useDevMode` composable + `<DevOnly>` 组件）。**自动检查更新**已于 2026-07-16 落地并移出 wip / DevOnly。
+- 开发中功能 dev/release 可见性分离（2026-07-12）：未对接渠道与 wip 功能块在 release 包（`npm run tauri build`）隐藏、dev 包可见，`config.json` 数据保留、dev 切回仍可见、已配值后端行为不变；判据 `import.meta.env.DEV`（`useDevMode` composable + `<DevOnly>` 组件）。**自动检查更新**已于 2026-07-16 落地并移出 wip / DevOnly；**思维链**已于 2026-07-19 移出 wip / DevOnly（release 可见；反思 / 主题等仍可能 DevOnly）。
 - GitHub 检查更新（已完成，2026-07-16）：`AppConfig` 持久化 `updateChannel` / `autoCheckUpdate`；command `check_for_update` 拉取 GitHub Releases 并按通道做 semver 比较；设置页手动检查（toast / Dialog → 浏览器打开 Release）；启动时若开启自动检查则用系统 dialog 提示，确认后跳转下载；**不做**应用内安装，**未**引入 `tauri-plugin-updater`、**未**改 release CI。
 
 - ~~Anthropic / Claude 专用 provider~~ ✅。
