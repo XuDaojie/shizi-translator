@@ -134,7 +134,7 @@ pub(crate) fn apply_interface_language_locked(
         .set_tooltip(Some(&messages["tray.tooltip"]))
         .map_err(|error| format!("无法更新托盘提示: {error}"))?;
 
-    // set_text 会抹掉 TextOnly 模式下的 \t 加速键后缀，需重新刷加速键展示
+    // set_text 会抹掉 TextOnly 垫齐后的快捷键后缀，需重新刷加速键展示
     crate::app::tray::refresh_tray_menu_accelerators(app);
 
     *handles
