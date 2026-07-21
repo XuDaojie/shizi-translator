@@ -22,6 +22,7 @@ const sourceLabel = computed(() => translationLanguage(props.source)?.nativeName
 const targetLabel = computed(() => translationLanguage(props.target)?.nativeName ?? props.target)
 
 const openType = ref<'source' | 'target' | null>(null)
+const toolbarRef = ref<HTMLElement | null>(null)
 const sourcePickerRef = ref<InstanceType<typeof LanguagePicker> | null>(null)
 const targetPickerRef = ref<InstanceType<typeof LanguagePicker> | null>(null)
 
@@ -68,7 +69,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="lang-toolbar">
+  <div ref="toolbarRef" class="lang-toolbar">
     <button class="lang-side" type="button" :disabled="readonly" :aria-label="t('popup.aria.sourceLanguage')" @click="toggle('source')">
       <span class="lang-label">{{ sourceLabel }}</span>
       <svg class="lang-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
@@ -87,6 +88,7 @@ onBeforeUnmount(() => {
     :model-value="source"
     type="source"
     :placeholder="t('popup.placeholder.searchLanguage')"
+    :anchor-el="toolbarRef"
     @pick="(v) => onPick('source', v)"
     @close="openType = null"
   />
@@ -96,6 +98,7 @@ onBeforeUnmount(() => {
     :model-value="target"
     type="target"
     :placeholder="t('popup.placeholder.searchLanguage')"
+    :anchor-el="toolbarRef"
     @pick="(v) => onPick('target', v)"
     @close="openType = null"
   />

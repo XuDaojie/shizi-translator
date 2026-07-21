@@ -13,6 +13,9 @@ export interface UsePopupHeightReturn {
  * getCurrentWindow().setSize({ type:'Logical', width:420, height:h })。
  * 复刻旧 translate.js 的 adjustHeight + initMaxHeight。
  * 暴露 whenFirstSized / adjustNow 供启动高度折叠链路使用。
+ *
+ * setSize 走串行队列：折叠动画期间每帧都会改高，若并发 await IPC 可能乱序
+ * 收尾，窗口卡在偏大高度；队列保证最终落到最近一次测到的高度。
  */
 export function usePopupHeight(popupRef: Ref<HTMLElement | null>): UsePopupHeightReturn {
   let resizeRaf: number | null = null
@@ -24,6 +27,16 @@ export function usePopupHeight(popupRef: Ref<HTMLElement | null>): UsePopupHeigh
     resolveFirstSized = resolve
   })
 
+  /** 待应用高度；pump 循环中可被更新为更新值 */
+  let pendingHeight: number | null = null
+  let pumping = false
+
+  const markFirstSized = (): void => {
+    if (firstSizedResolved) return
+    firstSizedResolved = true
+    resolveFirstSized()
+  }
+
   const applySize = async (h: number): Promise<void> => {
     const apis = getTauriApis()
     if (apis) {
@@ -33,10 +46,30 @@ export function usePopupHeight(popupRef: Ref<HTMLElement | null>): UsePopupHeigh
         /* best-effort */
       }
     }
-    if (!firstSizedResolved) {
-      firstSizedResolved = true
-      resolveFirstSized()
+    markFirstSized()
+  }
+
+  const pump = async (): Promise<void> => {
+    if (pumping) return
+    pumping = true
+    try {
+      while (pendingHeight !== null) {
+        const h = pendingHeight
+        pendingHeight = null
+        await applySize(h)
+      }
+    } finally {
+      pumping = false
+      // pump 期间又有新高度入队
+      if (pendingHeight !== null) {
+        void pump()
+      }
     }
+  }
+
+  const enqueueSize = (h: number): Promise<void> => {
+    pendingHeight = h
+    return pump()
   }
 
   const measureAndApply = async (): Promise<void> => {
@@ -44,15 +77,14 @@ export function usePopupHeight(popupRef: Ref<HTMLElement | null>): UsePopupHeigh
     if (!el) {
       // 无 DOM 时：非 Tauri/测试环境直接放行，避免永远不 resolve
       if (!getTauriApis() && !firstSizedResolved) {
-        firstSizedResolved = true
-        resolveFirstSized()
+        markFirstSized()
       }
       return
     }
     const h = el.offsetHeight
     if (h === lastHeight && firstSizedResolved) return
     lastHeight = h
-    await applySize(h)
+    await enqueueSize(h)
   }
 
   const adjust = (): void => {

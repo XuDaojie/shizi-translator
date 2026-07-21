@@ -3,11 +3,18 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-html { background: transparent; }
+/* 铺满 WebView 客户区，底色与 .popup 一致。
+   折叠/展开时 setSize 会滞后于内容高度；若 html/body 透明，窗口底部会出现透明边缘。
+   窗口仍 transparent（历史配置），但客户区始终有不透明底色，避免露边。 */
+html {
+  height: 100%;
+  background: var(--popup-bg-popup);
+}
 
 body {
+  height: 100%;
   font-family: var(--popup-font-family);
-  background: transparent;
+  background: var(--popup-bg-popup);
   color: var(--popup-fg);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

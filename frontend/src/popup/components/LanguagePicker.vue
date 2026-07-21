@@ -1,15 +1,20 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type CSSProperties } from 'vue'
 import { SOURCE_LANGUAGES, TARGET_LANGUAGES, type TranslationLanguage } from '@/shared/translation-languages'
 import { t, type MessageKey } from '@/i18n'
+import { computeLangPickerPosition, langPickerPositionToStyle } from '../composables/langPickerPosition'
 
 interface Props {
   modelValue: string
   type: 'source' | 'target'
   placeholder: string
+  /** 定位锚点（语言工具栏）；fixed 浮层相对其对齐，避免被 .content overflow 裁切 */
+  anchorEl?: HTMLElement | null
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  anchorEl: null,
+})
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void
@@ -20,6 +25,7 @@ const emit = defineEmits<{
 const search = ref('')
 const listRef = ref<HTMLUListElement | null>(null)
 const inputRef = ref<HTMLInputElement | null>(null)
+const panelStyle = ref<CSSProperties>({})
 
 const filtered = computed<TranslationLanguage[]>(() => {
   const q = search.value.trim().toLowerCase()
@@ -66,45 +72,75 @@ const setInitialActive = async (): Promise<void> => {
   ;(selected || listRef.value.querySelector<HTMLElement>('.lang-option'))?.classList.add('is-active')
 }
 
+const updatePosition = (): void => {
+  const anchor = props.anchorEl
+  if (!anchor) {
+    panelStyle.value = {}
+    return
+  }
+  const rect = anchor.getBoundingClientRect()
+  const pos = computeLangPickerPosition(
+    { top: rect.top, left: rect.left, bottom: rect.bottom, width: rect.width },
+    window.innerHeight,
+  )
+  panelStyle.value = langPickerPositionToStyle(pos)
+}
+
 watch(() => props.modelValue, () => { void setInitialActive() })
-onMounted(() => { void setInitialActive() })
+watch(() => props.anchorEl, () => { updatePosition() })
+
+onMounted(() => {
+  void setInitialActive()
+  updatePosition()
+  // 内容区滚动 / 窗口缩放时同步锚点；capture 才能收到 .content 内部滚动
+  window.addEventListener('resize', updatePosition)
+  document.addEventListener('scroll', updatePosition, true)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', updatePosition)
+  document.removeEventListener('scroll', updatePosition, true)
+})
 
 defineExpose({ focus: () => inputRef.value?.focus() })
 </script>
 
 <template>
-  <div class="lang-picker">
-    <div class="lang-picker-search">
-      <svg class="lang-picker-search-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7" /><line x1="20" y1="20" x2="16.65" y2="16.65" /></svg>
-      <input
-        ref="inputRef"
-        v-model="search"
-        type="text"
-        class="lang-picker-input"
-        role="combobox"
-        aria-expanded="true"
-        aria-controls="language-options"
-        :aria-label="placeholder"
-        :placeholder="placeholder"
-        autocomplete="off"
-        spellcheck="false"
-        @keydown="onKeydown"
-      />
+  <!-- Teleport 出 .content，避免 overflow-y:auto 把面板裁成一条线 -->
+  <Teleport to="body">
+    <div class="lang-picker lang-picker--floating" :style="panelStyle">
+      <div class="lang-picker-search">
+        <svg class="lang-picker-search-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7" /><line x1="20" y1="20" x2="16.65" y2="16.65" /></svg>
+        <input
+          ref="inputRef"
+          v-model="search"
+          type="text"
+          class="lang-picker-input"
+          role="combobox"
+          aria-expanded="true"
+          aria-controls="language-options"
+          :aria-label="placeholder"
+          :placeholder="placeholder"
+          autocomplete="off"
+          spellcheck="false"
+          @keydown="onKeydown"
+        />
+      </div>
+      <ul id="language-options" ref="listRef" class="lang-picker-list" role="listbox">
+        <li
+          v-for="lang in filtered"
+          :key="lang.code"
+          class="lang-option"
+          :class="{ 'is-selected': lang.code === modelValue }"
+          :data-value="lang.code"
+          role="option"
+          :aria-selected="lang.code === modelValue"
+          @click="select(lang.code)"
+        >
+          <span class="lang-option-native">{{ lang.nativeName }}</span>
+          <span class="lang-option-english">{{ t(lang.nameKey as MessageKey) }}</span>
+        </li>
+      </ul>
     </div>
-    <ul id="language-options" ref="listRef" class="lang-picker-list" role="listbox">
-      <li
-        v-for="lang in filtered"
-        :key="lang.code"
-        class="lang-option"
-        :class="{ 'is-selected': lang.code === modelValue }"
-        :data-value="lang.code"
-        role="option"
-        :aria-selected="lang.code === modelValue"
-        @click="select(lang.code)"
-      >
-        <span class="lang-option-native">{{ lang.nativeName }}</span>
-        <span class="lang-option-english">{{ t(lang.nameKey as MessageKey) }}</span>
-      </li>
-    </ul>
-  </div>
+  </Teleport>
 </template>
