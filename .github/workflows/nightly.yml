@@ -9,8 +9,8 @@ name: Nightly
 
 on:
   schedule:
-    # UTC 16:00 ≈ 北京时间次日 00:00
-    - cron: "0 16 * * *"
+    # UTC 22:00 ≈ 北京时间次日 06:00
+    - cron: "0 22 * * *"
   workflow_dispatch:
 
 permissions:
