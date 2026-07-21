@@ -2,7 +2,8 @@ name: Nightly
 
 # 滚动每日构建：
 #   - 固定 tag `nightly`（非 semver，应用内检查更新会忽略）
-#   - 每次成功构建覆盖同一 prerelease 的 NSIS 安装包
+#   - 构建前把版本改成 `{base}-nightly.YYYYMMDD.{shortsha}`，安装包文件名与应用内版本都带 nightly
+#   - 上传前删掉旧 Release 资产，避免日期变化后旧文件名堆积
 #   - schedule 下若 HEAD 与现有 nightly tag 相同则跳过，节省 runner 分钟
 #   - workflow_dispatch 始终构建（便于手动补跑）
 
@@ -38,8 +39,10 @@ jobs:
         run: |
           SHORT_SHA="$(git rev-parse --short HEAD)"
           DATE_UTC="$(date -u +%Y-%m-%d)"
+          DATE_COMPACT="$(date -u +%Y%m%d)"
           echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
           echo "date_utc=$DATE_UTC" >> "$GITHUB_OUTPUT"
+          echo "date_compact=$DATE_COMPACT" >> "$GITHUB_OUTPUT"
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "should_build=true" >> "$GITHUB_OUTPUT"
@@ -76,20 +79,93 @@ jobs:
         if: steps.decide.outputs.should_build == 'true'
         run: npm ci
 
+      # Tauri NSIS 文件名 = {productName}_{version}_{arch}-setup.exe
+      # 正式版是 Shizi_0.7.0_x64-setup.exe；nightly 必须改 version，否则与正式包同名。
+      - name: Stamp nightly version
+        if: steps.decide.outputs.should_build == 'true'
+        id: ver
+        shell: bash
+        env:
+          DATE_COMPACT: ${{ steps.decide.outputs.date_compact }}
+          SHORT_SHA: ${{ steps.decide.outputs.short_sha }}
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const confPath = 'src-tauri/tauri.conf.json';
+          const cargoPath = 'src-tauri/Cargo.toml';
+          const lockPath = 'src-tauri/Cargo.lock';
+
+          const conf = JSON.parse(fs.readFileSync(confPath, 'utf8'));
+          const base = String(conf.version).split('-')[0];
+          if (!/^\d+\.\d+\.\d+$/.test(base)) {
+            console.error(`无法从 tauri.conf.json 解析基础版本: ${conf.version}`);
+            process.exit(1);
+          }
+          const nightly = `${base}-nightly.${process.env.DATE_COMPACT}.${process.env.SHORT_SHA}`;
+          conf.version = nightly;
+          fs.writeFileSync(confPath, `${JSON.stringify(conf, null, 2)}\n`);
+
+          let cargo = fs.readFileSync(cargoPath, 'utf8');
+          const cargoNext = cargo.replace(
+            /^version = "[^"]+"/m,
+            `version = "${nightly}"`,
+          );
+          if (cargoNext === cargo) {
+            console.error('未找到 Cargo.toml 顶层 version 字段');
+            process.exit(1);
+          }
+          fs.writeFileSync(cargoPath, cargoNext);
+
+          let lock = fs.readFileSync(lockPath, 'utf8');
+          const lockNext = lock.replace(
+            /(\[\[package\]\]\r?\nname = "shizi"\r?\nversion = ")[^"]+(")/,
+            `$1${nightly}$2`,
+          );
+          if (lockNext === lock) {
+            console.error('未找到 Cargo.lock 中 shizi 包 version');
+            process.exit(1);
+          }
+          fs.writeFileSync(lockPath, lockNext);
+
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${nightly}\n`);
+          console.log(`nightly version -> ${nightly}`);
+          NODE
+
       - name: Build NSIS installer
         if: steps.decide.outputs.should_build == 'true'
         run: npm run tauri -- build --bundles nsis
 
-      - name: List bundle artifacts
+      - name: List and verify nightly artifact name
         if: steps.decide.outputs.should_build == 'true'
         shell: bash
+        env:
+          NIGHTLY_VERSION: ${{ steps.ver.outputs.version }}
         run: |
           ls -la src-tauri/target/release/bundle/nsis/ || true
-          if ! ls src-tauri/target/release/bundle/nsis/*-setup.exe >/dev/null 2>&1; then
+          shopt -s nullglob
+          files=(src-tauri/target/release/bundle/nsis/*-setup.exe)
+          if [ ${#files[@]} -eq 0 ]; then
             echo "NSIS 安装包未生成" >&2
             find src-tauri/target/release -maxdepth 3 -type f \( -name '*.exe' -o -name '*.msi' \) -print || true
             exit 1
           fi
+          for f in "${files[@]}"; do
+            base="$(basename "$f")"
+            echo "artifact: $base"
+            case "$base" in
+              *nightly*) ;;
+              *)
+                echo "安装包文件名未含 nightly，疑似未打上版本戳: $base" >&2
+                exit 1
+                ;;
+            esac
+            # 拒绝与正式包同名形态（无 pre 段）
+            if [[ "$base" =~ ^Shizi_[0-9]+\.[0-9]+\.[0-9]+_ ]]; then
+              echo "安装包文件名仍像正式版: $base" >&2
+              exit 1
+            fi
+          done
+          echo "expected version marker: $NIGHTLY_VERSION"
 
       - name: Point nightly tag at HEAD
         if: steps.decide.outputs.should_build == 'true'
@@ -99,6 +175,28 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -f nightly "${{ github.sha }}"
           git push origin refs/tags/nightly --force
+
+      # 版本里含日期/sha，文件名每天不同；不清理则 Release 会堆多份旧安装包
+      - name: Clear previous nightly assets
+        if: steps.decide.outputs.should_build == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! gh release view nightly >/dev/null 2>&1; then
+            echo "尚无 nightly Release，跳过清理"
+            exit 0
+          fi
+          mapfile -t names < <(gh release view nightly --json assets --jq '.assets[].name' 2>/dev/null || true)
+          if [ ${#names[@]} -eq 0 ]; then
+            echo "无旧资产"
+            exit 0
+          fi
+          for name in "${names[@]}"; do
+            [ -n "$name" ] || continue
+            echo "删除旧资产: $name"
+            gh release delete-asset nightly "$name" --yes
+          done
 
       - name: Upload rolling Nightly Release
         if: steps.decide.outputs.should_build == 'true'
@@ -110,13 +208,16 @@ jobs:
           make_latest: false
           generate_release_notes: false
           body: |
-            自动滚动构建（Nightly），基于默认分支最新提交，每次成功会覆盖本 Release 的安装包。
+            自动滚动构建（Nightly），基于默认分支最新提交。
 
             | 项 | 值 |
             |----|----|
+            | 应用 / 安装包版本 | `${{ steps.ver.outputs.version }}` |
             | Commit | `${{ github.sha }}` |
             | 短哈希 | `${{ steps.decide.outputs.short_sha }}` |
             | 构建日期（UTC） | `${{ steps.decide.outputs.date_utc }}` |
+
+            安装包文件名形如 `Shizi_{version}_x64-setup.exe`，其中 version 含 `nightly` 段，**不会**与正式版 `Shizi_x.y.z_x64-setup.exe` 同名。
 
             **仅供尝鲜，不保证稳定。** 日常使用请下载正式版 / Beta：
             https://github.com/${{ github.repository }}/releases
