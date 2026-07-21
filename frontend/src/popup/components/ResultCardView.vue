@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ServiceIcon from '@/settings/components/ServiceIcon.vue'
 import { t } from '@/i18n'
 import { showResultActions } from '../composables/resultCardMeta'
+import { clipExpandRange } from '../composables/resultTextClipHeight'
 
 type CardStatus = 'success' | 'loading' | 'error' | 'aborted' | 'pending'
 
@@ -59,9 +60,6 @@ const autoOverflow = ref(false)
 const showOverflow = computed(() => props.hasOverflow || autoOverflow.value)
 const actionsVisible = computed(() => showResultActions(props.showActions, props.showRefresh, props.status))
 
-/** 与 components.css `.result-text-clip { max-height: 6.4em }` 保持一致 */
-const COLLAPSED_MAX_HEIGHT_EM = 6.4
-
 /**
  * 用正文 scrollHeight 对比折叠态上限（6.4em → px），不改 DOM max-height。
  * 旧实现临时写 style.maxHeight 会触发 transition，clientHeight 滞后，
@@ -74,19 +72,104 @@ const measureOverflow = (): void => {
   const textEl = clip.querySelector('.result-text') as HTMLElement | null
   if (!textEl) return
   const fontSize = parseFloat(getComputedStyle(clip).fontSize) || 13
-  const collapsedMaxPx = COLLAPSED_MAX_HEIGHT_EM * fontSize
-  autoOverflow.value = textEl.scrollHeight > collapsedMaxPx + 1
+  const range = clipExpandRange(textEl.scrollHeight, fontSize)
+  autoOverflow.value = range !== null
 }
 
 const scheduleMeasure = (): void => {
   void nextTick(() => measureOverflow())
 }
 
-onMounted(scheduleMeasure)
-// 不监听 expanded：展开/收起不改变是否溢出；监听它还会在 transition 期间误测
+/** 取消进行中的 max-height transitionend，避免快速连点串态 */
+let clipAnimGen = 0
+let clipTransitionHandler: ((e: TransitionEvent) => void) | null = null
+
+const clearClipTransitionHandler = (): void => {
+  const clip = clipRef.value
+  if (clip && clipTransitionHandler) {
+    clip.removeEventListener('transitionend', clipTransitionHandler)
+  }
+  clipTransitionHandler = null
+}
+
+const readClipRange = (clip: HTMLElement) => {
+  const textEl = clip.querySelector('.result-text') as HTMLElement | null
+  if (!textEl) return null
+  const fontSize = parseFloat(getComputedStyle(clip).fontSize) || 13
+  return clipExpandRange(textEl.scrollHeight, fontSize)
+}
+
+/**
+ * 按真实内容高度做 max-height 动画（避免 6.4em→80em 几乎无感）。
+ * expanded class 只管遮罩/chevron；高度由 inline style 驱动。
+ */
+const animateClipHeight = (expand: boolean): void => {
+  const clip = clipRef.value
+  if (!clip) return
+  const range = readClipRange(clip)
+  clearClipTransitionHandler()
+  const gen = ++clipAnimGen
+
+  if (!range) {
+    clip.style.maxHeight = ''
+    return
+  }
+
+  if (expand) {
+    clip.style.maxHeight = `${range.collapsedPx}px`
+    void clip.offsetHeight
+    clip.style.maxHeight = `${range.expandedPx}px`
+    const onEnd = (e: TransitionEvent): void => {
+      if (e.target !== clip || e.propertyName !== 'max-height' || gen !== clipAnimGen) return
+      clearClipTransitionHandler()
+      if (props.expanded) clip.style.maxHeight = 'none'
+    }
+    clipTransitionHandler = onEnd
+    clip.addEventListener('transitionend', onEnd)
+    return
+  }
+
+  // 收起：若已是 none，先钉到内容高度再落到折叠上限，否则 transition 无法插值
+  const current = clip.style.maxHeight
+  if (!current || current === 'none') {
+    clip.style.maxHeight = `${range.expandedPx}px`
+  }
+  void clip.offsetHeight
+  clip.style.maxHeight = `${range.collapsedPx}px`
+  const onEnd = (e: TransitionEvent): void => {
+    if (e.target !== clip || e.propertyName !== 'max-height' || gen !== clipAnimGen) return
+    clearClipTransitionHandler()
+    if (!props.expanded) clip.style.maxHeight = ''
+  }
+  clipTransitionHandler = onEnd
+  clip.addEventListener('transitionend', onEnd)
+}
+
+onMounted(() => {
+  scheduleMeasure()
+  // 历史等初始已展开：直接放开，不做入场动画
+  if (props.expanded && clipRef.value) {
+    clipRef.value.style.maxHeight = 'none'
+  }
+})
+
+onBeforeUnmount(() => {
+  clearClipTransitionHandler()
+  clipAnimGen += 1
+})
+
+// 不监听 expanded 做溢出测高：展开/收起不改变是否溢出；监听还会在 transition 期间误测
 watch(
   () => [props.text, props.collapsed, props.status] as const,
   scheduleMeasure,
+)
+
+// flush 默认 pre：在 expanded class 写入 DOM 之前钉住 max-height，避免 none 兜底导致瞬开
+watch(
+  () => props.expanded,
+  (expanded) => {
+    animateClipHeight(expanded)
+  },
 )
 
 const onHeaderClick = (e: MouseEvent): void => {

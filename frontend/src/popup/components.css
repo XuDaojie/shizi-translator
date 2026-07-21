@@ -191,20 +191,28 @@
 .result-card.failed .result-text { color: var(--popup-danger); }
 .result-card.cancelled .result-text { color: var(--popup-fg-3); }
 
+/* 折叠上限 6.4em；展开高度由 ResultCardView 按 scrollHeight 写 inline，避免 80em 假动画无感。
+   时长与卡片折叠（grid 0.15s）对齐，避免小区域反而拖更久。 */
 .result-text-clip {
   position: relative;
   max-height: 6.4em;
   overflow: hidden;
   transition: max-height 0.15s ease;
 }
-.result-card.expanded .result-text-clip { max-height: 80em; }
-.result-card.has-overflow:not(.expanded) .result-text-clip::after {
+/* JS 未就绪时的兜底：仍保证点展开能看到全文（无平滑插值） */
+.result-card.expanded .result-text-clip { max-height: none; }
+.result-card.has-overflow .result-text-clip::after {
   content: '';
   position: absolute;
   left: 0; right: 0; bottom: 0;
   height: 28px;
   background: linear-gradient(to bottom, rgba(255,255,255,0), var(--popup-bg-card));
   pointer-events: none;
+  opacity: 1;
+  transition: opacity 0.12s ease;
+}
+.result-card.has-overflow.expanded .result-text-clip::after {
+  opacity: 0;
 }
 .result-expand-btn {
   display: none;
