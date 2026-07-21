@@ -2,7 +2,11 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type CSSProperties } from 'vue'
 import { SOURCE_LANGUAGES, TARGET_LANGUAGES, type TranslationLanguage } from '@/shared/translation-languages'
 import { t, type MessageKey } from '@/i18n'
-import { computeLangPickerPosition, langPickerPositionToStyle } from '../composables/langPickerPosition'
+import {
+  computeLangPickerPosition,
+  langPickerPositionToStyle,
+  snapPickerMaxHeight,
+} from '../composables/langPickerPosition'
 
 interface Props {
   modelValue: string
@@ -25,6 +29,7 @@ const emit = defineEmits<{
 const search = ref('')
 const listRef = ref<HTMLUListElement | null>(null)
 const inputRef = ref<HTMLInputElement | null>(null)
+const panelRef = ref<HTMLElement | null>(null)
 const panelStyle = ref<CSSProperties>({})
 
 const filtered = computed<TranslationLanguage[]>(() => {
@@ -72,7 +77,11 @@ const setInitialActive = async (): Promise<void> => {
   ;(selected || listRef.value.querySelector<HTMLElement>('.lang-option'))?.classList.add('is-active')
 }
 
-const updatePosition = (): void => {
+/**
+ * 1) 按锚点算方向与可用高度
+ * 2) 布局后按完整选项行吸附 maxHeight，避免最后一行只露半截
+ */
+const updatePosition = async (): Promise<void> => {
   const anchor = props.anchorEl
   if (!anchor) {
     panelStyle.value = {}
@@ -84,22 +93,46 @@ const updatePosition = (): void => {
     window.innerHeight,
   )
   panelStyle.value = langPickerPositionToStyle(pos)
+
+  await nextTick()
+  const panel = panelRef.value
+  const list = listRef.value
+  if (!panel || !list) return
+
+  const searchEl = panel.querySelector('.lang-picker-search') as HTMLElement | null
+  const optionEl = list.querySelector('.lang-option') as HTMLElement | null
+  const searchHeight = searchEl?.offsetHeight ?? 0
+  const optionHeight = optionEl?.offsetHeight ?? 0
+  const contentHeight = searchHeight + list.scrollHeight
+  const snapped = snapPickerMaxHeight({
+    availableMax: pos.maxHeight,
+    searchHeight,
+    optionHeight,
+    listPaddingY: 8,
+    borderY: 1,
+    contentHeight,
+  })
+  if (snapped > 0) {
+    panelStyle.value = { ...panelStyle.value, maxHeight: `${snapped}px` }
+  }
 }
 
+const onReposition = (): void => { void updatePosition() }
+
 watch(() => props.modelValue, () => { void setInitialActive() })
-watch(() => props.anchorEl, () => { updatePosition() })
+watch(() => props.anchorEl, onReposition)
+watch(filtered, onReposition)
 
 onMounted(() => {
   void setInitialActive()
-  updatePosition()
-  // 内容区滚动 / 窗口缩放时同步锚点；capture 才能收到 .content 内部滚动
-  window.addEventListener('resize', updatePosition)
-  document.addEventListener('scroll', updatePosition, true)
+  void updatePosition()
+  window.addEventListener('resize', onReposition)
+  document.addEventListener('scroll', onReposition, true)
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener('resize', updatePosition)
-  document.removeEventListener('scroll', updatePosition, true)
+  window.removeEventListener('resize', onReposition)
+  document.removeEventListener('scroll', onReposition, true)
 })
 
 defineExpose({ focus: () => inputRef.value?.focus() })
@@ -108,7 +141,7 @@ defineExpose({ focus: () => inputRef.value?.focus() })
 <template>
   <!-- Teleport 出 .content，避免 overflow-y:auto 把面板裁成一条线 -->
   <Teleport to="body">
-    <div class="lang-picker lang-picker--floating" :style="panelStyle">
+    <div ref="panelRef" class="lang-picker lang-picker--floating" :style="panelStyle">
       <div class="lang-picker-search">
         <svg class="lang-picker-search-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7" /><line x1="20" y1="20" x2="16.65" y2="16.65" /></svg>
         <input
