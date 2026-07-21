@@ -53,7 +53,7 @@
 - 翻译/配置：`start_translation`、`take_pending_source_text`、`get_app_config`、`save_app_config`、`get_shortcut_conflicts`
 - Overlay：`get_capture_frame_meta` / `get_capture_frame_bytes` / `submit_capture_region` / `cancel_capture`
 - 日志：`write_frontend_log` / `export_logs`；Edge：`save_edge_translate_env`
-- 更新：`check_for_update`（可选 `channel`；缺省读 `AppConfig.updateChannel`）；启动 `spawn_startup_update_check`（`autoCheckUpdate` 时系统 dialog + `open_url`）
+- 更新：`check_for_update`（可选 `channel`；缺省读 `AppConfig.updateChannel`）；启动 `spawn_startup_update_check`（`autoCheckUpdate` 时系统 dialog + `open_url`）。通道仅 `stable`/`beta`；CI 另有滚动 `nightly` prerelease（`.github/workflows/nightly.yml`，固定 tag `nightly` 非 semver，检查更新忽略）。
 - 事件：`translation:event` → `Started` / `Delta` / `Finished` / `Failed`
 
 ## 历史与日志

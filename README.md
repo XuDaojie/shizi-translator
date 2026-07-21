@@ -51,6 +51,8 @@
 
 当前版本可能为 beta：预览版也会出现在 Releases 中（标题或 tag 含 `beta`）。
 
+**Nightly（每日滚动构建）：** 需要尝鲜主干最新改动时，可下载固定入口 [Nightly Release](https://github.com/XuDaojie/shizi-translator/releases/tag/nightly)（tag `nightly`，每次成功构建会覆盖安装包）。仅供尝鲜、不保证稳定；应用内「检查更新」不会提示 Nightly（非 semver，且不进入 stable/beta 通道）。也可在 Actions 中手动运行 `Nightly` workflow 补跑。
+
 应用内也可检查更新：设置 → 通用 →「检查更新」；若有新版本会提示并用系统浏览器打开对应 Release 页，自行下载安装包升级（不做应用内静默安装）。默认启动时也会自动检查一次（可在同页关闭「自动检查更新」）。
 
 ### 系统要求

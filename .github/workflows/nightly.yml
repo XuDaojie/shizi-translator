@@ -1,0 +1,128 @@
+name: Nightly
+
+# 滚动每日构建：
+#   - 固定 tag `nightly`（非 semver，应用内检查更新会忽略）
+#   - 每次成功构建覆盖同一 prerelease 的 NSIS 安装包
+#   - schedule 下若 HEAD 与现有 nightly tag 相同则跳过，节省 runner 分钟
+#   - workflow_dispatch 始终构建（便于手动补跑）
+
+on:
+  schedule:
+    # UTC 16:00 ≈ 北京时间次日 00:00
+    - cron: "0 16 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+jobs:
+  nightly:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+
+      - name: Fetch tags
+        shell: bash
+        run: git fetch --tags --force origin
+
+      - name: Decide whether to build
+        id: decide
+        shell: bash
+        run: |
+          SHORT_SHA="$(git rev-parse --short HEAD)"
+          DATE_UTC="$(date -u +%Y-%m-%d)"
+          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          echo "date_utc=$DATE_UTC" >> "$GITHUB_OUTPUT"
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+            echo "手动触发：始终构建 ($SHORT_SHA)"
+            exit 0
+          fi
+
+          if git rev-parse -q --verify refs/tags/nightly >/dev/null 2>&1; then
+            if [ "$(git rev-parse HEAD)" = "$(git rev-parse refs/tags/nightly)" ]; then
+              echo "should_build=false" >> "$GITHUB_OUTPUT"
+              echo "HEAD 与 nightly tag 均为 $SHORT_SHA，跳过构建"
+              exit 0
+            fi
+          fi
+
+          echo "should_build=true" >> "$GITHUB_OUTPUT"
+          echo "将构建 nightly @ $SHORT_SHA"
+
+      - uses: actions/setup-node@v4
+        if: steps.decide.outputs.should_build == 'true'
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.decide.outputs.should_build == 'true'
+
+      - uses: Swatinem/rust-cache@v2
+        if: steps.decide.outputs.should_build == 'true'
+        with:
+          workspaces: src-tauri
+
+      - name: Install frontend deps
+        if: steps.decide.outputs.should_build == 'true'
+        run: npm ci
+
+      - name: Build NSIS installer
+        if: steps.decide.outputs.should_build == 'true'
+        run: npm run tauri -- build --bundles nsis
+
+      - name: List bundle artifacts
+        if: steps.decide.outputs.should_build == 'true'
+        shell: bash
+        run: |
+          ls -la src-tauri/target/release/bundle/nsis/ || true
+          if ! ls src-tauri/target/release/bundle/nsis/*-setup.exe >/dev/null 2>&1; then
+            echo "NSIS 安装包未生成" >&2
+            find src-tauri/target/release -maxdepth 3 -type f \( -name '*.exe' -o -name '*.msi' \) -print || true
+            exit 1
+          fi
+
+      - name: Point nightly tag at HEAD
+        if: steps.decide.outputs.should_build == 'true'
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f nightly "${{ github.sha }}"
+          git push origin refs/tags/nightly --force
+
+      - name: Upload rolling Nightly Release
+        if: steps.decide.outputs.should_build == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          name: Nightly ${{ steps.decide.outputs.date_utc }} (${{ steps.decide.outputs.short_sha }})
+          prerelease: true
+          make_latest: false
+          generate_release_notes: false
+          body: |
+            自动滚动构建（Nightly），基于默认分支最新提交，每次成功会覆盖本 Release 的安装包。
+
+            | 项 | 值 |
+            |----|----|
+            | Commit | `${{ github.sha }}` |
+            | 短哈希 | `${{ steps.decide.outputs.short_sha }}` |
+            | 构建日期（UTC） | `${{ steps.decide.outputs.date_utc }}` |
+
+            **仅供尝鲜，不保证稳定。** 日常使用请下载正式版 / Beta：
+            https://github.com/${{ github.repository }}/releases
+
+            应用内「检查更新」**不会**提示本包（固定 tag `nightly` 非 semver，且 stable/beta 通道均不会选中它）。
+          files: src-tauri/target/release/bundle/nsis/*-setup.exe
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

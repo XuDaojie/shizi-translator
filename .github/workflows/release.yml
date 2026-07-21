@@ -5,6 +5,7 @@ name: Release
 #   2. git push && git push --tags
 #   3. 本 workflow 在 tag v* 上构建 NSIS 并挂到 GitHub Release
 # 也可在 Actions 页手动 workflow_dispatch 重跑指定 tag。
+# 主干每日滚动构建见 nightly.yml（固定 tag nightly，不进 semver 通道）。
 
 on:
   push:
