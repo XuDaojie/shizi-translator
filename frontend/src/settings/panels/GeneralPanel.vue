@@ -75,7 +75,12 @@ async function handleCheckUpdate() {
   try {
     const result = await invokeCheckForUpdate(props.state.general.updateChannel)
     if (result.status === 'up_to_date') {
-      toast.success(t('settings.toast.upToDate', { version: result.currentVersion }))
+      // Nightly 等场景后端会带 message，优先展示说明，避免仅显示「已是最新」造成误解
+      if (result.message) {
+        toast.success(result.message)
+      } else {
+        toast.success(t('settings.toast.upToDate', { version: result.currentVersion }))
+      }
     } else if (result.status === 'update_available') {
       pendingUpdate.value = result
       updateDialogOpen.value = true

@@ -101,6 +101,9 @@ jobs:
             console.error(`无法从 tauri.conf.json 解析基础版本: ${conf.version}`);
             process.exit(1);
           }
+          // 版本串首段 pre 必须为 nightly（应用内 is_nightly_build 依赖此约定）。
+          // 仍挂在当前 base 上：`0.7.0-nightly.*`；检查更新侧会跳过 Nightly，
+          // 避免 semver 下 pre < 同号正式版 的误报。
           const nightly = `${base}-nightly.${process.env.DATE_COMPACT}.${process.env.SHORT_SHA}`;
           conf.version = nightly;
           fs.writeFileSync(confPath, `${JSON.stringify(conf, null, 2)}\n`);

@@ -54,11 +54,41 @@ pub fn is_update_available(current: &str, latest: &str) -> bool {
     }
 }
 
+/// CI Nightly 版本形如 `0.7.0-nightly.YYYYMMDD.sha`（pre 首段为 `nightly`）。
+/// semver 下 `0.7.0-nightly.*` < `0.7.0`，若仍走常规比较会误报「有正式版可更新」。
+pub fn is_nightly_build(version: &str) -> bool {
+    parse_tag_version(version)
+        .map(|v| {
+            v.pre
+                .as_str()
+                .split('.')
+                .next()
+                .is_some_and(|id| id.eq_ignore_ascii_case("nightly"))
+        })
+        .unwrap_or(false)
+}
+
 pub fn evaluate_check(
     current_version: &str,
     releases: &[ReleaseInfo],
     channel: UpdateChannel,
 ) -> CheckUpdateResult {
+    // Nightly 不走应用内「升级到正式版/Beta」提示；用户应自行到 Nightly Release 取新包。
+    if is_nightly_build(current_version) {
+        return CheckUpdateResult {
+            status: "up_to_date".into(),
+            current_version: current_version.to_string(),
+            latest_version: None,
+            release_name: None,
+            release_url: Some(RELEASES_PAGE_FALLBACK.to_string()),
+            is_prerelease: Some(true),
+            message: Some(
+                "当前为 Nightly 构建：应用内检查更新不会提示正式版/Beta。请从 Nightly Release 获取最新每日构建。"
+                    .into(),
+            ),
+        };
+    }
+
     let Some(latest) = select_latest_for_channel(releases, channel) else {
         return CheckUpdateResult {
             status: "up_to_date".into(),
@@ -183,6 +213,44 @@ mod tests {
         assert!(is_update_available("0.7.0", "0.7.0-beta.6") == false); // 0.7.0 > 0.7.0-beta.6
         assert!(!is_update_available("0.7.0", "0.7.0"));
         assert!(is_update_available("0.7.0-beta.5", "0.7.0-beta.6"));
+        // 正是 Nightly 误报根因：同 base 的 pre 小于正式版
+        assert!(is_update_available("0.7.0-nightly.20260721.abc", "0.7.0"));
+    }
+
+    #[test]
+    fn is_nightly_build_detects_pre_id() {
+        assert!(is_nightly_build("0.7.0-nightly.20260721.813a439"));
+        assert!(is_nightly_build("v0.7.1-nightly.1"));
+        assert!(!is_nightly_build("0.7.0"));
+        assert!(!is_nightly_build("0.7.0-beta.1"));
+        assert!(!is_nightly_build("not-a-version"));
+    }
+
+    #[test]
+    fn evaluate_check_skips_update_prompt_for_nightly_current() {
+        let releases = vec![ReleaseInfo {
+            tag_name: "v0.7.0".into(),
+            name: Some("stable".into()),
+            html_url: "https://github.com/XuDaojie/shizi-translator/releases/tag/v0.7.0".into(),
+            prerelease: false,
+            draft: false,
+        }];
+        let result = evaluate_check(
+            "0.7.0-nightly.20260721.813a439",
+            &releases,
+            UpdateChannel::Stable,
+        );
+        assert_eq!(result.status, "up_to_date");
+        assert!(result.latest_version.is_none());
+        assert!(result
+            .message
+            .as_deref()
+            .is_some_and(|m| m.contains("Nightly")));
+        // 若未拦截，semver 会判定 0.7.0 > nightly 从而误报
+        assert!(is_update_available(
+            "0.7.0-nightly.20260721.813a439",
+            "0.7.0"
+        ));
     }
 
     #[test]
