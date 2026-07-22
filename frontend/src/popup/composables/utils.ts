@@ -30,14 +30,22 @@ export function batchIdFromSession(sessionId: unknown): string | null {
   return sessionId.slice(0, idx)
 }
 
+/**
+ * 取后端 pending 原文；若 revision 未变则 apply。
+ * @returns 实际 apply 的文本；未 apply 时返回 null（供冷启动补触发翻译）。
+ */
 export async function applyPendingSourceIfCurrent(
   load: () => Promise<string | null>,
   getRevision: () => number,
   apply: (text: string) => void,
-): Promise<void> {
+): Promise<string | null> {
   const revision = getRevision()
   const text = await load()
-  if (text && revision === getRevision()) apply(text)
+  if (text && revision === getRevision()) {
+    apply(text)
+    return text
+  }
+  return null
 }
 
 /** 朗读：speechSynthesis 不可用时静默忽略（旧 translate.js 用 toast 提示，由调用方决定）。 */

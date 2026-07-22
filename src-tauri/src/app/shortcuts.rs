@@ -456,17 +456,45 @@ fn start_popup_translation(app_handle: tauri::AppHandle, input: TranslationInput
         return;
     }
 
-    let config = state.config_store.get();
-    if let Ok(config) = &config {
-        if let Err(error) = show_translation_popup(&app_handle, config) {
-            show_translation_error(&app_handle, error);
-            return;
+    // 热路径：窗已在，show + 立即开译（前端已 listen）。
+    if app_handle.get_webview_window("main").is_some() {
+        let config = state.config_store.get();
+        if let Ok(config) = &config {
+            if let Err(error) = show_translation_popup(&app_handle, config) {
+                show_translation_error(&app_handle, error);
+                return;
+            }
         }
+        if let Err(error) = start_translation_from_input(input, app_handle.clone(), state.inner()) {
+            show_translation_error(&app_handle, error);
+        }
+        return;
     }
 
-    if let Err(error) = start_translation_from_input(input, app_handle.clone(), state.inner()) {
-        show_translation_error(&app_handle, error);
-    }
+    // 冷路径（自启后首次等）：独立线程建窗 → show → 开译。
+    // 前端 Vue listen 仍可能未就绪，事件可能丢失；pending 原文 + 前端冷启动补发兜底。
+    let app = app_handle.clone();
+    std::thread::spawn(move || {
+        let state = app.state::<AppState>();
+        let config = match state.config_store.get() {
+            Ok(c) => c,
+            Err(e) => {
+                show_translation_error(&app, e.to_string());
+                return;
+            }
+        };
+        if let Err(error) = crate::app::popup_window::show_popup_blocking(
+            &app,
+            &config,
+            crate::app::popup_window::PopupPositionMode::NearCursor,
+        ) {
+            show_translation_error(&app, error);
+            return;
+        }
+        if let Err(error) = start_translation_from_input(input, app.clone(), state.inner()) {
+            show_translation_error(&app, error);
+        }
+    });
 }
 
 #[cfg(test)]

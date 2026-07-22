@@ -315,11 +315,15 @@ const onSourceInput = (): void => {
 }
 
 /* === 待回填原文 + Edge 环境采集（复刻旧 applyPendingSourceText/collectEdgeTranslateEnv） === */
+/**
+ * 冷启动（自启后首次建窗）时：后端可能在 listen 就绪前已 emit translation:event，
+ * 事件丢失后仅 pending 回填原文。此处若取到 pending 且当前未在译，补发 start_translation。
+ */
 const applyPendingSourceText = async (): Promise<void> => {
   const apis = getTauriApis()
   if (!apis) return
   try {
-    await applyPendingSourceIfCurrent(
+    const applied = await applyPendingSourceIfCurrent(
       () => apis.invoke<string | null>('take_pending_source_text'),
       () => sourceRevision,
       (text) => {
@@ -327,6 +331,14 @@ const applyPendingSourceText = async (): Promise<void> => {
         charCount.value = text.length
       },
     )
+    const text = applied?.trim()
+    if (text && !isTranslating.value) {
+      try {
+        await apis.invoke('start_translation', { text })
+      } catch (e) {
+        logger.warn('pending 原文补触发翻译失败', String(e))
+      }
+    }
   } catch (e) {
     toast.error(t('popup.error.pendingSourceFailed'), String(e))
   }
@@ -395,10 +407,13 @@ const runColdStartReady = async (): Promise<void> => {
 onMounted(() => {
   void setupLanguageSync()
   charCount.value = sourceText.value.length
-  void runColdStartReady()
   void collectEdgeTranslateEnv()
-  void applyPendingSourceText()
   window.addEventListener('keydown', onAppShortcutKeydown)
+  // 先 initCards / ready，再处理 pending，避免补发翻译时卡片尚未按 config 建好
+  void (async () => {
+    await runColdStartReady()
+    await applyPendingSourceText()
+  })()
 })
 </script>
 

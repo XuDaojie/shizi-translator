@@ -136,21 +136,33 @@ fn present_popup(window: &WebviewWindow, mode: PopupPositionMode) {
     let _ = window.set_focus();
 }
 
-/// 唤起弹窗：已存在则定位 show；不存在则**独立线程**创建后 show（避 Windows 回调栈建窗死锁）。
-pub fn show_popup(
+/// 当前线程 ensure + 定位 show。Windows 上勿在 tray/快捷键同步回调栈内首次调用。
+pub fn show_popup_blocking(
     app: &tauri::AppHandle,
     _config: &AppConfig,
     mode: PopupPositionMode,
 ) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window(POPUP_LABEL) {
-        present_popup(&window, mode);
-        return Ok(());
+    let window = ensure_popup_exists(app)?;
+    present_popup(&window, mode);
+    Ok(())
+}
+
+/// 唤起弹窗：已存在则定位 show；不存在则**独立线程**创建后 show（避 Windows 回调栈建窗死锁）。
+pub fn show_popup(
+    app: &tauri::AppHandle,
+    config: &AppConfig,
+    mode: PopupPositionMode,
+) -> Result<(), String> {
+    if app.get_webview_window(POPUP_LABEL).is_some() {
+        return show_popup_blocking(app, config, mode);
     }
 
     let app = app.clone();
-    std::thread::spawn(move || match ensure_popup_exists(&app) {
-        Ok(window) => present_popup(&window, mode),
-        Err(error) => log::warn!("创建翻译弹窗失败: {error}"),
+    let config = config.clone();
+    std::thread::spawn(move || {
+        if let Err(error) = show_popup_blocking(&app, &config, mode) {
+            log::warn!("创建翻译弹窗失败: {error}");
+        }
     });
     Ok(())
 }

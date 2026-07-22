@@ -59,8 +59,20 @@ describe('applyPendingSourceIfCurrent', () => {
     )
     revision += 1
     resolvePending('旧原文')
-    await request
+    const applied = await request
 
     expect(sourceText).toBe('新原文')
+    expect(applied).toBeNull()
+  })
+
+  it('revision 未变时 apply 并返回原文', async () => {
+    let sourceText = ''
+    const applied = await applyPendingSourceIfCurrent(
+      async () => 'hello',
+      () => 0,
+      (text) => { sourceText = text },
+    )
+    expect(sourceText).toBe('hello')
+    expect(applied).toBe('hello')
   })
 })
