@@ -111,6 +111,7 @@ const onRefresh = async (): Promise<void> => {
     :engine-name="card.serviceName"
     :service-type="card.serviceType"
     :model-name="displayModelName(card.protocol, card.modelName)"
+    :text="card.text"
     :status="viewStatus"
     :loading="isLoading"
     :collapsed="card.collapsed"

@@ -191,16 +191,19 @@
 .result-card.failed .result-text { color: var(--popup-danger); }
 .result-card.cancelled .result-text { color: var(--popup-fg-3); }
 
-/* 折叠上限 6.4em；展开高度由 ResultCardView 按 scrollHeight 写 inline，避免 80em 假动画无感。
-   时长与卡片折叠（grid 0.15s）对齐，避免小区域反而拖更久。 */
+/* 折叠上限 6.4em；展开终点由 --result-clip-expanded（真实内容 px，ResultCardView 测高写入）。
+   用 class 切换驱动 transition（与整卡 grid 折叠同模型），避免 80em 假终点 / JS 同帧写起止导致展开无感。
+   时长与卡片折叠（0.15s）对齐。 */
 .result-text-clip {
   position: relative;
   max-height: 6.4em;
   overflow: hidden;
   transition: max-height 0.15s ease;
 }
-/* JS 未就绪时的兜底：仍保证点展开能看到全文（无平滑插值） */
-.result-card.expanded .result-text-clip { max-height: none; }
+/* 变量未就绪时 none 兜底仍能展开全文（可能无插值）；正常路径两端均为长度，双向可动画 */
+.result-card.expanded .result-text-clip {
+  max-height: var(--result-clip-expanded, none);
+}
 .result-card.has-overflow .result-text-clip::after {
   content: '';
   position: absolute;

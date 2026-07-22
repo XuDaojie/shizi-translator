@@ -6,8 +6,9 @@ export function collapsedMaxHeightPx(fontSizePx: number): number {
 }
 
 /**
- * 展开/收起动画的 max-height 起止（px）。
- * 内容未超出折叠上限时返回 null（无需动画，交给 CSS 默认值）。
+ * 正文是否超出折叠上限，以及展开终点高度（px）。
+ * 供 ResultCardView 写入 --result-clip-expanded；实际动画由 CSS class 切换完成。
+ * 内容未超出折叠上限时返回 null。
  */
 export function clipExpandRange(
   contentHeightPx: number,
