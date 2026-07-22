@@ -3,6 +3,7 @@ pub const POPUP_URL: &str = "translate.html";
 
 use tauri::{LogicalPosition, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
+use crate::app::icon::app_icon_image;
 use crate::app::shortcuts::attach_app_shortcut_focus_listener;
 use crate::app::window::attach_close_to_hide;
 use crate::core::config::AppConfig;
@@ -55,7 +56,7 @@ pub fn compute_popup_position(
 }
 
 fn build_popup(app: &tauri::AppHandle) -> Result<WebviewWindow, String> {
-    let window = WebviewWindowBuilder::new(app, POPUP_LABEL, WebviewUrl::App(POPUP_URL.into()))
+    let mut builder = WebviewWindowBuilder::new(app, POPUP_LABEL, WebviewUrl::App(POPUP_URL.into()))
         .title("Shizi 翻译")
         .inner_size(420.0, 360.0)
         .resizable(false)
@@ -63,7 +64,12 @@ fn build_popup(app: &tauri::AppHandle) -> Result<WebviewWindow, String> {
         .transparent(true)
         .skip_taskbar(true)
         .center()
-        .visible(false)
+        .visible(false);
+    // 无系统标题栏时仍写入窗口图标，避免个别场景回退到模糊默认图。
+    if let Ok(icon) = app_icon_image(app) {
+        builder = builder.icon(icon).map_err(|error| format!("设置窗口图标失败: {error}"))?;
+    }
+    let window = builder
         .build()
         .map_err(|error| format!("创建翻译弹窗失败: {error}"))?;
     attach_close_to_hide(&window);

@@ -50,12 +50,6 @@ const saveStatusTone = computed(() => {
   if (saveStatus.value === 'saved') return 'text-emerald-600 dark:text-emerald-400'
   return 'text-muted-foreground'
 })
-const saveStatusDetail = computed(() => {
-  if (saveStatus.value === 'error') return t('settings.status.storagePermission')
-  if (saveStatus.value === 'saving') return t('settings.status.writing')
-  if (dirty.value) return t('settings.status.waiting')
-  return t('settings.status.autoSaveDescription')
-})
 
 const categories = computed<SettingsCategory[]>(() => [
   {
@@ -107,7 +101,7 @@ const badgeLabel = (kind: 'wip' | 'new' | undefined): string => {
 
 <template>
   <aside
-    class="flex h-full w-[var(--sidebar-width)] shrink-0 flex-col border-r border-border bg-card/40 py-3"
+    class="flex h-full w-[var(--sidebar-width)] shrink-0 flex-col border-r border-border bg-card/40 pt-3"
   >
     <div class="px-3 pb-3">
       <h2 class="text-sm font-semibold text-foreground">{{ t('settings.title') }}</h2>
@@ -156,22 +150,24 @@ const badgeLabel = (kind: 'wip' | 'new' | undefined): string => {
       </ul>
     </nav>
 
-    <div class="mt-2 border-t border-border px-3 pt-2.5">
-      <div :class="['flex items-center gap-1.5 text-[11px] font-medium', saveStatusTone]">
-        <LoaderCircle v-if="saveStatus.value === 'saving'" class="h-3 w-3 animate-spin" />
-        <AlertCircle v-else-if="saveStatus.value === 'error'" class="h-3 w-3" />
-        <RotateCcw v-else-if="dirty.value" class="h-3 w-3" />
-        <Check v-else class="h-3 w-3 text-emerald-500" />
-        <span>{{ saveStatusText }}</span>
+    <div class="shrink-0 border-t border-border px-3">
+      <div
+        :class="[
+          'flex h-7 items-center gap-1.5 text-[11px] font-medium leading-none',
+          saveStatusTone,
+        ]"
+      >
+        <LoaderCircle v-if="saveStatus.value === 'saving'" class="h-3 w-3 shrink-0 animate-spin" />
+        <AlertCircle v-else-if="saveStatus.value === 'error'" class="h-3 w-3 shrink-0" />
+        <RotateCcw v-else-if="dirty.value" class="h-3 w-3 shrink-0" />
+        <Check v-else class="h-3 w-3 shrink-0 text-emerald-500" />
+        <span class="truncate">{{ saveStatusText }}</span>
       </div>
-      <p class="mt-1 text-[11px] leading-snug text-muted-foreground">
-        {{ saveStatusDetail }}
-      </p>
       <Button
         v-if="saveStatus.value === 'error'"
         variant="ghost"
         size="sm"
-        class="mt-2 h-7 w-full px-2 text-xs"
+        class="mb-1.5 h-7 w-full px-2 text-xs"
         @click="save"
       >
         <RotateCcw class="h-3.5 w-3.5" />

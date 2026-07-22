@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use tauri::{
-    image::Image,
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{TrayIcon, TrayIconBuilder, TrayIconEvent},
     Manager,
 };
 
+use crate::app::icon::app_icon_image;
 use crate::app::state::AppState;
 use crate::app::window::{
     request_show_ocr_window, request_show_settings_window, show_window,
@@ -14,39 +14,8 @@ use crate::app::window::{
 use crate::app::popup_window::PopupPositionMode;
 use crate::ui::web_popup::{show_translation_error, show_translation_popup_with};
 
-fn tray_icon_size(scale_factor: f64) -> u32 {
-    match (16.0 * scale_factor).round() as u32 {
-        0..=16 => 16,
-        17..=20 => 20,
-        21..=24 => 24,
-        25..=28 => 28,
-        29..=32 => 32,
-        33..=36 => 36,
-        37..=40 => 40,
-        _ => 48,
-    }
-}
-
-fn tray_icon_image_for_scale(scale_factor: f64) -> tauri::Result<Image<'static>> {
-    let bytes: &[u8] = match tray_icon_size(scale_factor) {
-        16 => include_bytes!("../../icons/tray-icon-16.png"),
-        20 => include_bytes!("../../icons/tray-icon-20.png"),
-        24 => include_bytes!("../../icons/tray-icon-24.png"),
-        28 => include_bytes!("../../icons/tray-icon-28.png"),
-        32 => include_bytes!("../../icons/tray-icon-32.png"),
-        36 => include_bytes!("../../icons/tray-icon-36.png"),
-        40 => include_bytes!("../../icons/tray-icon-40.png"),
-        _ => include_bytes!("../../icons/tray-icon-48.png"),
-    };
-    Image::from_bytes(bytes)
-}
-
-fn tray_icon_image(app: &tauri::App) -> tauri::Result<Image<'static>> {
-    let scale_factor = app
-        .primary_monitor()?
-        .map(|monitor| monitor.scale_factor())
-        .unwrap_or(1.0);
-    tray_icon_image_for_scale(scale_factor)
+fn tray_icon_image(app: &tauri::App) -> tauri::Result<tauri::image::Image<'static>> {
+    app_icon_image(app.handle())
 }
 
 // 加速键策略：
@@ -311,10 +280,8 @@ pub fn setup_tray(app: &tauri::App) -> tauri::Result<TrayI18nHandles> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        format_tray_label, menu_accelerator, tray_icon_image_for_scale, tray_icon_size,
-        tray_menu_bindings, TrayAccelMode,
-    };
+    use super::{format_tray_label, menu_accelerator, tray_menu_bindings, TrayAccelMode};
+    use crate::app::icon::{app_icon_image_for_scale, small_icon_physical_size};
     use std::collections::HashMap;
 
     #[test]
@@ -355,16 +322,16 @@ mod tests {
             (2.5, 40),
             (3.0, 48),
         ] {
-            assert_eq!(tray_icon_size(scale_factor), expected_size);
+            assert_eq!(small_icon_physical_size(scale_factor), expected_size);
         }
     }
 
     #[test]
     fn selected_tray_icons_match_their_physical_size() {
         for scale_factor in [1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3.0] {
-            let expected_size = tray_icon_size(scale_factor);
+            let expected_size = small_icon_physical_size(scale_factor);
             let icon =
-                tray_icon_image_for_scale(scale_factor).expect("对应 DPI 的专用托盘图标应可解码");
+                app_icon_image_for_scale(scale_factor).expect("对应 DPI 的专用托盘图标应可解码");
 
             assert_eq!(
                 (icon.width(), icon.height()),

@@ -1,5 +1,6 @@
 use tauri::{Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
+use crate::app::icon::app_icon_image;
 use crate::app::shortcuts::attach_app_shortcut_focus_listener;
 use crate::app::tray::TrayI18nHandles;
 
@@ -58,7 +59,7 @@ pub fn ensure_settings_window(app: &tauri::AppHandle) -> Result<WebviewWindow, S
     // Windows/WebView2：Tauri 默认启用原生文件拖放处理器，会劫持 DOM 的
     // HTML5 drag&drop，导致设置页服务列表重排无效。关闭后前端 draggable 才可用。
     // 见 WebviewWindowBuilder::disable_drag_drop_handler 文档。
-    let window =
+    let mut builder =
         WebviewWindowBuilder::new(app, SETTINGS_LABEL, WebviewUrl::App(SETTINGS_URL.into()))
             .title(
                 app.state::<TrayI18nHandles>()
@@ -73,9 +74,14 @@ pub fn ensure_settings_window(app: &tauri::AppHandle) -> Result<WebviewWindow, S
             .maximizable(false)
             .center()
             .visible(SETTINGS_INITIAL_VISIBLE)
-            .disable_drag_drop_handler()
-            .build()
-            .map_err(|error| format!("创建设置窗口失败: {error}"))?;
+            .disable_drag_drop_handler();
+    // 按主屏 DPI 设标题栏小图标，避免系统用大图缩小发糊（与托盘同源位图）。
+    if let Ok(icon) = app_icon_image(app) {
+        builder = builder.icon(icon).map_err(|error| format!("设置窗口图标失败: {error}"))?;
+    }
+    let window = builder
+        .build()
+        .map_err(|error| format!("创建设置窗口失败: {error}"))?;
     attach_app_shortcut_focus_listener(&window, app);
     Ok(window)
 }
@@ -111,13 +117,17 @@ pub fn ensure_ocr_window(app: &tauri::AppHandle) -> Result<WebviewWindow, String
         return Ok(window);
     }
 
-    let window = WebviewWindowBuilder::new(app, OCR_LABEL, WebviewUrl::App(OCR_URL.into()))
+    let mut builder = WebviewWindowBuilder::new(app, OCR_LABEL, WebviewUrl::App(OCR_URL.into()))
         .title("Shizi 文字识别")
         .inner_size(960.0, 640.0)
         .min_inner_size(720.0, 480.0)
         .resizable(true)
         .center()
-        .visible(false)
+        .visible(false);
+    if let Ok(icon) = app_icon_image(app) {
+        builder = builder.icon(icon).map_err(|error| format!("设置窗口图标失败: {error}"))?;
+    }
+    let window = builder
         .build()
         .map_err(|error| format!("创建文字识别窗口失败: {error}"))?;
     attach_app_shortcut_focus_listener(&window, app);
