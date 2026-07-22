@@ -150,6 +150,18 @@ export type ServiceProtocolMeta = {
   status: 'available' | 'planned'
 }
 
+/**
+ * 同一 OpenAI 兼容协议下的多条官方 Base URL 预设（如火山方舟按量 / Coding Plan / Agent Plan）。
+ * 选中后写入实例 `endpoint`；用户仍可手改 endpoint。
+ */
+export type ServiceEndpointPreset = {
+  id: string
+  label: string
+  endpoint: string
+  /** 可选：切换预设时若模型仍空，填入该默认模型。 */
+  defaultModel?: string
+}
+
 export type OcrDetailKind = 'system' | 'vision-llm'
 
 export type BuiltinOcrServiceId =
@@ -240,9 +252,9 @@ export type ServiceMeta = {
   iconifyId?: string
   /**
    * 渠道类别:
-   * - `llm`:大模型(OpenAI / Claude / Gemini / DeepSeek / Moonshot / 智谱 / 自定义兼容等)
+   * - `llm`:大模型(OpenAI / Claude / Gemini / DeepSeek / Moonshot / 智谱 / 火山引擎 / 自定义兼容等)
    *   — 显示「思维链长度」选项,允许用户控制推理深度
-   * - `ml`:机器翻译(DeepL / Google 翻译 / 百度 / 有道 / 腾讯 / 火山 / 讯飞)
+   * - `ml`:机器翻译(DeepL / Google 翻译 / 百度 / 有道 / 腾讯 / 讯飞)
    *   — 隐藏「思维链长度」选项(无推理过程可言)
    */
   category: 'llm' | 'ml'
@@ -250,6 +262,11 @@ export type ServiceMeta = {
   keyRequired: boolean
   officialEndpoint?: string
   protocols: ServiceProtocolMeta[]
+  /**
+   * 可选：官方多 Base URL 预设（与 `protocols[].defaultEndpoint` 互补）。
+   * 有则设置页端点区显示快速切换，避免手填 Coding/Agent Plan 地址。
+   */
+  endpointPresets?: ServiceEndpointPreset[]
   /** 官方文档外链；有则详情 Header 显示「查看文档」。 */
   docsUrl?: string
   /** API Key 申请页；有则 Header / 缺 Key 警告显示「申请 API Key」。 */
