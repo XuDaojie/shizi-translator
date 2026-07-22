@@ -450,7 +450,7 @@ Windows OCR spike 已验证 `Windows.Media.Ocr` 接入路径：
 
 - 已将 `WindowsScreenCapture` 接入 `ScreenCapture` trait（`capture_interactive` 委托 `capture_full_screen`，`capture_region` 暂返回 `UnsupportedPlatform`）。
 - 已新增 `platform::capture_and_recognize` 平台分发缝，Windows 侧串联 `WindowsScreenCapture` + `WindowsOcrEngine`，非 Windows 返回 `UnsupportedPlatform`。
-- 已新增 `ui::ocr_popup::start_translation_from_ocr`，负责 busy 预检、用户取消静默、OCR 错误文案映射，成功后复用 `start_translation_from_input`。
+- 已新增 `ui::ocr_popup::start_translation_from_ocr`，负责 capture 锁、用户取消静默、OCR 错误文案映射，成功后复用 `start_translation_from_input`（不再因 translation_busy 拒绝；框选提交后由 `begin_translation_overriding` 接管进行中的翻译）。
 - 默认注册 `Alt+O` 作为截图 OCR 快捷键；用户可在设置页改绑或清空，保存后立即生效。
 - 不新增前端代码或事件类型；OCR 前置失败统一经 `translation:event::Failed` 展示。
 
@@ -498,10 +498,10 @@ Windows OCR spike 已验证 `Windows.Media.Ocr` 接入路径：
 截图 OCR 从「GraphicsCapturePicker 全屏单帧」演进为「自建 overlay 区域框选」，端到端链路：
 
 ```text
-Alt+O
+Alt+S（截图翻译）
   -> app/shortcuts 分流 OCR -> ui::ocr_popup::start_translation_from_ocr
-     1. translation_busy 预检
-     2. try_begin_capture（独立 capture 锁，挡 OCR/recognize 期间二次 Alt+O）
+     1. 不查 translation_busy（与划词一致；取消框选时旧翻译继续）
+     2. try_begin_capture（独立 capture 锁，挡 OCR/recognize 期间二次截图）
      3. platform::capture_screen() = DXGI Desktop Duplication 抓光标所在显示器整屏 BGRA 帧
      4. AppState::set_pending_capture(frame, scale_factor)
      5. ui::overlay::open_overlay() 建 screenshot-overlay 窗口（fullscreen + always_on_top + 无装饰）
@@ -514,9 +514,9 @@ Alt+O
      1. close_overlay
      2. take_pending_capture 取 (frame, scale)，None 静默
      3. css_rect_to_physical 按 scale 换算物理像素
-     4. recognize_region = CapturedImage::crop + WindowsOcrEngine.recognize（recognize 期间持 capture 锁，完成后 finish_capture 让 translation_busy 接管）
-     5. start_translation_from_input（沿用）-> translation:event
-  -> cancel_capture：take_pending_capture + finish_capture + close_overlay，静默
+     4. recognize_region = CapturedImage::crop + WindowsOcrEngine.recognize（recognize 期间持 capture 锁，完成后 finish_capture）
+     5. start_translation_from_input → begin_translation_overriding（可接管进行中的翻译）-> translation:event
+  -> cancel_capture：take_pending_capture + finish_capture + close_overlay，静默（不取消已在跑的翻译）
 ```
 
 ### 关键组件
@@ -531,8 +531,8 @@ Alt+O
 
 ### 并发与状态机
 
-- `translation_busy` 仅在 `start_translation_from_input` 内置位，无法覆盖 OCR/recognize 阶段。
-- 引入独立 `capture_in_progress` 锁：`start_translation_from_ocr` 入口 `try_begin_capture`，overlay 期间持锁；`submit_capture_region` 在 recognize 完成后、`start_translation_from_input` 前 `finish_capture`，让 `translation_busy` 接管；`cancel_capture` 释放。`finish_capture` 幂等，cancel/submit 竞争安全。
+- `translation_busy` 仅在 `start_translation_from_input` → `begin_translation_overriding` 内置位/接管，无法覆盖 OCR/recognize 阶段；截图入口**不**因 busy 拒绝（最新输入优先）。
+- 引入独立 `capture_in_progress` 锁：`start_translation_from_ocr` 入口 `try_begin_capture`，overlay 期间持锁；`submit_capture_region` 在 recognize 完成后、`start_translation_from_input` 前 `finish_capture`；`cancel_capture` 释放。`finish_capture` 幂等，cancel/submit 竞争安全。
 
 ### 已知限制（MVP）
 
@@ -545,4 +545,4 @@ Alt+O
 
 - 单元测试（纯 Rust）：`crop`、`css_rect_to_physical`、`AppState` 往返与覆盖语义、`recognize_cropped_for_translation` 三分支、capture 锁 `try_begin/finish`、`unsupported` 平台缝。`cargo test` 45 passed。
 - `#[ignore]` 集成测试：`capture_monitor_returns_bgra_frame`（需桌面会话，`cargo test -- --ignored`）。
-- 人工验证：`npm run tauri dev` 跑 Alt+O 框选 / Esc 取消 / 选区过小 / busy 守卫 / Alt+T 回归。
+- 人工验证：`npm run tauri dev` 跑 Alt+S 框选 / Esc 取消 / 选区过小 / 翻译进行中再 Alt+S 应能开 overlay / 划词回归。

@@ -11,10 +11,10 @@ use crate::{
 use tauri::Manager;
 
 pub async fn start_translation_from_ocr(app: tauri::AppHandle, state: AppState) {
-    if state.is_translation_busy() {
-        show_translation_error(&app, "正在翻译中，请稍后再试");
-        return;
-    }
+    // 不检查 translation_busy：与划词/手动入口一致，最新输入优先。
+    // 框选取消时旧翻译应继续；OCR 成功后由 start_translation_from_input →
+    // begin_translation_overriding 接管并取消旧 spawn。
+    // 并发截图仅由 capture 锁保护（与 start_ocr_capture_flow 同策略）。
 
     // capture 独立锁：挡住 OCR/recognize 期间二次截图快捷键覆盖 pending_capture。
     // 持锁到 submit_capture_region / cancel_capture 释放；本函数每条失败路径都须 finish_capture。
