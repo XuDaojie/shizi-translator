@@ -35,6 +35,23 @@ export interface OcrServiceInstanceConfig {
   ocrPrompt: string;
 }
 
+/** 某一启动路径下翻译窗 / overlay 是否启动时预建。 */
+export interface WindowPrecreatePair {
+  popup: boolean;
+  overlay: boolean;
+}
+
+/** 按手动启动 / 开机自启区分的预创建策略（设置 UI 不暴露）。 */
+export interface WindowPrecreateConfig {
+  manual: WindowPrecreatePair;
+  autostart: WindowPrecreatePair;
+}
+
+export const DEFAULT_WINDOW_PRECREATE: WindowPrecreateConfig = {
+  manual: { popup: true, overlay: false },
+  autostart: { popup: false, overlay: false },
+};
+
 export interface AppConfig {
   interfaceLanguage: string;
   targetLang: string;
@@ -44,8 +61,7 @@ export interface AppConfig {
   historyLimit: number;
   services: ServiceInstanceConfig[];
   ocrServices: OcrServiceInstanceConfig[];
-  popupPrecreate: boolean;
-  overlayPrecreate: boolean;
+  windowPrecreate: WindowPrecreateConfig;
   collectUsage: boolean;
   logLevel: LogLevel;
   updateChannel: 'stable' | 'beta';

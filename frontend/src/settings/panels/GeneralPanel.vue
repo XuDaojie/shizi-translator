@@ -129,24 +129,6 @@ const openDirectory = async () => {
     </SettingRow>
   </SettingGroup>
 
-  <SettingGroup
-    :title="t('settings.group.window')"
-    :description="t('settings.description.windowPolicy')"
-  >
-    <SettingRow
-      :title="t('settings.field.popupPrecreate')"
-      :description="t('settings.description.popupPrecreate')"
-    >
-      <SettingSwitch v-model="state.general.popupPrecreate" :aria-label="t('settings.field.popupPrecreate')" />
-    </SettingRow>
-    <SettingRow
-      :title="t('settings.field.overlayPrecreate')"
-      :description="t('settings.description.overlayPrecreate')"
-    >
-      <SettingSwitch v-model="state.general.overlayPrecreate" :aria-label="t('settings.field.overlayPrecreate')" />
-    </SettingRow>
-  </SettingGroup>
-
   <SettingGroup :title="t('settings.group.appearance')" :description="t('settings.description.appearance')">
     <DevOnly>
       <SettingRow

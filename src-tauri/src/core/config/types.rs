@@ -194,6 +194,49 @@ fn normalize_ocr_services(mut list: Vec<OcrServiceInstanceConfig>) -> Vec<OcrSer
     list
 }
 
+/// 某一启动路径下：翻译弹窗 / 截图 overlay 是否在启动时预建 WebView。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WindowPrecreatePair {
+    pub popup: bool,
+    pub overlay: bool,
+}
+
+/// 按启动路径区分的窗口预创建策略（不在设置 UI 暴露）。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WindowPrecreateConfig {
+    pub manual: WindowPrecreatePair,
+    pub autostart: WindowPrecreatePair,
+}
+
+impl Default for WindowPrecreateConfig {
+    fn default() -> Self {
+        Self {
+            // 手动启动：翻译窗预建并展示；overlay 按需
+            manual: WindowPrecreatePair {
+                popup: true,
+                overlay: false,
+            },
+            // 开机自启：默认都不预建
+            autostart: WindowPrecreatePair {
+                popup: false,
+                overlay: false,
+            },
+        }
+    }
+}
+
+impl WindowPrecreateConfig {
+    pub fn for_launch(&self, autostart: bool) -> &WindowPrecreatePair {
+        if autostart {
+            &self.autostart
+        } else {
+            &self.manual
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppConfig {
@@ -214,10 +257,8 @@ pub struct AppConfig {
     pub restore_clipboard: bool,
     #[serde(default = "default_history_limit")]
     pub history_limit: usize,
-    #[serde(default = "default_true")]
-    pub popup_precreate: bool,
-    #[serde(default = "default_true")]
-    pub overlay_precreate: bool,
+    #[serde(default)]
+    pub window_precreate: WindowPrecreateConfig,
     #[serde(default = "default_true")]
     pub collect_usage: bool,
     #[serde(default = "default_log_level")]
@@ -320,8 +361,7 @@ impl AppConfig {
             auto_copy: true,
             restore_clipboard: true,
             history_limit: default_history_limit(),
-            popup_precreate: true,
-            overlay_precreate: true,
+            window_precreate: WindowPrecreateConfig::default(),
             collect_usage: true,
             log_level: default_log_level(),
             update_channel: default_update_channel(),
@@ -640,8 +680,7 @@ mod tests {
         let config = AppConfig::default();
         let json = serde_json::to_string(&config).expect("序列化");
         assert!(json.contains("\"targetLang\""), "应输出 camelCase: {json}");
-        assert!(json.contains("\"popupPrecreate\""), "应输出 camelCase: {json}");
-        assert!(json.contains("\"overlayPrecreate\""), "应输出 camelCase: {json}");
+        assert!(json.contains("\"windowPrecreate\""), "应输出 camelCase: {json}");
         assert!(json.contains("\"collectUsage\""), "应输出 camelCase: {json}");
         assert!(json.contains("\"serviceType\""), "应输出 camelCase: {json}");
         assert!(json.contains("\"timeoutSeconds\""), "应输出 camelCase: {json}");
@@ -657,8 +696,10 @@ mod tests {
             .expect("缺少字段应可反序列化")
             .normalized();
         assert_eq!(config.target_lang, "zh-CN");
-        assert!(config.popup_precreate);
-        assert!(config.overlay_precreate);
+        assert_eq!(
+            config.window_precreate,
+            WindowPrecreateConfig::default()
+        );
         assert!(config.collect_usage);
         assert!(config.services.is_empty());
         assert!(!config.is_configured());
@@ -715,10 +756,14 @@ mod tests {
     }
 
     #[test]
-    fn defaults_precreate_window_strategies() {
+    fn defaults_window_precreate_by_launch_mode() {
         let config = AppConfig::default();
-        assert!(config.popup_precreate);
-        assert!(config.overlay_precreate);
+        assert!(config.window_precreate.manual.popup);
+        assert!(!config.window_precreate.manual.overlay);
+        assert!(!config.window_precreate.autostart.popup);
+        assert!(!config.window_precreate.autostart.overlay);
+        assert!(config.window_precreate.for_launch(false).popup);
+        assert!(!config.window_precreate.for_launch(true).popup);
     }
 
     #[test]

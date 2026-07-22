@@ -36,14 +36,17 @@ fn build_overlay(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, String>
     Ok(window)
 }
 
-/// 预创建模式下启动时调用：创建并隐藏 overlay。运行时模式无操作。
+/// 启动时按当前启动路径的 `windowPrecreate.*.overlay` 决定是否预建。
 pub fn ensure_overlay(app: &tauri::AppHandle) -> Result<(), String> {
     let config = app
         .state::<AppState>()
         .config_store
         .get()
         .map_err(|e| format!("读取配置失败: {e}"))?;
-    if !config.overlay_precreate {
+    let pair = config
+        .window_precreate
+        .for_launch(crate::app::autostart::is_autostart_process());
+    if !pair.overlay {
         return Ok(());
     }
     if app.get_webview_window(OVERLAY_LABEL).is_some() {
@@ -53,36 +56,18 @@ pub fn ensure_overlay(app: &tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// 在光标所在显示器上铺满建 overlay 窗口。整屏帧须已存入 AppState。
-/// 按配置分预创建模式（复用持久窗口 + 重载帧）与运行时模式（按需创建）。
-pub fn open_overlay(app: &tauri::AppHandle, config: &AppConfig) -> Result<(), String> {
-    let window = if config.overlay_precreate {
-        // 预创建模式：获取已有窗口，重载帧以读取新的 pending_capture
-        app.get_webview_window(OVERLAY_LABEL)
-            .ok_or_else(|| "截图 overlay 未预创建".to_string())?
-    } else {
-        // 运行时模式：先关闭已有窗口（如果有）
-        if let Some(existing) = app.get_webview_window(OVERLAY_LABEL) {
-            let _ = existing.close();
-        }
-        build_overlay(app)?
-    };
-
-    // 预创建模式需重载前端以读取新的 pending_capture 帧
-    if config.overlay_precreate {
+/// 打开 overlay：已存在则 reload 读新帧，否则创建。用完 hide 复用（见 hide_overlay）。
+pub fn open_overlay(app: &tauri::AppHandle, _config: &AppConfig) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window(OVERLAY_LABEL) {
         let _ = window.eval("location.reload()");
+        return Ok(());
     }
-
+    build_overlay(app)?;
     Ok(())
 }
 
-// 仅 hide 不 close：submit/cancel 由 overlay 自身的 invoke 触发，命令响应经 wry
-// custom-protocol（http://ipc.localhost/<cmd>）由 wry::dispatch_handler 以 PostMessage
-// 投递回 overlay 宿主 hwnd。若在此处 close() 销毁 overlay，hwnd 会先于响应投递失效，
-// PostMessageW 返回 ERROR_INVALID_WINDOW_HANDLE(0x80070578)（wry 在 debug 下 eprintln
-// “PostMessage failed ; is the messages queue full?”）。hide() 令窗口不可见（体验同 close）
-// 但保留有效 hwnd，响应可正常投递；实际销毁交由下次 open_overlay 的 existing.close()
-// 回收——此时该 hwnd 已无在途响应指向它，close 不再触发该错误。
+// 仅 hide 不 close：submit/cancel 响应经 wry PostMessage 回宿主 hwnd；close 会令
+// hwnd 失效。hide 保留窗口，下次 open_overlay 对已有窗 location.reload 读新帧。
 fn hide_overlay(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window(OVERLAY_LABEL) {
         let _ = window.hide();

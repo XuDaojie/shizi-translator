@@ -28,8 +28,10 @@ function minimalConfig(services: Array<{ id: string; name: string; enabled: bool
       chainOfThought: 'off',
     })),
     ocrServices: [],
-    popupPrecreate: true,
-    overlayPrecreate: true,
+    windowPrecreate: {
+      manual: { popup: true, overlay: false },
+      autostart: { popup: false, overlay: false },
+    },
     collectUsage: false,
     logLevel: 'info',
     updateChannel: 'stable',

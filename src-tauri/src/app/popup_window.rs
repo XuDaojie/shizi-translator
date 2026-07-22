@@ -1,10 +1,10 @@
-// 类型与纯函数在任务 4 的窗口管理函数中使用前暂时允许 dead_code。
-#![allow(dead_code)]
-
 pub const POPUP_LABEL: &str = "main";
+pub const POPUP_URL: &str = "translate.html";
 
-use tauri::{LogicalPosition, Manager};
+use tauri::{LogicalPosition, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
+use crate::app::shortcuts::attach_app_shortcut_focus_listener;
+use crate::app::window::attach_close_to_hide;
 use crate::core::config::AppConfig;
 use crate::platform::cursor_logical_context;
 
@@ -38,15 +38,12 @@ pub fn compute_popup_position(
     let mut x = cursor.x;
     let mut y = cursor.y;
 
-    // 右溢出 → 左移，使右边界贴工作区右边。
     if x + popup_size.width > work_area.x + work_area.width {
         x = work_area.x + work_area.width - popup_size.width;
     }
-    // 下溢出 → 上移，使底边贴工作区底边。
     if y + popup_size.height > work_area.y + work_area.height {
         y = work_area.y + work_area.height - popup_size.height;
     }
-    // 不低于工作区左上。
     if x < work_area.x {
         x = work_area.x;
     }
@@ -57,9 +54,43 @@ pub fn compute_popup_position(
     LogicalPos { x, y }
 }
 
-/// main 窗口由 Tauri 配置创建，这里保留幂等入口供启动流程复用。
-pub fn ensure_popup_window(_app: &tauri::AppHandle, _config: &AppConfig) -> Result<(), String> {
-    Ok(())
+fn build_popup(app: &tauri::AppHandle) -> Result<WebviewWindow, String> {
+    let window = WebviewWindowBuilder::new(app, POPUP_LABEL, WebviewUrl::App(POPUP_URL.into()))
+        .title("Shizi 翻译")
+        .inner_size(420.0, 360.0)
+        .resizable(false)
+        .decorations(false)
+        .transparent(true)
+        .skip_taskbar(true)
+        .center()
+        .visible(false)
+        .build()
+        .map_err(|error| format!("创建翻译弹窗失败: {error}"))?;
+    attach_close_to_hide(&window);
+    attach_app_shortcut_focus_listener(&window, app);
+    Ok(window)
+}
+
+/// 确保翻译弹窗存在；不存在则创建（隐藏）。
+///
+/// **Windows 注意**：勿在同步 tray/快捷键回调栈内首次 build（WebView2 死锁）；
+/// 调用方须在 async / 独立线程路径上首次创建。
+pub fn ensure_popup_exists(app: &tauri::AppHandle) -> Result<WebviewWindow, String> {
+    if let Some(window) = app.get_webview_window(POPUP_LABEL) {
+        return Ok(window);
+    }
+    build_popup(app)
+}
+
+/// 启动时按当前启动路径的 `windowPrecreate.*.popup` 决定是否预建。
+pub fn ensure_popup_window(app: &tauri::AppHandle, config: &AppConfig) -> Result<(), String> {
+    let pair = config
+        .window_precreate
+        .for_launch(crate::app::autostart::is_autostart_process());
+    if !pair.popup {
+        return Ok(());
+    }
+    ensure_popup_exists(app).map(|_| ())
 }
 
 /// 隐藏翻译弹窗。截图前调用，避免把弹窗打进 DXGI 帧；幂等。
@@ -75,23 +106,11 @@ pub enum PopupPositionMode {
     /// 跟随光标并钳制到工作区（划词 / 截图译 / 快捷键触发）。
     #[default]
     NearCursor,
-    /// 不改坐标：保留上一次位置；首次创建依赖 `tauri.conf` 的 `center`。
-    /// 托盘手动打开空弹窗等「非上下文触发」入口使用。
+    /// 不改坐标：保留上一次位置；首次创建依赖 builder `center`。
     Restore,
 }
 
-/// 唤起弹窗：复用 main 翻译窗口。
-/// - [`PopupPositionMode::NearCursor`]：按光标定位；光标上下文不可用时不改位置。
-/// - [`PopupPositionMode::Restore`]：不重新定位（上次位置或默认居中）。
-pub fn show_popup(
-    app: &tauri::AppHandle,
-    _config: &AppConfig,
-    mode: PopupPositionMode,
-) -> Result<(), String> {
-    let window = app
-        .get_webview_window(POPUP_LABEL)
-        .ok_or_else(|| "翻译弹窗未创建".to_string())?;
-
+fn present_popup(window: &WebviewWindow, mode: PopupPositionMode) {
     if mode == PopupPositionMode::NearCursor {
         let scale = window.scale_factor().unwrap_or(1.0);
         if let Some((cx, cy, wx, wy, ww, wh)) = cursor_logical_context(scale) {
@@ -113,9 +132,26 @@ pub fn show_popup(
             let _ = window.set_position(LogicalPosition::new(pos.x, pos.y));
         }
     }
-
     let _ = window.show();
     let _ = window.set_focus();
+}
+
+/// 唤起弹窗：已存在则定位 show；不存在则**独立线程**创建后 show（避 Windows 回调栈建窗死锁）。
+pub fn show_popup(
+    app: &tauri::AppHandle,
+    _config: &AppConfig,
+    mode: PopupPositionMode,
+) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window(POPUP_LABEL) {
+        present_popup(&window, mode);
+        return Ok(());
+    }
+
+    let app = app.clone();
+    std::thread::spawn(move || match ensure_popup_exists(&app) {
+        Ok(window) => present_popup(&window, mode),
+        Err(error) => log::warn!("创建翻译弹窗失败: {error}"),
+    });
     Ok(())
 }
 
@@ -124,11 +160,19 @@ mod tests {
     use super::*;
 
     fn work_area_1920x1080() -> LogicalRect {
-        LogicalRect { x: 0.0, y: 0.0, width: 1920.0, height: 1080.0 }
+        LogicalRect {
+            x: 0.0,
+            y: 0.0,
+            width: 1920.0,
+            height: 1080.0,
+        }
     }
 
     fn popup_400x300() -> LogicalSize {
-        LogicalSize { width: 400.0, height: 300.0 }
+        LogicalSize {
+            width: 400.0,
+            height: 300.0,
+        }
     }
 
     #[test]

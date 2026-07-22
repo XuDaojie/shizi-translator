@@ -9,7 +9,6 @@ use app::{
     shortcuts::{handle_global_shortcut, register_global_shortcuts_at_startup},
     state::AppState,
     tray::{setup_tray, TrayI18nHandles},
-    window::setup_close_to_hide,
 };
 use core::{
     config::ConfigStore,
@@ -152,8 +151,6 @@ pub fn run() {
                 false,
             )
             .map_err(|error| tauri::Error::Anyhow(std::io::Error::other(error).into()))?;
-            setup_close_to_hide(app);
-
             let config = app
                 .state::<AppState>()
                 .config_store
@@ -164,8 +161,8 @@ pub fn run() {
                 .state::<AppState>()
                 .set_shortcut_conflicts(shortcut_conflicts);
 
-            // 按窗口策略预创建弹窗与 overlay。
-            // 设置页 / 文字识别窗口故意不在启动时创建：首次 open 时再 ensure，避免多占 WebView 进程。
+            // 按 windowPrecreate（手动 / 自启）决定是否预建 main 与 overlay。
+            // 设置页 / 文字识别不在启动时创建。
             let _ = ensure_popup_window(app.handle(), &config);
             let _ = ensure_overlay(app.handle());
 
@@ -178,8 +175,16 @@ pub fn run() {
 
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("启动应用失败");
+        .build(tauri::generate_context!())
+        .expect("构建应用失败")
+        .run(|_app_handle, event| {
+            // 托盘驻留：无窗 / 关最后一窗不退出；托盘「退出」走 app.exit 带 code，不拦截。
+            if let tauri::RunEvent::ExitRequested { api, code, .. } = event {
+                if code.is_none() {
+                    api.prevent_exit();
+                }
+            }
+        });
 }
 
 #[cfg(test)]

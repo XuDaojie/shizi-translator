@@ -1,4 +1,4 @@
-import type { ServiceProtocolId } from '@/types/config';
+import type { ServiceProtocolId, WindowPrecreateConfig } from '@/types/config';
 
 export type ThemeMode = 'light' | 'dark' | 'system'
 export type UILanguage = 'auto' | 'zh-CN' | 'zh-TW' | 'en-US' | 'ja-JP' | 'ko-KR' | 'fr-FR' | 'de-DE' | 'es-ES' | (string & {})
@@ -8,10 +8,6 @@ export type LogLevel = 'error' | 'warn' | 'info' | 'debug'
 export interface GeneralSettings {
   /** 开机自启（已接后端 launchAtLogin → Windows Run）。 */
   launchAtLogin: boolean
-  /** 主翻译弹窗是否预创建（后端已实现，接 save_app_config.popupPrecreate）。 */
-  popupPrecreate: boolean
-  /** 截图 OCR overlay 窗口是否预创建（后端已实现，接 save_app_config.overlayPrecreate）。 */
-  overlayPrecreate: boolean
   theme: ThemeMode
   language: UILanguage
   updateChannel: UpdateChannel
@@ -233,6 +229,10 @@ export type AppSettings = {
   /** 用户在「服务」面板里手动新建的渠道类型(右侧详情区输入"渠道名"时注册)。 */
   customServiceTypes: CustomServiceType[]
   advanced: AdvancedSettings
+  /**
+   * 窗口预创建（按手动 / 自启）。设置 UI 不暴露；sync 自后端，save 原样写回。
+   */
+  windowPrecreate: WindowPrecreateConfig
 }
 
 export type ServiceMeta = {

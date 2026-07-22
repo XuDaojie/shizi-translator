@@ -5,12 +5,14 @@ import type { AppSettings } from './types'
 const baseState: AppSettings = {
   general: {
     launchAtLogin: true,
-    popupPrecreate: false,
-    overlayPrecreate: false,
     theme: 'system',
     language: 'zh-CN',
     updateChannel: 'stable',
     autoCheckUpdate: true,
+  },
+  windowPrecreate: {
+    manual: { popup: true, overlay: false },
+    autostart: { popup: false, overlay: false },
   },
   translation: {
     defaultSourceLang: 'auto',

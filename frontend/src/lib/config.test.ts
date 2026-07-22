@@ -30,8 +30,10 @@ const makeState = (services: ServiceInstance[]): AppSettings => ({
     language: 'auto',
     updateChannel: 'stable',
     autoCheckUpdate: true,
-    popupPrecreate: true,
-    overlayPrecreate: false,
+  },
+  windowPrecreate: {
+    manual: { popup: true, overlay: false },
+    autostart: { popup: false, overlay: false },
   },
   translation: {
     defaultSourceLang: 'auto',
@@ -80,8 +82,8 @@ describe('projectToAppConfig', () => {
     expect(config.interfaceLanguage).toBe('auto');
     expect(config.targetLang).toBe('中文');
     expect(config.historyLimit).toBe(500);
-    expect(config.popupPrecreate).toBe(true);
-    expect(config.overlayPrecreate).toBe(false);
+    expect(config.windowPrecreate.manual.popup).toBe(true);
+    expect(config.windowPrecreate.manual.overlay).toBe(false);
     expect(config.collectUsage).toBe(true);
     expect(config.logLevel).toBe('info');
     expect(config.launchAtLogin).toBe(false);
@@ -234,8 +236,10 @@ describe('validateConfig', () => {
     historyLimit: 500,
     services: [],
     ocrServices: [],
-    popupPrecreate: true,
-    overlayPrecreate: true,
+    windowPrecreate: {
+      manual: { popup: true, overlay: false },
+      autostart: { popup: false, overlay: false },
+    },
     collectUsage: true,
     logLevel: 'info',
     updateChannel: 'stable',

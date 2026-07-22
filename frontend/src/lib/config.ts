@@ -1,4 +1,5 @@
 import type { AppConfig, ServiceProtocolId } from '@/types/config';
+import { DEFAULT_WINDOW_PRECREATE } from '@/types/config';
 import type { AppSettings } from '@/settings/types';
 
 const AVAILABLE_PROTOCOLS: readonly ServiceProtocolId[] = ['openai_chat', 'claude_messages', 'microsoft_edge', 'mock'];
@@ -71,8 +72,7 @@ export function projectToAppConfig(state: AppSettings): AppConfig {
       preferredLang: s.preferredLang.trim(),
       ocrPrompt: s.ocrPrompt.trim(),
     })),
-    popupPrecreate: state.general.popupPrecreate,
-    overlayPrecreate: state.general.overlayPrecreate,
+    windowPrecreate: state.windowPrecreate ?? DEFAULT_WINDOW_PRECREATE,
     collectUsage: state.advanced.collectUsage,
     logLevel: state.advanced.logLevel,
     updateChannel: state.general.updateChannel,

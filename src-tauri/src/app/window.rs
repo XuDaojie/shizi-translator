@@ -7,7 +7,9 @@ pub const SETTINGS_LABEL: &str = "settings";
 pub const SETTINGS_URL: &str = "settings.html";
 pub const SETTINGS_INITIAL_VISIBLE: bool = false;
 
-fn close_to_hide(window: &WebviewWindow) {
+/// 仅用于高频/托盘驻留窗（`main`）：关窗改为 hide，不销毁 WebView。
+/// 设置页与文字识别等低频窗不要挂此钩子，关闭即销毁。
+pub(crate) fn attach_close_to_hide(window: &WebviewWindow) {
     let window_to_hide = window.clone();
     window.on_window_event(move |event| {
         if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -24,13 +26,26 @@ fn present_window(window: &WebviewWindow) -> Result<(), String> {
     Ok(())
 }
 
+/// 托盘双击等：已有 main 则 show；否则走 `show_popup`（独立线程建窗）。
 pub fn show_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = present_window(&window);
+        return;
+    }
+    let config = app
+        .try_state::<crate::app::state::AppState>()
+        .and_then(|s| s.config_store.get().ok())
+        .unwrap_or_else(crate::core::config::AppConfig::default);
+    if let Err(error) =
+        crate::app::popup_window::show_popup(app, &config, crate::app::popup_window::PopupPositionMode::Restore)
+    {
+        log::warn!("打开翻译弹窗失败: {error}");
     }
 }
 
 /// 创建设置窗口（若尚不存在）。
+///
+/// 低频窗：用户关闭即销毁（不挂 `close_to_hide`）；下次打开再重建。
 ///
 /// **Windows 注意**：`WebviewWindowBuilder::build` 在同步 command / 托盘与菜单事件回调里
 /// 调用会死锁（WebView2 / wry#583）。首次创建须在 `async` command 或独立线程中执行；
@@ -61,12 +76,11 @@ pub fn ensure_settings_window(app: &tauri::AppHandle) -> Result<WebviewWindow, S
             .disable_drag_drop_handler()
             .build()
             .map_err(|error| format!("创建设置窗口失败: {error}"))?;
-    close_to_hide(&window);
     attach_app_shortcut_focus_listener(&window, app);
     Ok(window)
 }
 
-/// 打开设置窗。已存在则仅 show；首次会 `ensure` 创建。
+/// 打开设置窗。已存在则仅 show；已销毁或不存在则 `ensure` 重建。
 /// 供 async command / 已脱离主事件回调栈的上下文使用。
 pub fn show_settings_window(app: &tauri::AppHandle) -> Result<(), String> {
     let window = ensure_settings_window(app)?;
@@ -87,7 +101,11 @@ pub fn request_show_settings_window(app: &tauri::AppHandle) {
 pub const OCR_LABEL: &str = "ocr";
 pub const OCR_URL: &str = "ocr.html";
 
-/// 创建文字识别窗口（若尚不存在）。Windows 首次创建约束同 [`ensure_settings_window`]。
+/// 创建文字识别窗口（若尚不存在）。
+///
+/// 低频窗：用户关闭即销毁（不挂 `close_to_hide`）；下次打开再重建。
+/// 截图前临时 [`hide_ocr_window`] 仍只 hide，避免抓到本窗内容。
+/// Windows 首次创建约束同 [`ensure_settings_window`]。
 pub fn ensure_ocr_window(app: &tauri::AppHandle) -> Result<WebviewWindow, String> {
     if let Some(window) = app.get_webview_window(OCR_LABEL) {
         return Ok(window);
@@ -102,12 +120,11 @@ pub fn ensure_ocr_window(app: &tauri::AppHandle) -> Result<WebviewWindow, String
         .visible(false)
         .build()
         .map_err(|error| format!("创建文字识别窗口失败: {error}"))?;
-    close_to_hide(&window);
     attach_app_shortcut_focus_listener(&window, app);
     Ok(window)
 }
 
-/// 打开文字识别窗。已存在则仅 show；首次会 `ensure` 创建。
+/// 打开文字识别窗。已存在则仅 show；已销毁或不存在则 `ensure` 重建。
 pub fn show_ocr_window(app: &tauri::AppHandle) -> Result<(), String> {
     let window = ensure_ocr_window(app)?;
     present_window(&window)
@@ -127,13 +144,6 @@ pub fn request_show_ocr_window(app: &tauri::AppHandle) {
 pub fn hide_ocr_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window(OCR_LABEL) {
         let _ = window.hide();
-    }
-}
-
-pub fn setup_close_to_hide(app: &tauri::App) {
-    if let Some(window) = app.get_webview_window("main") {
-        close_to_hide(&window);
-        attach_app_shortcut_focus_listener(&window, app.handle());
     }
 }
 
