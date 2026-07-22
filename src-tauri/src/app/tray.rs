@@ -50,11 +50,11 @@ fn tray_icon_image(app: &tauri::App) -> tauri::Result<Image<'static>> {
 }
 
 // 加速键策略：
-// 1) 默认 TrayAccelMode::TextOnly：垫齐 label 显示宽度后直接拼 keys（**不用 `\t`**）
-//    —— 原生系统 Menu 无 flex/布局组件，只能靠文案控制列；`\t` 会触发系统右对齐，键列易错位
-// 2) accelerator 恒 None，禁止 tray 内 GlobalShortcut::register（与 shortcuts.rs 双绑）
-// 3) Native 变体保留：走 MenuItem::set_accelerator（内部仍是系统加速键列）
-// 4) 热更新用 set_text 原位刷新；若要像素级布局需另做 WebView 托盘菜单（本轮不做）
+// 1) 默认 TrayAccelMode::TextOnly：文案 `label\tkeys`（Win 菜单习惯，右对齐纯展示）
+// 2) 禁止 tray 内 GlobalShortcut::register（触发仍只靠 shortcuts.rs / 点菜单）
+// 3) Native 保留：MenuItem::set_accelerator（显示同样靠 \t；另建菜单 HACCEL，托盘场景一般不必）
+// 4) 热更新用 set_text 原位刷新（Native 时再 set_accelerator）
+// 注：Win 上 TextOnly 与 Native 外观基本等价；TextOnly 更稳妥（无菜单加速键表副作用）
 
 /// 托盘加速键展示模式。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,16 +62,12 @@ pub enum TrayAccelMode {
     /// 系统 accelerator 列；parse 失败时该项会静默无加速键。
     #[allow(dead_code)]
     Native,
-    /// 垫齐标题列后拼 keys，键左边缘对齐（不注册 ACCEL、不用 `\t`）。
+    /// 文案 `label\tkeys` 右对齐展示（不注册菜单 ACCEL）。
     TextOnly,
 }
 
-/// 默认 TextOnly。
+/// 默认 TextOnly（纯展示，更稳妥）。
 const TRAY_ACCEL_MODE: TrayAccelMode = TrayAccelMode::TextOnly;
-
-/// TextOnly 标题列显示宽度（半角=1，CJK=2）。
-/// 4 汉字标题宽 8；列宽 14 ≈ 标题后 6 半角空隙，键列左边缘对齐。
-const TRAY_LABEL_COL_WIDTH: usize = 14;
 
 pub const TRAY_LABEL_SELECTION: &str = "划词翻译";
 pub const TRAY_LABEL_SCREENSHOT: &str = "截图翻译";
@@ -130,31 +126,12 @@ fn tray_label_base(label: &str) -> &str {
         .trim_end_matches(|c: char| c == '\u{00A0}' || c.is_whitespace())
 }
 
-/// 菜单文案显示宽度：ASCII 半角 1，其余（含 CJK）按 2 计。
-pub fn tray_display_width(s: &str) -> usize {
-    s.chars()
-        .map(|c| if c <= '\u{00ff}' { 1 } else { 2 })
-        .sum()
-}
-
-/// 右侧补半角空格，使显示宽度达到 `target`。
-fn pad_to_display_width(s: &str, target: usize) -> String {
-    let width = tray_display_width(s);
-    if width >= target {
-        s.to_string()
-    } else {
-        format!("{s}{}", " ".repeat(target - width))
-    }
-}
-
 /// 按加速键模式生成菜单项展示文案（可测纯函数）。
-/// TextOnly：垫齐标题列后拼 keys（无 `\t`），键左边缘同一竖线。
+/// TextOnly：`label\tkeys`，由系统菜单把快捷键列右对齐。
 pub fn format_tray_label(mode: TrayAccelMode, label: &str, accel: Option<&str>) -> String {
     let label = tray_label_base(label);
     match (mode, accel) {
-        (TrayAccelMode::TextOnly, Some(keys)) => {
-            format!("{}{}", pad_to_display_width(label, TRAY_LABEL_COL_WIDTH), keys)
-        }
+        (TrayAccelMode::TextOnly, Some(keys)) => format!("{label}\t{keys}"),
         _ => label.to_string(),
     }
 }
@@ -335,8 +312,8 @@ pub fn setup_tray(app: &tauri::App) -> tauri::Result<TrayI18nHandles> {
 #[cfg(test)]
 mod tests {
     use super::{
-        format_tray_label, menu_accelerator, tray_display_width, tray_icon_image_for_scale,
-        tray_icon_size, tray_menu_bindings, TrayAccelMode,
+        format_tray_label, menu_accelerator, tray_icon_image_for_scale, tray_icon_size,
+        tray_menu_bindings, TrayAccelMode,
     };
     use std::collections::HashMap;
 
@@ -355,33 +332,15 @@ mod tests {
         let screenshot = format_tray_label(TrayAccelMode::TextOnly, "截图翻译", Some("Alt+S"));
         let settings = format_tray_label(TrayAccelMode::TextOnly, "偏好设置", Some("Ctrl+,"));
 
-        // 不用 `\t`（系统右对齐会打乱键列）
-        assert!(!selection.contains('\t'), "{selection}");
-        assert!(!screenshot.contains('\t'), "{screenshot}");
-        assert!(!settings.contains('\t'), "{settings}");
+        // TextOnly 用 `\t` 触发系统右对齐加速键列
+        assert_eq!(selection, "划词翻译\tAlt+D");
+        assert_eq!(screenshot, "截图翻译\tAlt+S");
+        assert_eq!(settings, "偏好设置\tCtrl+,");
 
-        assert!(selection.ends_with("Alt+D"), "{selection}");
-        assert!(screenshot.ends_with("Alt+S"), "{screenshot}");
-        assert!(settings.ends_with("Ctrl+,"), "{settings}");
-
-        // 键起点显示宽度相同 → 左对齐；列宽由 TRAY_LABEL_COL_WIDTH 控制偏右程度
-        let key_start = |s: &str, key: &str| {
-            tray_display_width(s.strip_suffix(key).expect("suffix"))
-        };
-        assert_eq!(key_start(&selection, "Alt+D"), super::TRAY_LABEL_COL_WIDTH);
-        assert_eq!(key_start(&screenshot, "Alt+S"), super::TRAY_LABEL_COL_WIDTH);
-        assert_eq!(key_start(&settings, "Ctrl+,"), super::TRAY_LABEL_COL_WIDTH);
-
+        // 已含 `\t` 的历史文案不会重复拼接
         let again =
             format_tray_label(TrayAccelMode::TextOnly, "划词翻译\tAlt+D", Some("Alt+D"));
         assert_eq!(again, selection);
-    }
-
-    #[test]
-    fn tray_display_width_counts_cjk_double() {
-        assert_eq!(tray_display_width("Alt+D"), 5);
-        assert_eq!(tray_display_width("划词翻译"), 8);
-        assert_eq!(tray_display_width("退出 shizi"), 2 + 2 + 1 + 5);
     }
 
     #[test]
