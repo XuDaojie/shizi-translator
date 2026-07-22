@@ -37,17 +37,19 @@ const MICROSOFT_EDGE = {
 }
 
 /**
- * 厂商官方 logo（Iconify simple-icons 集）有则填，无则统一用 lucide `Plug` 兜底。
- * Logo 候选来源：https://api.iconify.design/?prefix=simple-icons
+ * 厂商官方 logo 解析顺序：
+ * 1. Iconify simple-icons（https://api.iconify.design/?prefix=simple-icons）
+ * 2. 本地 vendored SVG（lobe-icons，见 service-logos.ts：智谱/硅基/火山/腾讯）
+ * 3. Lucide `Plug` 兜底（有道、讯飞等仍无品牌图；自定义渠道用 WandSparkles）
  *
  * 命名约定：
- * - 优先使用厂商英文品牌对应的 simple-icons 条目
- * - 找不到的（腾讯、讯飞、智谱、字节火山、有道）留空，由 ServiceIcon 自动 fallback
- *   到 lucide `Plug` 图标，**不**使用相似品牌替代、**不**为每个服务单独挑 lucide 图标
- *   避免视觉上看起来像「乱配的」——统一传达「未识别厂商，请走 OpenAI 兼容协议」语义
+ * - 优先 simple-icons 英文品牌条目
+ * - 不使用相似品牌替代、不为每个服务单独挑不同 lucide 图标
  */
 export const getServiceIconifyId = (id: ServiceId): string | undefined =>
   BUILTIN_SERVICES.find((s) => s.id === id)?.iconifyId
+
+export { getServiceLogoSrc } from './service-logos'
 
 export const getServiceLucideFallback = (_id: ServiceId): Component => Plug
 

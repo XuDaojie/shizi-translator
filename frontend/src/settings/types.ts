@@ -235,7 +235,7 @@ export type ServiceMeta = {
   hasModelApi?: boolean
   /**
    * Iconify 图标 id(格式: `<collection>:<icon>`,如 `simple-icons:openai`)。
-   * 留空时使用 Lucide fallback。
+   * 留空时由 `getServiceLogoSrc` 查本地 lobe-icons SVG，再 Lucide fallback。
    */
   iconifyId?: string
   /**
