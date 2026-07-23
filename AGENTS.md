@@ -68,12 +68,17 @@ plugins.md         已装插件/技能清单（变更须同步）
 
    **硬规则：** 默认偏 S/M，不确定则问一句、**不得默认升 L**；`直接修/小改`→S，`走完整流程/先写 plan/按三阶段`→L；Bug 默认 S（根因变架构/协议再协商升档）；回复可标 `规模：S|M|L`。
 
-   **L 档：标准三阶段**（仅 L 默认走满；每阶段独立对话，禁止同对话跨阶段）
-   - 1. `brainstorming` → 标准 design spec → commit  
-   - 2. `writing-plans` → 标准 plan → commit  
-   - 3. `executing-plans` 或 `subagent-driven-development`
-   - 阶段收尾：skill 若要直接进下一阶段，**不得照做**；`AskUserQuestion`——brainstorm 后 ① 本对话 writing-plans / ② spec→plan 交接并停下（推荐）；plan 后 ① 本对话编码 / ② plan→执行交接并停下（推荐）。
-   - 编码前再问：子代理驱动 vs 内联（**不得默认内联**）。交接模板见 [handoff-templates](docs/superpowers/handoff-templates.md)（**仅 L**）；只打印不落盘。收尾：文档同步 → `finishing-a-development-branch`。
+   **L 档：标准三阶段**（仅 L 默认走满；**每阶段必须独立对话**；长对话会污染上下文，阶段结束必须停下）
+   - 1. 需求规划：`brainstorming` → 标准 design spec → commit  
+   - 2. 实现计划：`writing-plans` → 标准 plan → commit  
+   - 3. 编码执行：`executing-plans` 或 `subagent-driven-development`（在**新对话**内进行）
+   - **强制交接（无「本对话继续」选项）**：
+     - skill 若指示「直接调用下一阶段 skill」（如 brainstorming→writing-plans、writing-plans→执行选项），**一律不得照做**——本规范覆盖 skill 终止动作。
+     - 阶段完成后固定动作：commit 产出物 → 按 [handoff-templates](docs/superpowers/handoff-templates.md) 填充 → 回复末尾以代码块打印交接提示词 → 告知用户「请开新对话粘贴」→ **本对话立即停下**。
+     - **禁止**：用 `AskUserQuestion` 问是否本对话继续；默认本对话进入下一阶段；输出交接词后仍调用下一阶段 skill。
+     - **唯一覆盖**：用户在本对话**明确书面指令**「本对话继续 / 同会话跨阶段」时才可同对话进入下一阶段；agent **不得主动提供**该选项。
+     - **交接即终止循环**：交接提示词作为新对话首条消息后，该新对话即目标阶段，正常执行该阶段 skill，**不得**再生成同一交接或要求再开对话。
+   - 编码执行阶段内：先用 `AskUserQuestion` 选子代理驱动 vs 内联（**不得默认内联**）；未答复前不得执行。交接模板只打印不落盘。收尾：文档同步 → `finishing-a-development-branch`。
 
 ## 提交规范
 
