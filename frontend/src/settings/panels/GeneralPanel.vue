@@ -41,6 +41,18 @@ const updateChannelOptions = computed(() => [
   { label: 'Beta', value: 'beta' },
 ])
 
+const popupBackendOptions = computed(() => [
+  { label: t('settings.option.popupWebview'), value: 'webview' },
+  { label: t('settings.option.popupWinui'), value: 'winui' },
+])
+
+/** 仅 Tauri Windows 桌面端展示弹窗 UI 后端切换（WinUI 为 Windows 预览能力）。 */
+const isWindowsDesktop = computed(() => {
+  const tauri = (window as unknown as { __TAURI__?: unknown }).__TAURI__
+  if (!tauri) return false
+  return navigator.userAgent.includes('Windows')
+})
+
 const checking = ref(false)
 const updateDialogOpen = ref(false)
 const pendingUpdate = ref<CheckUpdateResult | null>(null)
@@ -149,6 +161,13 @@ const openDirectory = async () => {
           </div>
         </DevOnly>
       </div>
+    </SettingRow>
+    <SettingRow
+      v-if="isWindowsDesktop"
+      :title="t('settings.field.popupUiBackend')"
+      :description="t('settings.description.popupUiBackend')"
+    >
+      <SettingSelect v-model="state.general.popupUiBackend" :options="popupBackendOptions" />
     </SettingRow>
     <DevOnly>
       <p v-for="error in interfaceLanguageErrors" :key="`${error.file}:${error.message}`" class="text-xs text-destructive">{{ error.file }}: {{ error.message }}</p>

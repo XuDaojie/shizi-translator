@@ -589,6 +589,9 @@ const persist = (notify = false): Promise<void> => {
   const snapshot = cloneSettings(state)
   const config = projectToAppConfig(snapshot)
   const err = validateConfig(config)
+  /** 相对上次已提交 baseline（含 syncFromBackend）是否变更弹窗 UI 后端。 */
+  const popupBackendChanged =
+    snapshot.general.popupUiBackend !== baseline.general.popupUiBackend
   const run = async (): Promise<void> => {
     if (err) {
       saveStatus.value = 'error'
@@ -599,9 +602,28 @@ const persist = (notify = false): Promise<void> => {
     try {
       if (isTauriReady()) {
         await invokeSaveAppConfig(config)
-        if (notify) toast.success(t('settings.toast.saved'))
+        if (notify) {
+          if (popupBackendChanged) {
+            toast.success(
+              t('settings.toast.saved'),
+              t('settings.toast.popupBackendRestart'),
+            )
+          } else {
+            toast.success(t('settings.toast.saved'))
+          }
+        } else if (popupBackendChanged) {
+          // 自动保存无「已保存」toast，单独提示需重启
+          toast.info(t('settings.toast.popupBackendRestart'))
+        }
       } else if (notify) {
-        toast.info(t('settings.toast.saved'), t('settings.status.localPreference'))
+        toast.info(
+          t('settings.toast.saved'),
+          popupBackendChanged
+            ? t('settings.toast.popupBackendRestart')
+            : t('settings.status.localPreference'),
+        )
+      } else if (popupBackendChanged) {
+        toast.info(t('settings.toast.popupBackendRestart'))
       }
       if (serializeForDirty(state) === serializeForDirty(snapshot)) {
         commitBaseline(snapshot)
