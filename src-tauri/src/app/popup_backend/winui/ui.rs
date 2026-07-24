@@ -49,6 +49,12 @@ use crate::app::popup_backend::types::{
 use crate::app::popup_window::{compute_popup_position, LogicalPos, LogicalRect, LogicalSize};
 use crate::platform::cursor_logical_context;
 
+// 语言 / 元信息 / 复制：单一事实来源在 `reactor`（路径 R 与 GDI 共用）。
+pub use super::reactor::langs::{lang_codes_for_side, lang_display_name, swap_session_langs};
+pub use super::reactor::meta::is_machine_translate_protocol;
+use super::reactor::meta::{display_model_name, should_show_tokens};
+use super::reactor::state::resolve_copy_fields;
+
 /// 用户动作处理器（由 `actions` 在 ensure 时注册）。
 type ActionHandler = fn(PopupUserAction);
 
@@ -109,30 +115,6 @@ const COL_ICON_BADGE: u32 = 0x00_F0_F0_F0;
 
 const CLASS_NAME: PCWSTR = w!("Shizi.NativePopup.B");
 const WM_POPUP_REFRESH: u32 = WM_USER + 0x51;
-
-/// 翻译语言表（与前端 `translation-languages` 对齐）。
-const LANG_TABLE: &[(&str, &str)] = &[
-    ("auto", "自动检测"),
-    ("zh-CN", "简体中文"),
-    ("zh-TW", "繁體中文"),
-    ("en", "English"),
-    ("ja", "日本語"),
-    ("ko", "한국어"),
-    ("fr", "Français"),
-    ("de", "Deutsch"),
-    ("es", "Español"),
-    ("pt", "Português"),
-    ("ru", "Русский"),
-    ("it", "Italiano"),
-    ("nl", "Nederlands"),
-    ("pl", "Polski"),
-    ("tr", "Türkçe"),
-    ("ar", "العربية"),
-    ("th", "ไทย"),
-    ("vi", "Tiếng Việt"),
-    ("id", "Bahasa Indonesia"),
-    ("hi", "हिन्दी"),
-];
 
 /// 可点击热区（标题栏 / 语言栏 / 状态栏 / 语言列表）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -248,11 +230,8 @@ fn load_layout_anchors() -> LayoutAnchors {
         .unwrap_or_default()
 }
 
-pub fn is_machine_translate_protocol(protocol: &str) -> bool {
-    protocol.trim() == "microsoft_edge"
-}
-
 pub fn card_detail_label(protocol: &str, model_name: &str) -> String {
+    // GDI 专用：MT 显示协议名（与路径 R `display_model_name` 不同，勿强行统一）。
     if is_machine_translate_protocol(protocol) {
         let p = protocol.trim();
         if p.is_empty() {
@@ -378,25 +357,24 @@ pub fn load_paint_snapshot() -> PaintSnapshot {
         .unwrap_or_default()
 }
 
+/// GDI PaintSnapshot 薄适配 → `reactor::state` 字段级纯函数。
 pub fn resolve_copy_text(snap: &PaintSnapshot, service_instance_id: &str) -> Option<String> {
     let card = snap
         .cards
         .iter()
         .find(|c| c.service_instance_id == service_instance_id)?;
-    if !card.text.is_empty() {
-        Some(card.text.clone())
-    } else if !card.error_message.is_empty() {
-        Some(card.error_message.clone())
-    } else {
-        None
-    }
+    resolve_copy_fields(&card.text, &card.error_message)
 }
 
+/// GDI PaintSnapshot 薄适配（语义与 `reactor::state::first_copyable_service_id` 对齐）。
 pub fn first_copyable_service_id(snap: &PaintSnapshot) -> Option<String> {
-    snap.cards
-        .iter()
-        .find(|c| !c.text.is_empty())
-        .map(|c| c.service_instance_id.clone())
+    snap.cards.iter().find_map(|c| {
+        if !c.text.trim().is_empty() {
+            Some(c.service_instance_id.clone())
+        } else {
+            None
+        }
+    })
 }
 
 pub fn status_label(status: &PopupCardStatus) -> &'static str {
@@ -417,40 +395,6 @@ pub fn status_color_bgr(status: &PopupCardStatus) -> u32 {
         PopupCardStatus::Failed => COL_DANGER,
         PopupCardStatus::Cancelled => COL_FG_3,
     }
-}
-
-/// 语言 code → 显示名。
-pub fn lang_display_name(code: &str) -> &str {
-    let c = code.trim();
-    LANG_TABLE
-        .iter()
-        .find(|(k, _)| *k == c)
-        .map(|(_, n)| *n)
-        .unwrap_or(if c.is_empty() { "—" } else { c })
-}
-
-/// 某侧可选语言 code 列表。
-pub fn lang_codes_for_side(is_source: bool) -> Vec<&'static str> {
-    LANG_TABLE
-        .iter()
-        .filter(|(code, _)| is_source || *code != "auto")
-        .map(|(code, _)| *code)
-        .collect()
-}
-
-/// 交换语言：auto 规则对齐原型（目标 auto 时落到 en）。
-pub fn swap_session_langs(source: &str, target: &str) -> (String, String) {
-    let new_source = if target == "auto" {
-        "en".to_string()
-    } else {
-        target.to_string()
-    };
-    let new_target = if source == "auto" {
-        "en".to_string()
-    } else {
-        source.to_string()
-    };
-    (new_source, new_target)
 }
 
 unsafe fn create_ui_font(height_px: i32, weight: i32) -> HFONT {
@@ -916,19 +860,12 @@ pub fn card_extra_error(card: &PaintCardSnapshot) -> Option<&str> {
 }
 
 fn model_tag_for_card(card: &PaintCardSnapshot) -> String {
-    if is_machine_translate_protocol(&card.protocol) {
-        return String::new();
-    }
-    let m = card.model_name.trim();
-    if m.is_empty() || m == "—" || m == "-" {
-        String::new()
-    } else {
-        m.to_string()
-    }
+    display_model_name(&card.protocol, &card.model_name)
 }
 
 fn tokens_label(card: &PaintCardSnapshot) -> String {
-    if is_machine_translate_protocol(&card.protocol) {
+    let has_usage = card.usage_input.is_some() || card.usage_output.is_some();
+    if !should_show_tokens(&card.protocol, has_usage) {
         return String::new();
     }
     match (card.usage_input, card.usage_output) {

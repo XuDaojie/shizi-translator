@@ -3,12 +3,25 @@
 #![cfg(all(windows, feature = "popup-winui"))]
 
 mod host;
+pub mod langs;
+pub mod meta;
+pub mod state;
 
 // M0 对外 API：bootstrap 探测 + STA host（后续任务 3+ 使用 handle / 命令）
 #[allow(unused_imports)]
 pub use host::{
     ensure_process_bootstrap, is_popup_window_visible, is_process_bootstrapped, HostCmd,
     ReactorHostHandle, POPUP_TITLE, SENTINEL_TITLE,
+};
+
+#[allow(unused_imports)]
+pub use langs::{lang_codes_for_side, lang_display_name, swap_session_langs, LANG_TABLE};
+#[allow(unused_imports)]
+pub use meta::{display_model_name, is_machine_translate_protocol, should_show_tokens};
+#[allow(unused_imports)]
+pub use state::{
+    first_copyable_service_id, global_snapshot, global_state, resolve_copy_fields,
+    resolve_copy_text, store_global, SharedPopupState,
 };
 
 /// M0：是否已链接 windows-reactor（编译期存在性）。
