@@ -35,6 +35,9 @@ dotnet build native/windows/popup/Shizi.Popup.csproj -c Release -p:Platform=x64
 
 # Debug（WASDK 仍自包含；.NET 可为 framework-dependent）
 dotnet build native/windows/popup/Shizi.Popup.csproj -c Debug -p:Platform=x64
+
+# 单测
+dotnet test native/windows/popup/Shizi.Popup.Tests/Shizi.Popup.Tests.csproj -c Release
 ```
 
 ### 自包含要点 / Runtime 弹窗
@@ -63,22 +66,70 @@ native/windows/popup/bin/x64/Release/net8.0-windows10.0.19041.0/win-x64/Shizi.Po
 native/windows/popup/bin/x64/Debug/net8.0-windows10.0.19041.0/win-x64/Shizi.Popup.exe
 ```
 
-Rust 查找顺序：
+## 打包布局（任务 12）
 
-1. 可执行文件旁 `popup-native/Shizi.Popup.exe`（安装/打包布局，任务 12）
-2. 相对 `CARGO_MANIFEST_DIR` 的上述 Debug/Release 输出（含 `bin/x64/...`）
+安装包 / release 运行时，Rust `host.rs` 查找顺序：
 
-`src-tauri/build.rs` 在 Windows 上可选调用 `dotnet build`（已有产物则跳过；`SHIZI_BUILD_WINUI=1` 强制；失败仅 warn）。
+1. **可执行文件旁** `popup-native/Shizi.Popup.exe`（NSIS 安装布局；优先）
+2. 可执行文件旁直接 `Shizi.Popup.exe`
+3. 相对 `CARGO_MANIFEST_DIR` 的 dev 输出（`bin/x64/{Release,Debug}/net8.0-.../win-x64/`）
+
+### 推荐流程
+
+```bash
+# 仓库根目录：build + 拷到 src-tauri/resources/popup-native
+npm run popup-native:copy
+# 或
+powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/copy-popup-native.ps1
+
+# 正式打包（beforeBuildCommand 会自动再跑一次 popup-native:copy）
+npm run tauri build
+```
+
+| 项 | 说明 |
+|----|------|
+| 脚本 | `scripts/copy-popup-native.ps1` → `src-tauri/resources/popup-native/`，并在已有 `target/{debug,release}` 时同步到 exe 旁 |
+| `tauri.conf.json` | `bundle.resources`: `resources/popup-native` → 安装目录 `popup-native/` |
+| `build.rs` | Windows 上 best-effort `dotnet build`；Release 时同步到 `resources/popup-native` 与 `target/<profile>/popup-native` |
+| 体积 | **WASDK 自包含**，整树可达数百 MB；目录已 gitignore，勿提交 |
+| 严格模式 | `SHIZI_POPUP_NATIVE_STRICT=1` 时脚本失败非 0 退出（发版流水线可用） |
+| 强制重编 | `SHIZI_BUILD_WINUI=1` 让 `build.rs` 强制 `dotnet build` |
+
+未装 .NET / 构建失败时：脚本仍创建占位目录以免 `tauri build` 因 resources 路径缺失中断；此时 WinUI 不可用，默认 `popupUi: webview` 不受影响。
+
+## CI
+
+`.github/workflows/ci.yml` 的 **backend** job（`windows-latest`）：
+
+1. `actions/setup-dotnet@v5` → `8.0.x`
+2. `dotnet build` `Shizi.Popup.csproj` Release x64
+3. `dotnet test` `Shizi.Popup.Tests`
+4. 既有 `cargo test` / `cargo build`
 
 ## 手工验收
 
+### 开发联调
+
 ```bash
+dotnet build native/windows/popup/Shizi.Popup.csproj -c Release -p:Platform=x64
 # 无 IPC：直接看窗口壳
 ./native/windows/popup/bin/x64/Release/net8.0-windows10.0.19041.0/win-x64/Shizi.Popup.exe
 
 # 与主程序联调：设置 popupUi=winui 后 npm run tauri dev
 # ensure 失败会会话回退 webview（不写回 config）
 ```
+
+### 验收清单（任务 12.D）
+
+| # | 项 | 状态 |
+|---|----|------|
+| 1 | 默认 `popupUi: webview`，行为与现网一致 | 待手工 |
+| 2 | 设置改 winui → 保存 → **下次**划词出原生窗 | 待手工 |
+| 3 | 多服务流式 / 取消 / 重试 / 语言切换 / 图钉 / 设置 / 截图译 / 关窗 hide | 待手工 |
+| 4 | 两后端不同时可见 | 待手工 |
+| 5 | 模拟 ensure 失败 → 回退 webview，config 仍为 winui | 待手工 |
+| 6 | 安装包内存在 `popup-native/Shizi.Popup.exe` 且 winui 可启动 | 待手工（tauri 联调） |
+| 7 | CI：dotnet build/test + cargo test 绿 | 自动化 |
 
 ## 目录
 
@@ -89,7 +140,8 @@ native/windows/popup/
   Host/PopupController.cs   # 窗壳操作
   Host/IpcHost.cs           # TCP / named pipe
   Host/PopupExports.cs      # C ABI 语义名对照
-  Bridge/NativeBridge.cs    # Bridge 最小接线
+  Bridge/NativeBridge.cs    # Bridge 接线
+  State/                    # 翻译状态机
+  Services/                 # 朗读等 UI 侧服务
+  Shizi.Popup.Tests/        # xUnit
 ```
-
-任务 9：状态机与单测；任务 10：完整翻译 UI 区块。

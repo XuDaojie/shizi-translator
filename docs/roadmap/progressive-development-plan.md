@@ -8,10 +8,10 @@ Shizi 的目标是在 Windows 上打造一款响应极快、启动丝滑、体�
 
 1. **MVP 阶段**：完全基于 Tauri v2，使用 Rust 承载系统能力和核心业务，使用 Web 技术快速完成设置页与翻译弹窗。
 2. **原生能力扩展阶段**：补齐截图、OCR、跨平台系统能力。
-3. **原生 UI 优化阶段**：保持 Rust 核心和 Web 设置页不变，将性能敏感的翻译弹窗替换为 Slint。
+3. **原生 UI 优化阶段**：保持 Rust 核心和 Web 设置页不变；Windows 上以 **WinUI3 与 WebView 并行**（`popupUi` 切换，默认 WebView）优化翻译弹窗；历史上曾规划 Slint，现以 WinUI 为主实现路径。
 4. **产品化阶段**：完善多模型管理、打包、跨平台适配和性能抛光。
 
-核心原则：**先跑通业务闭环，再替换性能敏感模块；Rust 核心稳定，UI 可插拔。**
+核心原则：**先跑通业务闭环，再替换性能敏感模块；Rust 核心稳定，UI 可插拔（双后端）。**
 
 ## 里程碑 1：Tauri + Web 纯血 MVP 版
 
@@ -442,7 +442,7 @@ translation_total_ms
 
 ## 前端体验优化（Tauri UI 路线）
 
-在 Tauri UI（WebView）路线下持续提升前端体验，暂不切 Slint。
+在 Tauri UI（WebView）路线下持续提升前端体验；Windows 可选 WinUI3 原生弹窗与 WebView 并行（见下）。
 
 - **设置页 Vue 3 重构**（骨架可交付，2026-07）：Vite 7 + Vue 3.5 + Tailwind CSS v4 + shadcn-vue（new-york）+ Iconify 替换原纯静态 HTML/JS/CSS。translate / overlay 平铺进 `frontend/public/` 保持纯静态（overlay 永久不迁）。构建产物 `frontend/dist/`。UI 视觉细节待 open design 原型图定稿后打磨。
 - **翻译弹窗 UI 打磨**（已完成，2026-07）：按 OpenDesign 原型整套重写 `frontend/public/translate.html` / `translate.js` / `translate.css`——去 Windows 原生标题栏改自绘工具栏（`data-tauri-drag-region` 拖拽）、`decorations:false`+`transparent:true`+`resizable:false`、宽 452/.popup 420 固定 + 高自适应（ResizeObserver → `setSize`）、单卡片 + 预留多卡数据结构、图钉/截图翻译/设置/朗读/复制接真实后端、收藏/书签/语言栏 toast 占位、取消/重试挂状态栏文字按钮；后端仅新增 `trigger_ocr_translation` 薄封装 + 两个窗口权限。
@@ -453,8 +453,9 @@ translation_total_ms
 - [x] 服务实例按启用状态和列表顺序驱动翻译批次
 - [x] 翻译弹窗支持多服务结果卡
 - [x] 服务协议抽象接入 OpenAI Chat 与 Claude Messages
+- [x] Windows WinUI3 原生翻译弹窗与 WebView 并行（`popupUi`，默认 webview；subprocess TCP；feature 分支收尾中）
 - 翻译页 Vue 迁移（后续）
-- 最终视实际体验决定是否切 Slint
+- 历史：Slint 替换方案已让位于 WinUI 并行双后端（见 `docs/superpowers/specs/2026-07-24-winui-native-translation-popup-design.md`）
 
 参考 Poets / Pot 等项目时，必须先分析再设计，不能边看边搬。推荐流程：
 

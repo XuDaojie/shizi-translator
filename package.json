@@ -12,7 +12,8 @@
     "release:bump": "node scripts/bump-version.js",
     "release:bump:dry": "node scripts/bump-version.js --dry",
     "release:bump:beta": "node scripts/bump-version.js --beta",
-    "release:bump:dry:beta": "node scripts/bump-version.js --dry --beta"
+    "release:bump:dry:beta": "node scripts/bump-version.js --dry --beta",
+    "popup-native:copy": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/copy-popup-native.ps1"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4",

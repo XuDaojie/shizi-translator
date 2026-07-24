@@ -1034,7 +1034,7 @@ git commit -m "fix(popup): WinUI ensure 失败会话回退 webview 且不写回�
 5. 模拟 ensure 失败（错误路径 DLL）→ 回退 webview，config 仍为 winui  
 6. 非 Windows CI 绿  
 
-- [ ] **步骤：实现文档与 CI + Commit**
+- [x] **步骤：实现文档与 CI + Commit**
 
 ```bash
 git add native/README.md docs/agent/architecture-notes.md README.md docs/roadmap AGENTS.md CLAUDE.md .github/workflows src-tauri

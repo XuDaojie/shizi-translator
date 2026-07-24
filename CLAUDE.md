@@ -12,7 +12,8 @@ Windows 端大模型翻译软件（Tauri 2 + Vue/Vite），目标体验接近 ma
 ```
 frontend/          Vite：settings.html（设置）、translate.html（弹窗 Vue）、public/overlay.html（OCR 框选，永久静态）
   src/popup/       翻译弹窗组件与 composable；历史面板复用其卡片组件
-src-tauri/         Rust：lib.rs 装配；app/ 托盘快捷键窗口；core/{config,history,llm,mt,translation,selection,capture,ocr,update}；ui/ commands
+src-tauri/         Rust：lib.rs 装配；app/ 托盘快捷键窗口（含 popup_ui / popup_bridge）；core/{config,history,llm,mt,translation,selection,capture,ocr,update}；ui/ commands
+native/windows/popup/  可选 WinUI3 翻译弹窗（popupUi=winui；subprocess TCP）
 capabilities/      Tauri 权限（改快捷键/窗口 API 须同步）
 plugins.md         已装插件/技能清单（变更须同步）
 ```
@@ -31,8 +32,9 @@ plugins.md         已装插件/技能清单（变更须同步）
 完整说明见 [docs/agent/architecture-notes.md](docs/agent/architecture-notes.md)。改模块前先读对应小节。
 
 - **分层**：业务在 Rust 核心；UI 仅弹窗 / 设置 / overlay，勿把核心逻辑写进前端、勿让 UI 模块互耦。
+- **翻译弹窗**：`popupUi` 为 `webview`（默认）或 `winui`（Windows 可选）；抽象在 `app/popup_ui`，Bridge 在 `app/popup_bridge`，原生工程在 `native/windows/popup`；切换下次唤起生效，ensure 失败会话回退 webview 且不写 config。
 - **托盘驻留**：关窗 = hide；托盘退出才进程结束。`main` 默认不可见，冷启动由前端 show。
-- **配置事实来源**：`config.json` 的 `services[]`；协议 `openai_chat` / `claude_messages` / `mock` / `microsoft_edge`（`provider_for_service`）。`AppConfig` 另含 `updateChannel`（`stable`/`beta`）、`autoCheckUpdate`（默认 `true`）、`launchAtLogin`（默认 `false`，Windows Run + `--autostart` 静默托盘）。
+- **配置事实来源**：`config.json` 的 `services[]`；协议 `openai_chat` / `claude_messages` / `mock` / `microsoft_edge`（`provider_for_service`）。`AppConfig` 另含 `updateChannel`（`stable`/`beta`）、`autoCheckUpdate`（默认 `true`）、`launchAtLogin`（默认 `false`，Windows Run + `--autostart` 静默托盘）、`popupUi`（`webview`/`winui`）。
 - **配置同步**：设置页 `syncFromBackend`；`save_app_config` → `app-config:changed` 刷新弹窗卡片。
 - **批次翻译**：启用服务保序并发；事件带 `serviceInstanceId`；单服务失败不影响其他。
 - **快捷键**：`Alt+D` 划词、`Alt+S` 截图译；文字识别默认无快捷键（托盘入口）；新快捷键同步 capabilities。

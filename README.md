@@ -12,7 +12,7 @@
 
 **柿子翻译**（拼音 **Shizi**，简称 **柿子**）是一款开源的 Windows 桌面翻译软件，支持输入翻译、划词翻译与截图 OCR 翻译，可接入 OpenAI 兼容接口、Claude、Microsoft Edge 等翻译服务。
 
-灵感来自 macOS 平台的 [Bob](https://bobtranslate.com/)，基于 [Tauri 2](https://tauri.app/)、Rust 与 Vue 3 构建。
+灵感来自 macOS 平台的 [Bob](https://bobtranslate.com/)，基于 [Tauri 2](https://tauri.app/)、Rust 与 Vue 3 构建。翻译弹窗默认 WebView；Windows 上可在设置中切换可选的 WinUI3 原生弹窗（`popupUi`）。
 
 > Shizi is an open-source Windows translator powered by LLMs and OCR — selection translate, screenshot OCR, and multi-service streaming results.
 
@@ -157,7 +157,7 @@
 
 | 分类 | 内容 |
 |------|------|
-| 通用 | 开机启动、界面语言、更新通道等 |
+| 通用 | 开机启动、界面语言、翻译弹窗 UI（WebView / WinUI3）、更新通道等 |
 | 翻译 | 源 / 目标语言、复制粘贴相关行为 |
 | 快捷键 | 全局快捷键绑定 |
 | 服务 | 翻译渠道与文字识别（OCR）实例 |
@@ -206,17 +206,22 @@
 - Node.js（用于前端与 `@tauri-apps/cli`）
 - Rust stable（edition 2021）
 - Windows + WebView2 Runtime
+- （可选）[.NET 8 SDK](https://dotnet.microsoft.com/download) — 构建 WinUI 原生弹窗；默认 WebView 路径不需要
 
 ### 常用命令
 
 ```bash
 npm install                 # 安装依赖
 npm run tauri dev           # 开发模式（Vite + 后端）
-npm run tauri build         # 生成 release 安装包（NSIS）
+npm run tauri build         # 生成 release 安装包（NSIS；会 best-effort 拷贝 WinUI 产物）
+npm run popup-native:copy   # 单独构建并拷贝 WinUI → src-tauri/resources/popup-native
 npm run typecheck           # 前端类型检查
 npm run test                # 前端单测
 cd src-tauri && cargo test  # 后端单测
+dotnet test native/windows/popup/Shizi.Popup.Tests/Shizi.Popup.Tests.csproj -c Release  # WinUI 单测
 ```
+
+WinUI 打包布局、查找路径与验收清单见 [`native/README.md`](native/README.md)。
 
 仅启动前端（无 Tauri 容器，`invoke` 不可用）：
 

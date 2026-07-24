@@ -6,7 +6,7 @@
     "frontendDist": "../frontend/dist",
     "devUrl": "http://localhost:5173",
     "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build"
+    "beforeBuildCommand": "npm run build && npm run popup-native:copy"
   },
   "bundle": {
     "icon": [
@@ -15,6 +15,9 @@
     "targets": [
       "nsis"
     ],
+    "resources": {
+      "resources/popup-native": "popup-native"
+    },
     "windows": {
       "nsis": {
         "installerIcon": "icons/icon.ico"

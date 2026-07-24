@@ -1,8 +1,9 @@
 # Windows WinUI3 原生翻译弹窗（与 WebView 并行）
 
 > 日期：2026-07-24  
-> 状态：已批准  
-> 规模：L（新子系统 / 跨栈：Rust 宿主 + C# WinUI3）
+> 状态：**实现完成（feature 分支 `feature/winui-native-translation-popup`）**  
+> 规模：L（新子系统 / 跨栈：Rust 宿主 + C# WinUI3）  
+> 实现备注：宿主采用 **subprocess + localhost TCP**（非进程内 hostfxr）；打包 / CI / 文档见任务 12 与 `native/README.md`。
 
 ## 1. 背景与目标
 

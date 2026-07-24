@@ -27,10 +27,17 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '8.0.x'
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+      - name: Build WinUI popup
+        run: dotnet build native/windows/popup/Shizi.Popup.csproj -c Release -p:Platform=x64
+      - name: Test WinUI popup
+        run: dotnet test native/windows/popup/Shizi.Popup.Tests/Shizi.Popup.Tests.csproj -c Release
       - run: cargo test
         working-directory: src-tauri
       - run: cargo build

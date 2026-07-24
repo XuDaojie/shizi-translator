@@ -5,8 +5,17 @@
 ## 分层与窗口
 
 - **核心层（Rust）**：翻译业务、配置、provider 抽象（LLM/MT 平级）、划词、OCR、历史、日志。
-- **UI 层**：① 翻译弹窗 `main` → `translate.html`（Vue，`src/popup/`）② 设置页 `settings` → `settings.html` ③ 截图 overlay（纯静态，永久不迁 Vue）。历史面板右侧复用 `SourceCardView` / `ResultCardView` / `LanguageToolbar`。
+- **UI 层**：① 翻译弹窗（**双后端**，默认 WebView）② 设置页 `settings` → `settings.html` ③ 截图 overlay（纯静态，永久不迁 Vue）。历史面板右侧复用 `SourceCardView` / `ResultCardView` / `LanguageToolbar`。
 - **约束**：核心逻辑不进前端；UI 模块互不耦合。
+
+### 翻译弹窗双后端（WebView / WinUI）
+
+- **默认** `AppConfig.popupUi: "webview"` → `main` → `translate.html`（Vue，`frontend/src/popup/`），路径 `app/popup_ui/webview` + 既有 `popup_window`。
+- **可选** `popupUi: "winui"`（仅 Windows）→ WinUI3 原生窗；源码 `native/windows/popup`；Rust 侧 `app/popup_ui`（trait / session / facade）+ `app/popup_bridge`（协议、分发、推送、子进程 host）。
+- **Transport**：subprocess + localhost TCP JSON 行协议（`host.rs`）；非进程内 hostfxr。查找 `Shizi.Popup.exe`：exe 旁 `popup-native/` → dev `native/windows/popup/bin/...`。
+- **切换**：设置保存后**下次** `ensure`/`show` 生效（不热切）；同一时刻只激活一种后端。
+- **回退**：WinUI `ensure` 失败 → 日志 + **会话内**回退 webview，**不写回** `config.json`。
+- 打包 / CI / 验收清单见 `native/README.md`。
 
 ## 托盘与窗口生命周期
 
@@ -22,7 +31,7 @@
 
 - 事实来源：`config.json` 的 `services[]`（`protocol` / `endpoint` / `model` / `apiKey` / `enabled`）。旧单 provider 路径已废弃。
 - 协议 id：`openai_chat` / `claude_messages` / `mock` / `microsoft_edge`。映射在 `core/translation/protocol.rs` 的 `provider_for_service`；未知协议报错。`microsoft_edge` 经 `BatchTranslateProvider` + `StreamingAdapter` 适配流式。
-- `AppConfig` 另含 `updateChannel`（`stable`/`beta`）、`autoCheckUpdate`（默认 `true`）、`launchAtLogin`（默认 `false`）；前后端经 `projectToAppConfig` / `syncFromBackend` 同步。
+- `AppConfig` 另含 `updateChannel`（`stable`/`beta`）、`autoCheckUpdate`（默认 `true`）、`launchAtLogin`（默认 `false`）、`popupUi`（`webview`/`winui`，默认 `webview`）；前后端经 `projectToAppConfig` / `syncFromBackend` 同步。
 - 开机自启：`launchAtLogin` → `app/autostart.rs` 写 HKCU `...\Run\Shizi`（命令带 `--autostart`）；`save_app_config` 与启动 setup 均同步；托盘/关窗 hide 为硬编码产品行为，设置页不再提供「最小化启动 / 托盘显隐 / 关闭行为」开关。
 - 设置页挂载 `settings.syncFromBackend()`：后端 `services` 空 → 前端 `projectToAppConfig` 覆盖写回；非空 → `mergeBackendIntoServices` 按 id 合并（后端覆盖 enabled/apiKey/endpoint/model/protocol；前端保留 prompts/keyStatus/chainOfThought/pulledModels/note）。
 - `save_app_config` 后广播 `app-config:changed`；弹窗同步卡片（翻译中不新增未参与批次的服务卡）。
@@ -68,11 +77,13 @@
 | 领域 | 路径 |
 |------|------|
 | 装配 / 托盘 / 快捷键 | `src-tauri/src/lib.rs`、`app/` |
+| 弹窗后端抽象 / Bridge | `src-tauri/src/app/popup_ui/`、`app/popup_bridge/` |
 | 配置 | `src-tauri/src/core/config/` |
 | 翻译 / 协议 | `src-tauri/src/core/translation/` |
 | LLM / MT | `src-tauri/src/core/llm/`、`core/mt/` |
 | 检查更新 | `src-tauri/src/core/update/`、`ui/update.rs` |
 | 截图 / OCR | `src-tauri/src/core/capture/`、`core/ocr/`、`ocr_translation.rs` |
 | UI commands | `src-tauri/src/ui/` |
-| 翻译弹窗前端 | `frontend/src/popup/` |
+| 翻译弹窗前端（WebView） | `frontend/src/popup/` |
+| 翻译弹窗原生（WinUI） | `native/windows/popup/` |
 | 设置页 | `frontend/src/` + `settings.html` |
