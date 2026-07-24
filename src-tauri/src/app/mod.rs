@@ -5,4 +5,5 @@ pub mod state;
 pub mod tray;
 pub mod window;
 pub mod popup_window;
+pub mod popup_ui;
 pub mod logging;
