@@ -7,6 +7,7 @@
 - **核心层（Rust）**：翻译业务、配置、provider 抽象（LLM/MT 平级）、划词、OCR、历史、日志。
 - **UI 层**：① 翻译弹窗 `main` → `translate.html`（Vue，`src/popup/`）② 设置页 `settings` → `settings.html` ③ 截图 overlay（纯静态，永久不迁 Vue）。历史面板右侧复用 `SourceCardView` / `ResultCardView` / `LanguageToolbar`。
 - **约束**：核心逻辑不进前端；UI 模块互不耦合。
+- **弹窗后端 / WinUI 表面**：**采用路径 B：Win32 表面**（`app/popup_backend/winui/`：`WS_POPUP` + `WS_EX_TOOLWINDOW` + DWM 圆角；**未依赖 WinAppSDK / XAML Runtime**）。配置枚举值仍为 `winui`；feature `popup-winui`；契约 `PopupBackend` / `PopupHost`。翻译协议与配置持久化不进 UI 层。
 
 ## 托盘与窗口生命周期
 

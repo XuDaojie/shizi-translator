@@ -1,7 +1,7 @@
 //! 弹窗后端：ViewModel、PopupBackend trait、Webview / WinUI 实现与 PopupHost 调度。
 //!
-//! `popup-winui` feature + Windows 时 `Winui` kind 使用 [`winui::WinuiPopupBackend`]（骨架）；
-//! 否则回退 WebView。
+//! `popup-winui` feature + Windows 时 `Winui` kind 使用 [`winui::WinuiPopupBackend`]
+//!（**路径 B：Win32 表面**，非 XAML）；否则回退 WebView。
 
 // 部分 API 供后续 WinUI / 设置页使用，当前主路径尚未全量消费。
 #![allow(dead_code)]
