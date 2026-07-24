@@ -1,4 +1,4 @@
-//! 路径 R 最小弹窗 UI：标题/关闭 + 源文 + 单卡正文 + 复制。
+//! 路径 R 弹窗 UI：标题栏 + 源文 + 单卡正文 + 复制 + 状态栏。
 //!
 //! 状态由 host 的 `use_async_state` 驱动；本模块只渲染。
 //! 动作经本模块静态 handler 分发（由 `actions::install_action_handler` 注册为
@@ -9,7 +9,7 @@
 
 use std::sync::Mutex;
 
-use windows_reactor::{button, hstack, text_block, vstack, Element, ElementExt};
+use windows_reactor::{button, caption, hstack, text_block, vstack, Element, ElementExt};
 
 use crate::app::popup_backend::types::{
     PopupCardStatus, PopupCardVm, PopupUserAction, PopupViewModel,
@@ -38,7 +38,64 @@ fn dispatch_user_action(action: PopupUserAction) {
     }
 }
 
-/// 渲染最小翻译弹窗（M1 契约：源文 + 首卡 + 关闭/复制）。
+/// 底部状态栏文案：`is_translating` → 翻译中；源文空 → 就绪；否则完成。
+fn footer_status_label(is_translating: bool, source_text: &str) -> &'static str {
+    if is_translating {
+        "翻译中…"
+    } else if source_text.trim().is_empty() {
+        "就绪"
+    } else {
+        "完成"
+    }
+}
+
+/// 源文字数（Unicode 标量，`chars().count()`）。
+fn source_char_count(source_text: &str) -> usize {
+    source_text.chars().count()
+}
+
+fn title_bar() -> Element {
+    hstack((
+        text_block("柿子翻译").font_size(14.0).semibold(),
+        button("钉").on_click(|| {
+            log::debug!("Reactor 标题栏：钉（stub）");
+        }),
+        button("收藏").on_click(|| {
+            log::debug!("Reactor 标题栏：收藏（stub）");
+        }),
+        button("截图").on_click(|| {
+            log::debug!("Reactor 标题栏：截图（stub）");
+        }),
+        button("书签").on_click(|| {
+            log::debug!("Reactor 标题栏：书签（stub）");
+        }),
+        button("设置").on_click(|| {
+            dispatch_user_action(PopupUserAction::OpenSettings);
+        }),
+        // 最小化：路径 R 无独立 hide 动作，与关闭同为 Close（宿主 hide 弹窗）
+        button("最小化").on_click(|| {
+            dispatch_user_action(PopupUserAction::Close);
+        }),
+        button("关闭").on_click(|| {
+            dispatch_user_action(PopupUserAction::Close);
+        }),
+    ))
+    .spacing(6.0)
+    .into()
+}
+
+fn status_bar(vm: &PopupViewModel) -> Element {
+    let status = footer_status_label(vm.is_translating, &vm.source_text);
+    let count = source_char_count(&vm.source_text);
+    hstack((
+        caption(status.to_string()),
+        caption(format!("{count} 字")),
+    ))
+    .spacing(8.0)
+    .into()
+}
+
+/// 渲染翻译弹窗（标题栏 + 源文 + 首卡 + 状态栏；多卡见任务 9）。
 pub fn render_popup(vm: &PopupViewModel) -> Element {
     let source = if vm.source_text.is_empty() {
         String::from("（无源文）")
@@ -50,15 +107,6 @@ pub fn render_popup(vm: &PopupViewModel) -> Element {
     let body = card
         .map(card_body_text)
         .unwrap_or_else(|| String::from("（等待结果）"));
-    let status_line = card
-        .map(|c| status_label(&c.status, vm.is_translating))
-        .unwrap_or_else(|| {
-            if vm.is_translating {
-                "翻译中…".to_string()
-            } else {
-                String::new()
-            }
-        });
     let service_line = card
         .map(|c| {
             if c.service_name.is_empty() {
@@ -75,16 +123,10 @@ pub fn render_popup(vm: &PopupViewModel) -> Element {
         .unwrap_or_default();
 
     vstack((
-        hstack((
-            text_block("柿子翻译").font_size(14.0).semibold(),
-            button("关闭").on_click(|| {
-                dispatch_user_action(PopupUserAction::Close);
-            }),
-        ))
-        .spacing(8.0),
+        title_bar(),
+        // 源文：只读展示 + 可选中复制（selectable text_block）
         text_block(source).font_size(16.0).wrap().selectable(),
         text_block(service_line).font_size(12.0),
-        text_block(status_line).font_size(12.0),
         text_block(body).font_size(14.0).wrap().selectable(),
         button("复制").on_click(move || {
             if sid.is_empty() {
@@ -95,6 +137,7 @@ pub fn render_popup(vm: &PopupViewModel) -> Element {
                 service_instance_id: sid.clone(),
             });
         }),
+        status_bar(vm),
     ))
     .spacing(12.0)
     .width(POPUP_VIEW_WIDTH)
@@ -117,21 +160,6 @@ fn card_body_text(card: &PopupCardVm) -> String {
         PopupCardStatus::Finished => String::new(),
         PopupCardStatus::Failed => "失败".into(),
         PopupCardStatus::Cancelled => "已取消".into(),
-    }
-}
-
-fn status_label(status: &PopupCardStatus, is_translating: bool) -> String {
-    let base = match status {
-        PopupCardStatus::Pending => "等待",
-        PopupCardStatus::Translating => "翻译中",
-        PopupCardStatus::Finished => "完成",
-        PopupCardStatus::Failed => "失败",
-        PopupCardStatus::Cancelled => "已取消",
-    };
-    if is_translating && !matches!(status, PopupCardStatus::Translating) {
-        format!("{base} · 批次进行中")
-    } else {
-        base.to_string()
     }
 }
 
@@ -172,9 +200,20 @@ mod tests {
     }
 
     #[test]
-    fn view_status_label_reflects_card() {
-        assert_eq!(status_label(&PopupCardStatus::Finished, false), "完成");
-        assert!(status_label(&PopupCardStatus::Finished, true).contains("批次"));
+    fn view_footer_status_label_by_state() {
+        assert_eq!(footer_status_label(true, ""), "翻译中…");
+        assert_eq!(footer_status_label(true, "hello"), "翻译中…");
+        assert_eq!(footer_status_label(false, ""), "就绪");
+        assert_eq!(footer_status_label(false, "   "), "就绪");
+        assert_eq!(footer_status_label(false, "hello"), "完成");
+    }
+
+    #[test]
+    fn view_source_char_count_uses_unicode_scalars() {
+        assert_eq!(source_char_count(""), 0);
+        assert_eq!(source_char_count("hello"), 5);
+        assert_eq!(source_char_count("柿子"), 2);
+        assert_eq!(source_char_count("a😀b"), 3);
     }
 
     #[test]
@@ -185,5 +224,10 @@ mod tests {
             ..Default::default()
         };
         let _el = render_popup(&vm);
+    }
+
+    #[test]
+    fn view_popup_width_is_468() {
+        assert!((POPUP_VIEW_WIDTH - 468.0).abs() < f64::EPSILON);
     }
 }
