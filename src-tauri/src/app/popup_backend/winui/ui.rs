@@ -6,7 +6,7 @@
 //! - DWM 圆角 + 边框色（best-effort）；`CS_DROPSHADOW` 轻阴影（未用 `WS_EX_LAYERED`）
 //! - GDI 自绘：Segoe UI 字体、Fluent 暖色板、源文 + 多服务结果卡（可滚动）+ 底部动作条
 //! - chrome：`is_translating` 时显示取消按钮
-//! - 用户动作：Esc 关闭、Ctrl+C 复制、滚轮滚动卡片区、工具栏点击、双击标题区关闭
+//! - 用户动作：Esc 关闭、Ctrl+C 复制、滚轮滚动卡片区、工具栏点击；顶部条拖动（HTCAPTION）、双击关闭
 //! - 不依赖 Microsoft.UI.Xaml / WinAppSDK
 
 use std::sync::{Mutex, Once};
@@ -19,10 +19,10 @@ use windows::Win32::Graphics::Dwm::{
 };
 use windows::Win32::Graphics::Gdi::{
     BeginPaint, CreateFontW, CreateSolidBrush, DeleteObject, DrawTextW, EndPaint, FillRect,
-    IntersectClipRect, InvalidateRect, RestoreDC, SaveDC, SelectObject, SetBkMode, SetTextColor,
-    CLEARTYPE_QUALITY, DEFAULT_CHARSET, DEFAULT_PITCH, DT_CALCRECT, DT_CENTER, DT_END_ELLIPSIS,
-    DT_LEFT, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER, DT_WORDBREAK, FF_DONTCARE, FW_NORMAL,
-    FW_SEMIBOLD, HFONT, HGDIOBJ, PAINTSTRUCT, TRANSPARENT,
+    IntersectClipRect, InvalidateRect, RestoreDC, SaveDC, ScreenToClient, SelectObject, SetBkMode,
+    SetTextColor, CLEARTYPE_QUALITY, DEFAULT_CHARSET, DEFAULT_PITCH, DT_CALCRECT, DT_CENTER,
+    DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER, DT_WORDBREAK, FF_DONTCARE,
+    FW_NORMAL, FW_SEMIBOLD, HFONT, HGDIOBJ, PAINTSTRUCT, TRANSPARENT,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::HiDpi::{GetDpiForSystem, GetDpiForWindow};
@@ -33,11 +33,11 @@ use windows::Win32::UI::WindowsAndMessaging::{
     BringWindowToTop, CreateWindowExW, DefWindowProcW, DestroyWindow, GetClientRect,
     GetForegroundWindow, GetWindowThreadProcessId, IsWindow, IsWindowVisible, LoadCursorW,
     PostMessageW, RegisterClassExW, SetForegroundWindow, SetWindowPos, ShowWindow, CS_DBLCLKS,
-    CS_DROPSHADOW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, HMENU, HWND_NOTOPMOST, HWND_TOP,
-    HWND_TOPMOST, IDC_ARROW, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, SW_HIDE,
-    SW_SHOW, SW_SHOWNOACTIVATE, USER_DEFAULT_SCREEN_DPI, WM_CLOSE, WM_DESTROY, WM_KEYDOWN,
-    WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MOUSEWHEEL, WM_PAINT, WM_USER, WNDCLASSEXW,
-    WS_CLIPCHILDREN, WS_EX_TOOLWINDOW, WS_POPUP,
+    CS_DROPSHADOW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, HMENU, HTCAPTION, HTCLIENT,
+    HWND_NOTOPMOST, HWND_TOP, HWND_TOPMOST, IDC_ARROW, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+    SWP_SHOWWINDOW, SW_HIDE, SW_SHOW, SW_SHOWNOACTIVATE, USER_DEFAULT_SCREEN_DPI, WM_CLOSE,
+    WM_DESTROY, WM_KEYDOWN, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MOUSEWHEEL, WM_NCLBUTTONDBLCLK,
+    WM_NCHITTEST, WM_PAINT, WM_USER, WNDCLASSEXW, WS_CLIPCHILDREN, WS_EX_TOOLWINDOW, WS_POPUP,
 };
 use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
 
@@ -887,10 +887,25 @@ pub fn hit_test_toolbar(
     None
 }
 
-/// 标题区（双击关闭）命中。
+/// 标题拖动区命中（顶部条）：返回 `true` 时 `WM_NCHITTEST` → `HTCAPTION` 由系统拖动；
+/// 双击该区关闭（`WM_NCLBUTTONDBLCLK`）。
 pub fn hit_test_title_bar(y: i32, scale: f64) -> bool {
     let h = ((TITLE_HIT_LOGICAL_H as f64) * scale).round() as i32;
     y >= 0 && y < h
+}
+
+/// 屏幕坐标点是否落在标题拖动区（供 `WM_NCHITTEST`）。
+pub fn hit_test_title_bar_screen(hwnd: HWND, screen_x: i32, screen_y: i32) -> bool {
+    let mut pt = POINT {
+        x: screen_x,
+        y: screen_y,
+    };
+    unsafe {
+        if !ScreenToClient(hwnd, &mut pt).as_bool() {
+            return false;
+        }
+    }
+    hit_test_title_bar(pt.y, window_scale(hwnd))
 }
 
 fn lparam_to_point(lparam: LPARAM) -> POINT {
@@ -1233,6 +1248,24 @@ unsafe extern "system" fn wnd_proc(
             }
             let _ = EndPaint(hwnd, &ps);
             LRESULT(0)
+        }
+        WM_NCHITTEST => {
+            // 无系统标题栏：顶部条声明为 HTCAPTION，由系统处理拖动（对齐 WebView drag-region）。
+            let pt = lparam_to_point(lparam); // NCHITTEST 的 lParam 为屏幕坐标
+            if hit_test_title_bar_screen(hwnd, pt.x, pt.y) {
+                LRESULT(HTCAPTION as isize)
+            } else {
+                LRESULT(HTCLIENT as isize)
+            }
+        }
+        WM_NCLBUTTONDBLCLK => {
+            // 标题区双击关闭（HTCAPTION 下不会走 WM_LBUTTONDBLCLK）
+            if wparam.0 == HTCAPTION as usize {
+                dispatch_bound_action(PopupUserAction::Close);
+                LRESULT(0)
+            } else {
+                DefWindowProcW(hwnd, msg, wparam, lparam)
+            }
         }
         WM_LBUTTONDOWN => {
             handle_mouse_click(hwnd, lparam, false);
