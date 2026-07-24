@@ -614,18 +614,10 @@ describe('syncFromBackend', () => {
     await Promise.resolve()
     expect(invokeGetAppConfig).toHaveBeenCalledTimes(1)
 
-    backend.resolve({
-      interfaceLanguage: 'auto', targetLang: 'zh-CN', defaultSourceLang: 'auto',
-      windowPrecreate: { manual: { popup: true, overlay: false }, autostart: { popup: false, overlay: false } }, 
-      autoCopy: true, restoreClipboard: true, historyLimit: 500, services: [], ocrServices: [], collectUsage: true, logLevel: 'info', updateChannel: 'stable', autoCheckUpdate: true, shortcuts: {},
-    })
+    backend.resolve(makeAppConfig([], { interfaceLanguage: 'auto' }))
     await Promise.all([first, second])
 
-    vi.mocked(invokeGetAppConfig).mockResolvedValueOnce({
-      interfaceLanguage: 'auto', targetLang: 'zh-CN', defaultSourceLang: 'auto',
-      windowPrecreate: { manual: { popup: true, overlay: false }, autostart: { popup: false, overlay: false } }, 
-      autoCopy: true, restoreClipboard: true, historyLimit: 500, services: [], ocrServices: [], collectUsage: true, logLevel: 'info', updateChannel: 'stable', autoCheckUpdate: true, shortcuts: {},
-    })
+    vi.mocked(invokeGetAppConfig).mockResolvedValueOnce(makeAppConfig([], { interfaceLanguage: 'auto' }))
     vi.mocked(invokeGetInterfaceLanguageSnapshot).mockResolvedValueOnce(languageSnapshot())
     await settings.syncFromBackend()
     expect(invokeGetAppConfig).toHaveBeenCalledTimes(2)
@@ -641,22 +633,10 @@ describe('syncFromBackend', () => {
 
   it('后端 services 为空时推前端配置覆盖后端', async () => {
     vi.mocked(isTauriReady).mockReturnValue(true);
-    vi.mocked(invokeGetAppConfig).mockResolvedValue({
+    vi.mocked(invokeGetAppConfig).mockResolvedValue(makeAppConfig([], {
       interfaceLanguage: 'auto',
       targetLang: '中文',
-      defaultSourceLang: 'auto',
-      autoCopy: true,
-      restoreClipboard: true,
-      historyLimit: 500,
-      services: [],
-      ocrServices: [],
-      windowPrecreate: { manual: { popup: true, overlay: false }, autostart: { popup: false, overlay: false } }, 
-      collectUsage: true,
-      logLevel: 'info',
-      updateChannel: 'stable',
-      autoCheckUpdate: true,
-      shortcuts: {},
-    });
+    }));
 
     const settings = useSettings();
     const expectedIds = settings.state.services.map((s) => s.id);
@@ -672,11 +652,7 @@ describe('syncFromBackend', () => {
     vi.mocked(isTauriReady).mockReturnValue(true)
     const settings = useSettings()
     settings.state.general.language = 'it-IT'
-    vi.mocked(invokeGetAppConfig).mockResolvedValue({
-      interfaceLanguage: 'zh-CN', targetLang: 'zh-CN', defaultSourceLang: 'auto',
-      windowPrecreate: { manual: { popup: true, overlay: false }, autostart: { popup: false, overlay: false } }, 
-      autoCopy: true, restoreClipboard: true, historyLimit: 500, services: [], ocrServices: [], collectUsage: true, logLevel: 'info', updateChannel: 'stable', autoCheckUpdate: true, shortcuts: {},
-    })
+    vi.mocked(invokeGetAppConfig).mockResolvedValue(makeAppConfig([], { interfaceLanguage: 'zh-CN' }))
     vi.mocked(invokeGetInterfaceLanguageSnapshot).mockResolvedValue(languageSnapshot({
       configuredLocale: 'zh-CN', locale: 'zh-CN',
       languages: [{ locale: 'zh-CN', name: '简体中文', builtin: true }],
@@ -703,11 +679,7 @@ describe('syncFromBackend', () => {
     await settings.save()
     vi.clearAllMocks()
     vi.mocked(isTauriReady).mockReturnValue(true)
-    vi.mocked(invokeGetAppConfig).mockResolvedValue({
-      interfaceLanguage: 'auto', targetLang: 'zh-CN', defaultSourceLang: 'auto',
-      windowPrecreate: { manual: { popup: true, overlay: false }, autostart: { popup: false, overlay: false } }, 
-      autoCopy: true, restoreClipboard: true, historyLimit: 500, services: [], ocrServices: [], collectUsage: true, logLevel: 'info', updateChannel: 'stable', autoCheckUpdate: true, shortcuts: {},
-    })
+    vi.mocked(invokeGetAppConfig).mockResolvedValue(makeAppConfig([], { interfaceLanguage: 'auto' }))
     vi.mocked(invokeSaveAppConfig).mockRejectedValueOnce(new Error('write failed'))
 
     await settings.syncFromBackend()
@@ -721,11 +693,7 @@ describe('syncFromBackend', () => {
   it('首次推送等待期间的用户修改在旧推送失败后恢复自动保存', async () => {
     vi.useFakeTimers()
     vi.mocked(isTauriReady).mockReturnValue(true)
-    vi.mocked(invokeGetAppConfig).mockResolvedValue({
-      interfaceLanguage: 'auto', targetLang: 'zh-CN', defaultSourceLang: 'auto',
-      windowPrecreate: { manual: { popup: true, overlay: false }, autostart: { popup: false, overlay: false } }, 
-      autoCopy: true, restoreClipboard: true, historyLimit: 500, services: [], ocrServices: [], collectUsage: true, logLevel: 'info', updateChannel: 'stable', autoCheckUpdate: true, shortcuts: {},
-    })
+    vi.mocked(invokeGetAppConfig).mockResolvedValue(makeAppConfig([], { interfaceLanguage: 'auto' }))
     vi.mocked(invokeGetInterfaceLanguageSnapshot).mockResolvedValue(languageSnapshot())
     const pendingSave = deferred<Awaited<ReturnType<typeof invokeSaveAppConfig>>>()
     vi.mocked(invokeSaveAppConfig)
@@ -764,55 +732,34 @@ describe('syncFromBackend', () => {
       languages: [{ locale: 'fr-FR', name: 'Français', builtin: true }],
     }));
 
-    vi.mocked(invokeGetAppConfig).mockResolvedValue({
+    vi.mocked(invokeGetAppConfig).mockResolvedValue(makeAppConfig([
+      makeBackend({
+        id: localId,
+        apiKey: 'backend-key',
+        systemPrompt: '系统提示',
+        translationPrompt: '翻译提示',
+        reflectionPrompt: '反思提示',
+        reflectionEnabled: true,
+        chainOfThought: 'medium',
+      }),
+      makeBackend({
+        id: 'extra',
+        serviceType: 'claude',
+        name: 'Claude',
+        enabled: false,
+        protocol: 'claude_messages',
+        apiKey: null,
+        endpoint: 'https://api.anthropic.com',
+        model: 'claude-haiku-4-5',
+      }),
+    ], {
       interfaceLanguage: 'fr-FR',
       targetLang: '中文',
-      services: [
-        {
-          id: localId,
-          serviceType: 'deepseek',
-          name: 'DeepSeek',
-          enabled: true,
-          protocol: 'openai_chat',
-          apiKey: 'backend-key',
-          endpoint: 'https://api.deepseek.com',
-          model: 'deepseek-chat',
-          timeoutSeconds: 60,
-          systemPrompt: '系统提示',
-          translationPrompt: '翻译提示',
-          reflectionPrompt: '反思提示',
-          reflectionEnabled: true,
-          chainOfThought: 'medium',
-        },
-        {
-          id: 'extra',
-          serviceType: 'claude',
-          name: 'Claude',
-          enabled: false,
-          protocol: 'claude_messages',
-          apiKey: null,
-          endpoint: 'https://api.anthropic.com',
-          model: 'claude-haiku-4-5',
-          timeoutSeconds: 60,
-          systemPrompt: '',
-          translationPrompt: '',
-          reflectionPrompt: '',
-          reflectionEnabled: false,
-          chainOfThought: 'off',
-        },
-      ],
-      ocrServices: [],
       defaultSourceLang: 'en',
       autoCopy: false,
       restoreClipboard: false,
       historyLimit: 123,
-      windowPrecreate: { manual: { popup: true, overlay: false }, autostart: { popup: false, overlay: false } }, 
-      collectUsage: true,
-      logLevel: 'info',
-      updateChannel: 'stable',
-      autoCheckUpdate: true,
-      shortcuts: {},
-    });
+    }));
 
     await settings.syncFromBackend();
 
@@ -841,11 +788,9 @@ describe('syncFromBackend', () => {
       locale: 'zh-CN',
       languages: [{ locale: 'zh-CN', name: '简体中文', builtin: true }],
     }));
-    vi.mocked(invokeGetAppConfig).mockResolvedValue({
-      interfaceLanguage: 'zh-CN', targetLang: 'zh-CN', services: [makeBackend({ id: localId })], ocrServices: [],
-      windowPrecreate: { manual: { popup: true, overlay: false }, autostart: { popup: false, overlay: false } }, 
-      defaultSourceLang: 'auto', autoCopy: true, restoreClipboard: true, historyLimit: 500, collectUsage: true, logLevel: 'info', updateChannel: 'stable', autoCheckUpdate: true, shortcuts: {},
-    });
+    vi.mocked(invokeGetAppConfig).mockResolvedValue(
+      makeAppConfig([makeBackend({ id: localId })], { interfaceLanguage: 'zh-CN' }),
+    );
 
     await settings.syncFromBackend();
 
@@ -857,37 +802,20 @@ describe('syncFromBackend', () => {
     const localId = settings.state.services[0].id;
     const before = settings.state.shortcut.bindings.find((b) => b.id === 'translate-selection')!;
 
-    vi.mocked(invokeGetAppConfig).mockResolvedValue({
+    vi.mocked(invokeGetAppConfig).mockResolvedValue(makeAppConfig([
+      makeBackend({
+        id: localId,
+        enabled: false,
+        apiKey: null,
+      }),
+    ], {
       interfaceLanguage: 'auto',
       targetLang: '中文',
-      defaultSourceLang: 'auto',
-      autoCopy: true,
-      restoreClipboard: true,
-      historyLimit: 500,
-      services: [
-        makeBackend({
-          id: localId,
-          serviceType: 'deepseek',
-          name: 'DeepSeek',
-          enabled: false,
-          protocol: 'openai_chat',
-          apiKey: null,
-          endpoint: 'https://api.deepseek.com',
-          model: 'deepseek-chat',
-          timeoutSeconds: 60,
-        }),
-      ],
-      ocrServices: [],
-      windowPrecreate: { manual: { popup: true, overlay: false }, autostart: { popup: false, overlay: false } }, 
-      collectUsage: true,
-      logLevel: 'info',
-      updateChannel: 'stable',
-      autoCheckUpdate: true,
       shortcuts: {
         'translate-selection': 'Ctrl+Alt+D',
         'translate-screenshot': '',
       },
-    });
+    }));
 
     await settings.syncFromBackend();
 
@@ -903,34 +831,17 @@ describe('syncFromBackend', () => {
     const settings = useSettings();
     const localId = settings.state.services[0].id;
 
-    vi.mocked(invokeGetAppConfig).mockResolvedValue({
+    vi.mocked(invokeGetAppConfig).mockResolvedValue(makeAppConfig([
+      makeBackend({
+        id: localId,
+        enabled: false,
+        apiKey: null,
+      }),
+    ], {
       interfaceLanguage: 'auto',
       targetLang: '中文',
-      defaultSourceLang: 'auto',
-      autoCopy: true,
-      restoreClipboard: true,
-      historyLimit: 500,
-      services: [
-        makeBackend({
-          id: localId,
-          serviceType: 'deepseek',
-          name: 'DeepSeek',
-          enabled: false,
-          protocol: 'openai_chat',
-          apiKey: null,
-          endpoint: 'https://api.deepseek.com',
-          model: 'deepseek-chat',
-          timeoutSeconds: 60,
-        }),
-      ],
-      ocrServices: [],
-      windowPrecreate: { manual: { popup: true, overlay: false }, autostart: { popup: false, overlay: false } }, 
-      collectUsage: true,
-      logLevel: 'info',
-      updateChannel: 'stable',
-      autoCheckUpdate: true,
       shortcuts: { 'translate-selection': 'Alt+D' },
-    });
+    }));
     vi.mocked(invokeGetShortcutConflicts).mockResolvedValue([
       { id: 'translate-selection', message: '已被其他应用占用' },
     ]);
@@ -950,34 +861,16 @@ describe('syncFromBackend', () => {
       const settings = useSettings();
       const localId = settings.state.services[0].id;
 
-      vi.mocked(invokeGetAppConfig).mockResolvedValue({
+      vi.mocked(invokeGetAppConfig).mockResolvedValue(makeAppConfig([
+        makeBackend({
+          id: localId,
+          enabled: false,
+          apiKey: null,
+        }),
+      ], {
         interfaceLanguage: 'auto',
         targetLang: '中文',
-        defaultSourceLang: 'auto',
-        autoCopy: true,
-        restoreClipboard: true,
-        historyLimit: 500,
-        services: [
-          makeBackend({
-            id: localId,
-            serviceType: 'deepseek',
-            name: 'DeepSeek',
-            enabled: false,
-            protocol: 'openai_chat',
-            apiKey: null,
-            endpoint: 'https://api.deepseek.com',
-            model: 'deepseek-chat',
-            timeoutSeconds: 60,
-          }),
-        ],
-        ocrServices: [],
-        windowPrecreate: { manual: { popup: true, overlay: false }, autostart: { popup: false, overlay: false } }, 
-        collectUsage: true,
-        logLevel: 'info',
-        updateChannel: 'stable',
-        autoCheckUpdate: true,
-        shortcuts: {},
-      });
+      }));
       await settings.syncFromBackend();
       vi.mocked(invokeSaveAppConfig).mockClear();
 
@@ -1000,34 +893,16 @@ describe('syncFromBackend', () => {
     const settings = useSettings();
     const localId = settings.state.services[0].id;
 
-    vi.mocked(invokeGetAppConfig).mockResolvedValue({
+    vi.mocked(invokeGetAppConfig).mockResolvedValue(makeAppConfig([
+      makeBackend({
+        id: localId,
+        enabled: false,
+        apiKey: null,
+      }),
+    ], {
       interfaceLanguage: 'auto',
       targetLang: '中文',
-      defaultSourceLang: 'auto',
-      autoCopy: true,
-      restoreClipboard: true,
-      historyLimit: 500,
-      services: [
-        makeBackend({
-          id: localId,
-          serviceType: 'deepseek',
-          name: 'DeepSeek',
-          enabled: false,
-          protocol: 'openai_chat',
-          apiKey: null,
-          endpoint: 'https://api.deepseek.com',
-          model: 'deepseek-chat',
-          timeoutSeconds: 60,
-        }),
-      ],
-      ocrServices: [],
-      windowPrecreate: { manual: { popup: true, overlay: false }, autostart: { popup: false, overlay: false } }, 
-      collectUsage: true,
-      logLevel: 'info',
-      updateChannel: 'stable',
-      autoCheckUpdate: true,
-      shortcuts: {},
-    });
+    }));
 
     await settings.syncFromBackend();
 
@@ -1059,34 +934,16 @@ describe('syncFromBackend', () => {
       const settings = useSettings();
       const localId = settings.state.services[0].id;
 
-      vi.mocked(invokeGetAppConfig).mockResolvedValue({
+      vi.mocked(invokeGetAppConfig).mockResolvedValue(makeAppConfig([
+        makeBackend({
+          id: localId,
+          enabled: false,
+          apiKey: null,
+        }),
+      ], {
         interfaceLanguage: 'auto',
         targetLang: '中文',
-        defaultSourceLang: 'auto',
-        autoCopy: true,
-        restoreClipboard: true,
-        historyLimit: 500,
-        services: [
-          makeBackend({
-            id: localId,
-            serviceType: 'deepseek',
-            name: 'DeepSeek',
-            enabled: false,
-            protocol: 'openai_chat',
-            apiKey: null,
-            endpoint: 'https://api.deepseek.com',
-            model: 'deepseek-chat',
-            timeoutSeconds: 60,
-          }),
-        ],
-        ocrServices: [],
-        windowPrecreate: { manual: { popup: true, overlay: false }, autostart: { popup: false, overlay: false } }, 
-        collectUsage: true,
-        logLevel: 'info',
-        updateChannel: 'stable',
-        autoCheckUpdate: true,
-        shortcuts: {},
-      });
+      }));
       await settings.syncFromBackend();
       vi.mocked(invokeSaveAppConfig).mockClear();
 
@@ -1155,22 +1012,19 @@ describe('defaultTargetLang', () => {
 
   it('syncFromBackend 回读 targetLang 到 defaultTargetLang', async () => {
     vi.mocked(isTauriReady).mockReturnValue(true);
-    vi.mocked(invokeGetAppConfig).mockResolvedValue({
+    vi.mocked(invokeGetAppConfig).mockResolvedValue(makeAppConfig([
+      makeBackend({
+        id: 'svc-1',
+        serviceType: 'llm',
+        name: 'A',
+        apiKey: 'k',
+        endpoint: 'e',
+        model: 'm',
+      }),
+    ], {
       interfaceLanguage: 'auto',
       targetLang: 'en-US',
-      defaultSourceLang: 'auto',
-      autoCopy: true,
-      restoreClipboard: true,
-      historyLimit: 500,
-      services: [{ id: 'svc-1', serviceType: 'llm', name: 'A', enabled: true, protocol: 'openai_chat', apiKey: 'k', endpoint: 'e', model: 'm', timeoutSeconds: 60, systemPrompt: '', translationPrompt: '', reflectionPrompt: '', reflectionEnabled: false, chainOfThought: 'off' }],
-      ocrServices: [],
-      windowPrecreate: { manual: { popup: true, overlay: false }, autostart: { popup: false, overlay: false } }, 
-      collectUsage: true,
-      logLevel: 'info',
-      updateChannel: 'stable',
-      autoCheckUpdate: true,
-      shortcuts: {},
-    });
+    }));
     const settings = useSettings();
     await settings.syncFromBackend();
     expect(settings.state.translation.defaultTargetLang).toBe('en-US');

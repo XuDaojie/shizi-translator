@@ -43,8 +43,8 @@ const updateChannelOptions = computed(() => [
 
 /** 仅 Windows 桌面壳可选 WinUI；纯 vite / 非 win 禁用。 */
 const popupUiWinuiAvailable = computed(() => {
-  const p = (navigator.userAgentData as { platform?: string } | undefined)?.platform
-    ?? navigator.platform
+  const nav = navigator as Navigator & { userAgentData?: { platform?: string } }
+  const p = nav.userAgentData?.platform ?? nav.platform
   return /Win/i.test(String(p))
 })
 const popupUiOptions = computed(() => [
