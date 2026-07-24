@@ -3,9 +3,11 @@ mod core;
 mod platform;
 mod ui;
 
+use std::sync::Mutex;
+
 use app::{
     logging,
-    popup_window::ensure_popup_window,
+    popup_backend::{self, PopupHost},
     shortcuts::{handle_global_shortcut, register_global_shortcuts_at_startup},
     state::AppState,
     tray::{setup_tray, TrayI18nHandles},
@@ -161,9 +163,18 @@ pub fn run() {
                 .state::<AppState>()
                 .set_shortcut_conflicts(shortcut_conflicts);
 
+            // 弹窗后端宿主：配置解析 → create_backend（M1 Winui 回退 WebView）→ manage。
+            let kind = popup_backend::resolve_popup_backend_kind(
+                &config.popup_ui_backend,
+                popup_backend::POPUP_WINUI_FEATURE,
+                cfg!(windows),
+            );
+            let backend = popup_backend::create_backend(app.handle(), kind);
+            app.manage(Mutex::new(PopupHost::from_backend(backend)));
+
             // 按 windowPrecreate（手动 / 自启）决定是否预建 main 与 overlay。
-            // 设置页 / 文字识别不在启动时创建。
-            let _ = ensure_popup_window(app.handle(), &config);
+            // 设置页 / 文字识别不在启动时创建。预建经 ensure_popup_window → host.ensure_created。
+            let _ = crate::app::popup_window::ensure_popup_window(app.handle(), &config);
             let _ = ensure_overlay(app.handle());
 
             // 用当前 exe 路径刷新 Run 项（升级后路径变化时仍能自启）；失败不挡启动。
@@ -177,13 +188,22 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("构建应用失败")
-        .run(|_app_handle, event| {
+        .run(|app_handle, event| match event {
             // 托盘驻留：无窗 / 关最后一窗不退出；托盘「退出」走 app.exit 带 code，不拦截。
-            if let tauri::RunEvent::ExitRequested { api, code, .. } = event {
+            tauri::RunEvent::ExitRequested { api, code, .. } => {
                 if code.is_none() {
                     api.prevent_exit();
                 }
             }
+            // 进程退出时 best-effort 销毁弹窗后端资源。
+            tauri::RunEvent::Exit => {
+                if let Some(state) = app_handle.try_state::<Mutex<PopupHost>>() {
+                    if let Ok(mut host) = state.lock() {
+                        host.destroy();
+                    }
+                }
+            }
+            _ => {}
         });
 }
 

@@ -89,6 +89,7 @@ pub fn ensure_popup_exists(app: &tauri::AppHandle) -> Result<WebviewWindow, Stri
 }
 
 /// 启动时按当前启动路径的 `windowPrecreate.*.popup` 决定是否预建。
+/// 经 [`crate::app::popup_backend::PopupHost`] 调度（WebView 实现内仍 `ensure_popup_exists`）。
 pub fn ensure_popup_window(app: &tauri::AppHandle, config: &AppConfig) -> Result<(), String> {
     let pair = config
         .window_precreate
@@ -96,10 +97,12 @@ pub fn ensure_popup_window(app: &tauri::AppHandle, config: &AppConfig) -> Result
     if !pair.popup {
         return Ok(());
     }
-    ensure_popup_exists(app).map(|_| ())
+    crate::app::popup_backend::with_host(app, |host| host.ensure_created())
+        .and_then(std::convert::identity)
 }
 
 /// 隐藏翻译弹窗。截图前调用，避免把弹窗打进 DXGI 帧；幂等。
+/// WebView 实现内部使用；业务路径应经 PopupHost / `with_host`。
 pub fn hide_popup(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window(POPUP_LABEL) {
         let _ = window.hide();

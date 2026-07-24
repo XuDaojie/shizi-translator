@@ -9,7 +9,7 @@ use tauri::Manager;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    app::{popup_window, state::AppState},
+    app::{popup_backend, popup_window, state::AppState},
     core::{
         config::{AppConfig, ServiceInstanceConfig},
         history::{NewHistoryResult, NewHistorySession},
@@ -36,6 +36,9 @@ pub fn emit_translation_event(
     app: &tauri::AppHandle,
     event: TranslationEvent,
 ) -> Result<(), tauri::Error> {
+    // 双发：先归并到 PopupHost ViewModel（WinUI 路径），再 emit 给 WebView 前端。
+    // Host 未就绪或锁失败时仅跳过 publish，不挡前端事件。
+    let _ = popup_backend::with_host(app, |host| host.publish_from_event(&event));
     app.emit(TRANSLATION_EVENT, event)
 }
 
@@ -45,12 +48,13 @@ pub fn show_translation_popup(app: &tauri::AppHandle, config: &AppConfig) -> Res
 }
 
 /// 唤起翻译弹窗，可指定定位策略（托盘打开用 Restore，避免跟鼠标到托盘角）。
+/// 经 [`PopupHost`] 调度；WebView 实现内部仍走 `popup_window::show_popup`。
 pub fn show_translation_popup_with(
     app: &tauri::AppHandle,
-    config: &AppConfig,
+    _config: &AppConfig,
     mode: popup_window::PopupPositionMode,
 ) -> Result<(), String> {
-    popup_window::show_popup(app, config, mode)
+    popup_backend::with_host(app, |host| host.show(mode))?
 }
 
 pub fn start_translation_from_text(

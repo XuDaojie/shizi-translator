@@ -456,8 +456,10 @@ fn start_popup_translation(app_handle: tauri::AppHandle, input: TranslationInput
         return;
     }
 
-    // 热路径：窗已在，show + 立即开译（前端已 listen）。
-    if app_handle.get_webview_window("main").is_some() {
+    // 热路径：弹窗已存活 → host.show + 立即开译（前端已 listen）。
+    let alive = crate::app::popup_backend::with_host(&app_handle, |host| host.is_alive())
+        .unwrap_or(false);
+    if alive {
         let config = state.config_store.get();
         if let Ok(config) = &config {
             if let Err(error) = show_translation_popup(&app_handle, config) {
@@ -471,23 +473,18 @@ fn start_popup_translation(app_handle: tauri::AppHandle, input: TranslationInput
         return;
     }
 
-    // 冷路径（自启后首次等）：独立线程建窗 → show → 开译。
+    // 冷路径（自启后首次等）：独立线程 ensure+show → 开译。
     // 前端 Vue listen 仍可能未就绪，事件可能丢失；pending 原文 + 前端冷启动补发兜底。
+    // ensure_created 在后台线程阻塞建窗，避免快捷键回调栈 WebView2 死锁，并在开译前保证窗就绪。
     let app = app_handle.clone();
     std::thread::spawn(move || {
         let state = app.state::<AppState>();
-        let config = match state.config_store.get() {
-            Ok(c) => c,
-            Err(e) => {
-                show_translation_error(&app, e.to_string());
-                return;
-            }
-        };
-        if let Err(error) = crate::app::popup_window::show_popup_blocking(
-            &app,
-            &config,
-            crate::app::popup_window::PopupPositionMode::NearCursor,
-        ) {
+        let show_result = crate::app::popup_backend::with_host(&app, |host| {
+            host.ensure_created()?;
+            host.show(crate::app::popup_window::PopupPositionMode::NearCursor)
+        })
+        .and_then(std::convert::identity);
+        if let Err(error) = show_result {
             show_translation_error(&app, error);
             return;
         }

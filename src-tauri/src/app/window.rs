@@ -27,18 +27,13 @@ fn present_window(window: &WebviewWindow) -> Result<(), String> {
     Ok(())
 }
 
-/// 托盘双击等：已有 main 则 show；否则走 `show_popup`（独立线程建窗）。
+/// 托盘双击等：经 PopupHost 唤起翻译弹窗（Restore，不跟鼠标）。
+/// WebView 后端：已存在则当前线程 show；不存在则独立线程建窗（避死锁）。
 pub fn show_window(app: &tauri::AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = present_window(&window);
-        return;
-    }
-    let config = app
-        .try_state::<crate::app::state::AppState>()
-        .and_then(|s| s.config_store.get().ok())
-        .unwrap_or_else(crate::core::config::AppConfig::default);
-    if let Err(error) =
-        crate::app::popup_window::show_popup(app, &config, crate::app::popup_window::PopupPositionMode::Restore)
+    if let Err(error) = crate::app::popup_backend::with_host(app, |host| {
+        host.show(crate::app::popup_window::PopupPositionMode::Restore)
+    })
+    .and_then(std::convert::identity)
     {
         log::warn!("打开翻译弹窗失败: {error}");
     }

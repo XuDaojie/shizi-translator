@@ -3,7 +3,6 @@ use tauri_plugin_dialog::DialogExt;
 
 use crate::{
     app::{
-        popup_window,
         state::{AppState, CapturePurpose},
         window::{hide_ocr_window, show_ocr_window},
     },
@@ -63,7 +62,7 @@ pub async fn start_ocr_capture_flow(app: AppHandle, state: AppState) {
 
     // 截图前隐藏翻译弹窗与文字识别窗，避免窗口内容进帧（Alt+O / 识别窗「截图」共用此路径）。
     // 框选结束 submit / 失败路径会再 show_ocr_window。
-    popup_window::hide_popup(&app);
+    let _ = crate::app::popup_backend::with_host(&app, |host| host.hide());
     hide_ocr_window(&app);
     // 给 DWM 提交 hide 的时间，降低把窗口残影打进下一帧的概率。
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
