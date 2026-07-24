@@ -143,7 +143,7 @@ Get-Process shizi* -ErrorAction SilentlyContinue |
 ## 历史与日志
 
 - 历史：`HistoryStore` → `history.sqlite3`；统一翻译入口写 session/result；设置页 `list_translation_history` / `clear_translation_history`。
-- 日志：`logs/Shizi.log`（tauri-plugin-log）与 `frontend.log`（append command）分文件；`logLevel` 可运行时切换；API Key 与正文脱敏；失败 best-effort。
+- 日志：`logs/Shizi.log`（tauri-plugin-log）与 `frontend.log`（append command）分文件；`logLevel` 可运行时切换；API Key 与正文脱敏；失败 best-effort。debug/`tauri dev`：Rust 日志额外 stdout；前端 logger 额外 `console.*`（WebView 控制台）。
 
 ## 目录索引（实现时优先打开）
 

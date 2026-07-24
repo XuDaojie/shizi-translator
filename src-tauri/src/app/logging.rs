@@ -45,8 +45,9 @@ pub fn cleanup_old_logs(dir: &Path, days: u64) {
 }
 
 /// 初始化后端日志：注册 tauri-plugin-log，写入 `app_config_dir()/logs/Shizi.log`，
-/// 5MB KeepAll 轮转。注册时内部 level 设 Debug（不挡），全局 filter 由调用方
-/// 用 `log::set_max_level` 设置。best-effort，失败 eprintln 兜底不阻止启动。
+/// 5MB KeepAll 轮转。debug 构建（`tauri dev`）额外镜像到 stdout，便于终端联调。
+/// 注册时内部 level 设 Debug（不挡），全局 filter 由调用方用 `log::set_max_level` 设置。
+/// best-effort，失败 eprintln 兜底不阻止启动。
 pub fn init_logging(app: &tauri::AppHandle, log_level: &str) {
     let dir = match logs_dir(app) {
         Some(d) => d,
@@ -60,11 +61,20 @@ pub fn init_logging(app: &tauri::AppHandle, log_level: &str) {
         return;
     }
 
+    let mut targets = vec![Target::new(TargetKind::Folder {
+        path: dir.clone(),
+        file_name: None,
+    })];
+    // `tauri dev` 默认 debug profile；release 仅落盘，避免污染用户终端/服务日志。
+    if cfg!(debug_assertions) {
+        targets.push(Target::new(TargetKind::Stdout));
+    }
+
     let plugin = tauri_plugin_log::Builder::new()
         .level(log::LevelFilter::Debug)
         .max_file_size(5_000_000)
         .rotation_strategy(RotationStrategy::KeepAll)
-        .targets(vec![Target::new(TargetKind::Folder { path: dir.clone(), file_name: None })])
+        .targets(targets)
         .build();
 
     if let Err(error) = app.plugin(plugin) {

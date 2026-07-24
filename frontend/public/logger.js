@@ -6,6 +6,15 @@ const BUFFER_LIMIT = 1000
 const FLUSH_COUNT = 50
 const FLUSH_INTERVAL_MS = 2000
 
+/** Vite development 构建（tauri dev）镜像到 console；test/production 不镜像。 */
+function isDevMirrorEnabled() {
+  try {
+    return import.meta.env?.MODE === 'development'
+  } catch {
+    return false
+  }
+}
+
 function defaultDeps() {
   const tauri = (typeof window !== 'undefined' && window.__TAURI__) || {}
   return {
@@ -15,6 +24,8 @@ function defaultDeps() {
     setTimeout: typeof window !== 'undefined' ? window.setTimeout.bind(window) : undefined,
     clearTimeout: typeof window !== 'undefined' ? window.clearTimeout.bind(window) : undefined,
     visibilityState: typeof document !== 'undefined' ? () => document.visibilityState : () => 'visible',
+    console: typeof console !== 'undefined' ? console : undefined,
+    mirrorToConsole: isDevMirrorEnabled(),
   }
 }
 
@@ -68,13 +79,22 @@ export function createLogger(source, deps) {
 
   function log(msgLevel, message, meta) {
     if (!shouldLog(msgLevel)) return
+    const text = typeof message === 'string' ? message : String(message)
     enqueue({
       level: msgLevel,
-      message: typeof message === 'string' ? message : String(message),
+      message: text,
       timestamp: d.now(),
       source,
       meta: meta ?? undefined,
     })
+    // dev：同步打到 WebView/浏览器控制台，便于联调（仍会 flush 到 frontend.log）
+    if (d.mirrorToConsole && d.console) {
+      const fn = d.console[msgLevel] || d.console.log
+      if (typeof fn === 'function') {
+        if (meta === undefined) fn.call(d.console, `[${source}]`, text)
+        else fn.call(d.console, `[${source}]`, text, meta)
+      }
+    }
   }
 
   if (d.addEventListener) {

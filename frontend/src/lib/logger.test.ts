@@ -82,4 +82,28 @@ describe('createLogger', () => {
     expect(types).toContain('visibilitychange')
     expect(types).toContain('beforeunload')
   })
+
+  it('mirrorToConsole 时同步打到 console', () => {
+    const deps = makeDeps()
+    const info = vi.fn()
+    deps.mirrorToConsole = true
+    deps.console = { info, warn: vi.fn(), error: vi.fn(), debug: vi.fn(), log: vi.fn() }
+    const logger = createLogger('test', deps)
+    logger.setLevel('info')
+    logger.info('hello', { a: 1 })
+    expect(info).toHaveBeenCalledWith('[test]', 'hello', { a: 1 })
+  })
+
+  it('默认不 mirror 到 console（单测 MODE=test）', () => {
+    const deps = makeDeps()
+    const info = vi.fn()
+    deps.console = { info, warn: vi.fn(), error: vi.fn(), debug: vi.fn(), log: vi.fn() }
+    // 不设 mirrorToConsole，createLogger 合并 defaultDeps 后由 MODE 决定；单测为 test → false
+    // 但 makeDeps 覆盖了 default 字段时 mirror 可能缺失，显式 false 锁定行为
+    deps.mirrorToConsole = false
+    const logger = createLogger('test', deps)
+    logger.setLevel('info')
+    logger.info('silent')
+    expect(info).not.toHaveBeenCalled()
+  })
 })
