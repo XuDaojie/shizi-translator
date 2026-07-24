@@ -3,7 +3,7 @@
 //! **禁止**在此复制翻译协议、批次构建或 provider 调用；只调度 `AppState` 与
 //! `start_translation_from_input` / `show_settings` 等已有入口。
 //!
-//! `AppHandle` 保存在本模块（而非 `ui`），供 `wnd_proc` 经函数指针回调使用。
+//! `AppHandle` 保存在本模块，供 Reactor view 经函数指针回调使用。
 
 use std::sync::Mutex;
 
@@ -114,15 +114,11 @@ fn copy_card_text(service_instance_id: &str) -> Result<(), String> {
     write_clipboard_text(&text).map_err(|e| e.to_string())
 }
 
-/// 注册 UI 动作分发（函数指针，避免 UI 模块编译期反向依赖本模块业务路径）。
+/// 注册路径 R UI 动作分发（函数指针）。
 ///
-/// - GDI `ui.rs`：继续 `set_action_handler`（遗留，任务 11 删除）
-/// - 路径 R `reactor::view`：注册同一 [`handle_user_action`]（view 经静态
-///   指针分发，避免 `view → actions → host → view` 环）
-///
-/// 复制统一只读 `reactor::state` 全局快照。
+/// 仅注册 `reactor::view` 的 [`handle_user_action`]（view 经静态指针分发，
+/// 避免 `view → actions → host → view` 环）。复制统一只读 `reactor::state` 全局快照。
 pub fn install_action_handler() {
-    super::ui::set_action_handler(handle_user_action);
     super::reactor::view::set_user_action_handler(handle_user_action);
 }
 

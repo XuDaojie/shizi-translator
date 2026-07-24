@@ -1,8 +1,7 @@
-//! `WinuiPopupBackend`：路径 R（windows-reactor 真 WinUI 3）。
+//! `WinuiPopupBackend`：仅路径 R（windows-reactor 真 WinUI 3）。
 //!
 //! 配置枚举仍为 `winui`；窗口宿主为 `ReactorHostHandle`（专用 STA + 哨兵）。
-//! 翻译协议 / 配置持久化 / 历史写入不在本层。
-//! GDI `ui.rs` 仍可编译（任务 11 删除），本后端不再引用 `NativePopupHwnd`。
+//! 翻译协议 / 配置持久化 / 历史写入不在本层。GDI 路径 B 已移除。
 
 use super::actions;
 use super::bootstrap;
@@ -10,7 +9,7 @@ use super::reactor::{state as reactor_state, ReactorHostHandle};
 use crate::app::popup_backend::trait_api::PopupBackend;
 use crate::app::popup_backend::types::{PopupPositionMode, PopupUiBackendKind, PopupViewModel};
 
-/// 基于 windows-reactor 的翻译弹窗后端（feature 名 / 配置值仍为 winui）。
+/// 基于 windows-reactor 的翻译弹窗后端（feature 名 / 配置值仍为 winui = 路径 R）。
 pub struct WinuiPopupBackend {
     app: tauri::AppHandle,
     host: Option<ReactorHostHandle>,
@@ -21,8 +20,8 @@ impl WinuiPopupBackend {
         Self { app, host: None }
     }
 
-    /// 绑定 `AppHandle`；路径 R 的 view 直调 `handle_user_action`，须有 bound app。
-    /// `install_action_handler` 仍注册 GDI 回调（GDI 若仍编译），对 R 无害。
+    /// 绑定 `AppHandle`；路径 R view 经 `install_action_handler` 分发到
+    /// `handle_user_action`，须有 bound app。
     fn bind_app_for_ui(&self) {
         actions::install_action_handler();
         actions::bind_app(self.app.clone());

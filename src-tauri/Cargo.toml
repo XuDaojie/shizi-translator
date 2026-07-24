@@ -10,12 +10,11 @@ license = "GPL-3.0-only"
 name = "shizi_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
-# WinUI 弹窗后端：Windows 默认启用；可用 --no-default-features 关掉
+# WinUI 弹窗后端 = 路径 R（windows-reactor 真 WinUI 3）；Windows 默认启用；
+# 可用 --no-default-features 关掉。GDI 路径 B 已移除（无 popup-winui-gdi）。
 [features]
 default = ["popup-winui"]
 popup-winui = []
-# 预留：路径 B（GDI）回退 feature；本阶段未接线
-popup-winui-gdi = []
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

@@ -2,7 +2,7 @@
 //!
 //! 启动真切换：`resolve_popup_backend_kind` + [`create_backend`] / [`create_host_with_winui_fallback`]。
 //! `popup-winui` feature + Windows 时 `Winui` kind 使用 [`winui::WinuiPopupBackend`]
-//!（**路径 R：windows-reactor 真 WinUI 3**）；否则回退 WebView。
+//!（**仅路径 R：windows-reactor 真 WinUI 3**；GDI 路径 B 已移除）；否则回退 WebView。
 //! WinUI `ensure_created` 失败时同进程降级为 WebView，并（仅 Windows）一次性提示 Runtime。
 
 // 部分辅助 API（如 with_host 外扩展点）未必在所有 cfg 下全量引用。
