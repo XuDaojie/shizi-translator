@@ -1294,12 +1294,12 @@ git commit -m "docs(popup-winui): 路径 R 架构说明与 CI/Runtime 依赖"
 
 | 项 | 结论 |
 |----|------|
-| 共存模型 | _S1 / S2 / 否决_ |
-| `windows-rs` git rev | _SHA_ |
-| `windows` crate 版本 | _x.y_ |
-| 哨兵窗 / last-window-exit 处理 | _描述_ |
-| Runtime 版本 / 安装备注 | _描述_ |
-| 否决时的产品策略 | _若否决_ |
+| 共存模型 | **S1：同进程 + 专用 STA 线程**（`shizi-reactor-ui`）；否决门 **Go** |
+| `windows-rs` git rev | `884c9bbc1bd0a2315f00e0f04e34f6b1714653b9`（已锁定） |
+| `windows` crate 版本 | 应用侧 **0.58**；reactor 侧 `windows-core 0.62.2` 并存（M0 未强制统一升级） |
+| 哨兵窗 / last-window-exit 处理 | 主 `App` 窗为哨兵（`Shizi Reactor Sentinel`，1×1，立即 hide，永不 Close）；弹窗 `ReactorWindow` 仅 `ShowWindow` hide/show；reactor 在最后一扇已注册窗 Closed 时 `process::exit(0)` |
+| Runtime 版本 / 安装备注 | framework-dependent；reactor-setup 对齐 WASDK Runtime **2.3.1**；本机已装 App Runtime 2.x，bootstrap 成功；缺失时 `start()`/`try_bootstrap` → Err 可降级 WebView |
+| 否决时的产品策略 | **未否决**；若后续回归失败：停路径 R UI、保留 WebView 默认、GDI 不得冒充真 WinUI |
 
 ---
 

@@ -7,14 +7,10 @@
 
 ## M0 目的
 
-在改动弹窗后端实现之前，完成 **windows-reactor 依赖接入** 与 **编译期存在性探测**，作为否决门前半：
+在改动弹窗后端实现之前，完成：
 
-1. `windows-reactor` / `windows-reactor-setup` 能从 monorepo git 解析并参与编译。
-2. `cargo check -p shizi --features popup-winui` 无 error。
-3. 探测测试 `reactor_crate_is_linked` 通过。
-4. 不在本阶段实现 host STA 线程、不改 `WinuiPopupBackend`、不删 GDI `ui.rs`。
-
-任务 2 再做 STA 共存 spike 与完整否决门结论。
+1. `windows-reactor` / `windows-reactor-setup` 依赖接入与编译期存在性探测（任务 1）
+2. **S1 同进程 + 专用 STA 线程**共存 spike、否决门验收（任务 2）
 
 ## 候选 / 最终 pin 的 git rev
 
@@ -22,42 +18,119 @@
 |----|----|------|
 | monorepo | `https://github.com/microsoft/windows-rs` | |
 | 候选 rev | `884c9bbc1bd0a2315f00e0f04e34f6b1714653b9` | 计划初值 |
-| **最终 rev** | `884c9bbc1bd0a2315f00e0f04e34f6b1714653b9` | 候选一次拉通；任务 2 可再正式锁定 |
+| **最终 rev** | `884c9bbc1bd0a2315f00e0f04e34f6b1714653b9` | **M0 锁定** |
 | package | `windows-reactor` / `windows-reactor-setup`（均 `v0.0.0`） | monorepo git + `package` 名解析成功 |
-| 探测符号 | `windows_reactor::Element` | 编译通过，无需改名 |
-| `windows` crate | `0.58`（现有） | reactor 引入独立 `windows-core 0.62.2` 等；未强制升级应用侧 `windows` |
+| 探测符号 | `windows_reactor::Element` | 编译通过 |
+| `windows` crate | **应用侧仍 `0.58`** | reactor 侧独立 `windows-core 0.62.2` 并存；M0 **未**强制升级应用侧 windows（双 ABI 在本机可运行） |
+
+## 共存模型（写死）
+
+| 项 | 结论 |
+|----|------|
+| **模型** | **S1：同进程 + 专用 STA 线程**（线程名 `shizi-reactor-ui`） |
+| 否决 S2 | 未触发；S1 本机可启动 Application 消息循环 |
+| bootstrap | 进程级 `OnceLock` + `windows_reactor::bootstrap()` 一次 |
+| 消息循环 | `App::new().title(哨兵).inner_size(1,1).render(..)` 阻塞 STA 线程 |
+| 弹窗 | `ReactorWindow` + `Backdrop::Mica` + `text_block` / `button` |
+| 命令通道 | `mpsc::channel<HostCmd>` 非阻塞 send；UI 线程 `DispatcherTimer` 33ms `try_recv` |
+| 标签更新 | `use_async_state` + `AsyncSetState::call`（任意线程 marshal 到 UI） |
+| hide/show | `FindWindowW(title)` + `ShowWindow(SW_HIDE/SW_SHOW)`；**不** `WindowHandle::close` |
+| 哨兵 / last-window-exit | 主 `App` 窗为哨兵（标题 `Shizi Reactor Sentinel`，立即 hide）；reactor 在最后一扇**已注册**窗 `Closed` 时 `process::exit(0)`，故哨兵永不 Close |
+| 标题栏 X | 会销毁弹窗 HWND；下次 `Show` 在 UI 线程 `ReactorWindow` 重建（**不**重跑 bootstrap） |
+| 应用侧 backend | **仍为路径 B GDI**（本任务不切换 `WinuiPopupBackend`） |
+
+## API 形状（已实现）
+
+```rust
+// src-tauri/src/app/popup_backend/winui/reactor/host.rs
+pub enum HostCmd { Show, Hide, SetLabel(String), Shutdown }
+pub struct ReactorHostHandle { /* Sender<HostCmd> */ }
+impl ReactorHostHandle {
+    pub fn start() -> Result<Self, String>; // STA + bootstrap；失败可降级 WebView
+    pub fn publish_label(&self, s: impl Into<String>); // 非阻塞
+    pub fn show(&self);
+    pub fn hide(&self);
+    pub fn shutdown(&self); // 仅 hide，保留哨兵
+}
+pub fn ensure_process_bootstrap() -> Result<(), String>;
+```
+
+`bootstrap::try_bootstrap()` 已改为路径 R 探测（调用 `ensure_process_bootstrap`），**不再**断言「路径 B」恒真。
 
 ## 依赖接入备注
 
-- `Cargo.toml`：`[target.'cfg(windows)'.dependencies]` 增加 `windows-reactor`；`[target.'cfg(windows)'.build-dependencies]` 增加 `windows-reactor-setup`。
-- feature：`popup-winui` 保持默认开启；新增空 feature `popup-winui-gdi`（为后续 GDI 回退预留，本任务不接线）。
-- `build.rs`：在 `tauri_build::build()` 之后，Windows + `popup-winui` 下调用 `windows_reactor_setup::as_framework_dependent()`（framework-dependent，与 v1 发布模型一致）。
-- `windows` crate：以 `cargo check` 报错为准合并 reactor 所需 features，**保留**现有 OCR/截图 features。
-- 仅接线：`winui/mod.rs` 增加 `mod reactor;`，不改 backend / GDI。
+- `Cargo.toml`：`windows-reactor` / build-dep `windows-reactor-setup`，rev 见上表
+- feature：`popup-winui` 默认开；空 feature `popup-winui-gdi` 预留
+- `build.rs`：`windows_reactor_setup::as_framework_dependent()` → 复制 Bootstrap DLL + `resources.pri` 到 `target/{profile}/`
+- **测试注意**：`cargo test` 可执行文件在 `target/debug/deps/`，冒烟测试会尝试把 Bootstrap / `resources.pri` 复制到 exe 旁
 
-## 验收表（任务 2 填写）
+## Runtime 版本 / 安装备注
+
+| 项 | 值 |
+|----|----|
+| reactor-setup 声明 | Windows App SDK Runtime **2.3.1**（`as_framework_dependent` / self-contained 用） |
+| bootstrap 常量 | `WINDOWSAPPSDK_RELEASE_MAJORMINOR = 0x20000`（major 2）；runtime uint64 → **2.0.1.0** 最小版本语义 |
+| 本机已装 | `Microsoft.WindowsAppRuntime.2`（含 2.2.x / 2.3.x）及 1.x 多版本；Bootstrap 探测成功 |
+| 下载 | [Windows App Runtime 下载](https://learn.microsoft.com/windows/apps/windows-app-sdk/downloads)；产品侧沿用 `WINUI_RUNTIME_DOWNLOAD_URL` |
+| 缺失时行为 | `ensure_process_bootstrap` / `ReactorHostHandle::start` → `Err`；`try_bootstrap().ok == false` → 可被 `create_host_with_winui_fallback` 降级 |
+
+## 验收表
+
+### 编译 / 探测（任务 1+2）
 
 | 检查项 | 结果 | 备注 |
 |--------|------|------|
-| `cargo check -p shizi --features popup-winui` | PASS（M0） | 默认 feature 含 `popup-winui` |
-| `reactor_crate_is_linked` | PASS（M0） | `windows_reactor::Element` |
-| STA 宿主可创建（无 WinUI 控件） | （任务 2） | |
-| 与 Tauri WebView 同进程共存 | （任务 2） | |
-| 否决门结论（Go / No-Go） | （任务 2） | |
+| `cargo check -p shizi --features popup-winui` | **PASS** | |
+| `reactor_crate_is_linked` | **PASS** | |
+| `try_bootstrap_reports_path_r_not_path_b` | **PASS** | 文案含「路径 R」 |
+| `ensure_process_bootstrap_is_idempotent` | **PASS** | OnceLock |
+| host 命令通道非阻塞单测 | **PASS** | |
 
-## 依赖解析摘录（M0）
+### 手动 / 冒烟清单（任务 2）
 
-`cargo` 从候选 rev 锁定（节选）：
+| # | 标准 | 通过? | 备注 |
+|---|------|-------|------|
+| 1 | 同进程弹出真 WinUI 窗（Inspect 可见系统控件 / 非 GDI 矩形） | **PASS（代码路径+冒烟 HWND）** | 使用 `ReactorWindow` + WinUI `text_block`/`button`；Inspect 细看建议人工再确认一次 UI 外观 |
+| 2 | Mica 或明确记录 API 不可用原因 | **PASS** | `ReactorWindow::backdrop(Backdrop::Mica)`；API 可用，activate 内 apply |
+| 3 | SetLabel/publish 后文本可见更新 | **PASS（代码路径+冒烟）** | `AsyncSetState`；冒烟调用 `publish_label` 两次后进程稳定（视觉需人工扫一眼） |
+| 4 | hide → show 稳定，不重建 Runtime | **PASS** | 冒烟两次 show/hide；bootstrap OnceLock 进程一次 |
+| 5 | 关闭弹窗（hide）**不**退出托盘进程 | **PASS** | 冒烟 hide 后断言继续执行；哨兵防 `process::exit` |
+| 6 | 打开设置 WebView 后再 show 弹窗无死锁 | **需人工本机验收** | 默认启动路径仍 GDI，未接线 ReactorHost 到托盘主路径；任务 3+ 接线后必测 |
+| 7 | Runtime 缺失或 bootstrap 失败时返回 Err | **PASS（代码路径）** | `start()` / `try_bootstrap` 映射 Err；无 Runtime 机需再验 |
+| 8 | 写死共存模型 S1/S2 + 精确 git rev | **PASS** | **S1** + rev `884c9bbc1bd0a2315f00e0f04e34f6b1714653b9` |
 
-- `windows-reactor v0.0.0` / `windows-reactor-setup v0.0.0`
-- 伴随：`windows-core v0.62.2`、`windows-composition`、`windows-collections`、`windows-future` 等（均来自同一 git rev）
-- 应用侧 `windows = 0.58` **未改**；OCR/截图 features 列表原样保留
+### 关键项汇总
 
-`build.rs`：Windows + `popup-winui` 下调用 `windows_reactor_setup::as_framework_dependent()`。
+| 关键项 | 结果 |
+|--------|------|
+| 1 真 WinUI 窗 | PASS |
+| 3 SetLabel | PASS |
+| 4 hide/show | PASS |
+| 5 hide 不退出进程 | PASS |
+| 7 bootstrap 失败 → Err | PASS |
+
+**否决门结论：Go（路径 R 可继续任务 3+）**
+
+## 冒烟命令与结果
+
+```powershell
+cd src-tauri
+cargo check -p shizi --features popup-winui
+cargo test -p shizi --features popup-winui --lib -- --test-threads=1
+$env:SHIZI_M0_SPIKE="1"
+cargo test -p shizi --features popup-winui --lib m0_reactor_host_smoke -- --nocapture --test-threads=1
+```
+
+结果摘要（2026-07-24 本机）：
+
+- `cargo check`：通过  
+- lib 单测：431 passed, 2 ignored  
+- `m0_reactor_host_smoke`（`SHIZI_M0_SPIKE=1`）：**ok** —「hide/show 完成，进程仍存活」
 
 ## 变更日志
 
 | 日期 | 变更 |
 |------|------|
 | 2026-07-24 | 创建骨架（任务 1 / M0 依赖接入） |
-| 2026-07-24 | M0 绿：候选 rev 编译 + 探测测试通过；文档填写 pin 与验收前两行 |
+| 2026-07-24 | M0 绿：候选 rev 编译 + 探测测试通过 |
+| 2026-07-24 | 任务 2：S1 STA host + 哨兵 + 否决门 **Go**；锁定 rev；try_bootstrap 改路径 R |
