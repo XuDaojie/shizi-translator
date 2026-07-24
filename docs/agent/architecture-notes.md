@@ -7,7 +7,8 @@
 - **核心层（Rust）**：翻译业务、配置、provider 抽象（LLM/MT 平级）、划词、OCR、历史、日志。
 - **UI 层**：① 翻译弹窗 `main` → `translate.html`（Vue，`src/popup/`）② 设置页 `settings` → `settings.html` ③ 截图 overlay（纯静态，永久不迁 Vue）。历史面板右侧复用 `SourceCardView` / `ResultCardView` / `LanguageToolbar`。
 - **约束**：核心逻辑不进前端；UI 模块互不耦合。
-- **弹窗后端 / WinUI 表面**：**采用路径 B：Win32 表面**（`app/popup_backend/winui/`：`WS_POPUP` + `WS_EX_TOOLWINDOW` + DWM 圆角；**未依赖 WinAppSDK / XAML Runtime**）。配置枚举值仍为 `winui`；feature `popup-winui`；契约 `PopupBackend` / `PopupHost`。翻译协议与配置持久化不进 UI 层。
+- **弹窗后端 / WinUI 表面**：**采用路径 B：Win32 表面**（`app/popup_backend/winui/`：`WS_POPUP` + `WS_EX_TOOLWINDOW` + DWM 圆角；**未依赖 WinAppSDK / XAML Runtime**）。配置枚举值仍为 `winui`；feature `popup-winui`（Windows 默认启用）；契约 `PopupBackend` / `PopupHost`。翻译协议与配置持久化不进 UI 层。
+- **启动选用 backend（真切换）**：`lib` setup 读 `AppConfig.popup_ui_backend` → `resolve_popup_backend_kind(config, POPUP_WINUI_FEATURE, cfg!(windows))` → `create_host_with_winui_fallback`（`create_backend`：`Winui` → `WinuiPopupBackend`，`Webview` → `WebviewPopupBackend`）→ `manage(Mutex<PopupHost>)`。仅当配置为 `winui` 且 feature+Windows 时创建原生后端；`ensure_created` 失败则同进程降级 WebView 并一次性系统 dialog。设置页改 `popupUiBackend` 后需**重启**生效（无热切换）。`windowPrecreate.*.popup` 经 `host.ensure_created` 作用于**当前** backend。
 
 ## 托盘与窗口生命周期
 

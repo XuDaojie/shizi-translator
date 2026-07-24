@@ -232,6 +232,32 @@ mod tests {
     }
 
     #[test]
+    fn resolve_kind_winui_with_feature_is_winui() {
+        // 启动真切换：配置 winui + feature + Windows → kind 必须为 Winui（非假 Webview）
+        assert_eq!(
+            resolve_popup_backend_kind("winui", true, true),
+            PopupUiBackendKind::Winui
+        );
+        // 与编译期常量联动：Windows + default `popup-winui` 时可用 POPUP_WINUI_FEATURE 解析
+        #[cfg(all(windows, feature = "popup-winui"))]
+        {
+            assert!(POPUP_WINUI_FEATURE);
+            assert_eq!(
+                resolve_popup_backend_kind("winui", POPUP_WINUI_FEATURE, true),
+                PopupUiBackendKind::Winui
+            );
+        }
+        #[cfg(not(all(windows, feature = "popup-winui")))]
+        {
+            assert!(!POPUP_WINUI_FEATURE);
+            assert_eq!(
+                resolve_popup_backend_kind("winui", POPUP_WINUI_FEATURE, true),
+                PopupUiBackendKind::Webview
+            );
+        }
+    }
+
+    #[test]
     fn resolve_kind_normalizes_trim_and_case() {
         assert_eq!(
             resolve_popup_backend_kind("  WinUI  ", true, true),

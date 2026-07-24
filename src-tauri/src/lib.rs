@@ -163,7 +163,8 @@ pub fn run() {
                 .state::<AppState>()
                 .set_shortcut_conflicts(shortcut_conflicts);
 
-            // 弹窗后端宿主：配置解析 → create（WinUI ensure 失败则降级 WebView + 提示）→ manage。
+            // 弹窗后端真切换：config.popup_ui_backend + feature + 平台 → kind →
+            // create_backend（Winui/Webview 实体）→ ensure 失败则降级 WebView + 提示 → manage。
             let kind = popup_backend::resolve_popup_backend_kind(
                 &config.popup_ui_backend,
                 popup_backend::POPUP_WINUI_FEATURE,

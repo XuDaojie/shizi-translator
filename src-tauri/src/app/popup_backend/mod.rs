@@ -1,10 +1,11 @@
 //! 弹窗后端：ViewModel、PopupBackend trait、Webview / WinUI 实现与 PopupHost 调度。
 //!
+//! 启动真切换：`resolve_popup_backend_kind` + [`create_backend`] / [`create_host_with_winui_fallback`]。
 //! `popup-winui` feature + Windows 时 `Winui` kind 使用 [`winui::WinuiPopupBackend`]
 //!（**路径 B：Win32 表面**，非 XAML）；否则回退 WebView。
 //! WinUI `ensure_created` 失败时同进程降级为 WebView，并（仅 Windows）一次性提示 Runtime。
 
-// 部分 API 供后续 WinUI / 设置页使用，当前主路径尚未全量消费。
+// 部分辅助 API（如 with_host 外扩展点）未必在所有 cfg 下全量引用。
 #![allow(dead_code)]
 
 pub mod host;
@@ -28,10 +29,11 @@ use tauri::{AppHandle, Manager};
 pub const WINUI_RUNTIME_DOWNLOAD_URL: &str =
     "https://learn.microsoft.com/windows/apps/windows-app-sdk/downloads";
 
-/// 按解析后的 kind 创建具体 backend。
+/// 按解析后的 kind 创建具体 backend（启动真切换，非 stub）。
 ///
-/// Windows + `popup-winui`：`Winui` → [`winui::WinuiPopupBackend`]；
-/// 否则 `Winui` 回退 WebView 并 `log::warn`。
+/// - Windows + `popup-winui`：`Winui` → [`winui::WinuiPopupBackend`]
+/// - 无 feature / 非 Windows：`Winui` 回退 [`WebviewPopupBackend`] 并 `log::warn`
+///   （正常路径下 `resolve_popup_backend_kind` 已避免产出该 kind）
 pub fn create_backend(app: &AppHandle, kind: PopupUiBackendKind) -> Box<dyn PopupBackend> {
     match kind {
         PopupUiBackendKind::Webview => Box::new(WebviewPopupBackend::new(app.clone())),

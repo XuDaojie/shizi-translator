@@ -1147,9 +1147,9 @@ git commit -m "feat(settings): Windows 设置页可切换弹窗 UI 后端"
 **文件：**
 - `lib.rs` / `create_backend`：去掉 M1「Winui 假 Webview」临时逻辑
 
-- [ ] **步骤 1：** 按 `config.popup_ui_backend` + feature + platform 创建对应 backend。
+- [x] **步骤 1：** 按 `config.popup_ui_backend` + feature + platform 创建对应 backend（`create_backend` 真切换 + `create_host_with_winui_fallback` 降级；无 M1 假 Webview）。
 - [ ] **步骤 2：** 手动：设置 winui → 重启 → 原生弹窗；改回 webview → 重启 → Vue 弹窗。
-- [ ] **步骤 3：** Commit
+- [x] **步骤 3：** Commit（含架构笔记同步 + `resolve_kind_winui_with_feature_is_winui` 单测）
 
 ```bash
 git commit -m "feat(popup): 启动按 popupUiBackend 选择弹窗后端"
