@@ -23,18 +23,15 @@
   </PropertyGroup>
 
   <!--
-    WASDK 始终自包含 + WindowsAppSdkBootstrapInitialize=false。
-    原因：本机常有 WindowsAppRuntime.1.5 但缺 Main.1.5，Framework-dependent
-    会弹 “requires Windows App SDK runtime version 1.5”。自包含不依赖 Main 包。
+    .NET + WASDK 一律自包含 + WindowsAppSdkBootstrapInitialize=false。
+    原因：
+    1) Framework-dependent 在无 Desktop Runtime 机器上会弹「需要 .NET 8.0」；
+    2) 本机常有 WindowsAppRuntime.1.5 但缺 Main.1.5，FD 会弹 WASDK 版本提示。
+    子进程随 shizi 分发，不应依赖用户系统是否装过 .NET / WASDK Main。
+    Debug 体积/编译稍大，但与 Release 行为一致，避免 dev 路径踩坑。
   -->
-  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+  <PropertyGroup>
     <SelfContained>true</SelfContained>
-    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
-  </PropertyGroup>
-
-  <!-- Debug：.NET 可不自包含以加快迭代；WASDK 仍自包含避免缺 Main 弹窗 -->
-  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
-    <SelfContained>false</SelfContained>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
   </PropertyGroup>
 

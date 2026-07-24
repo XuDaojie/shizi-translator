@@ -27,12 +27,11 @@ fn present_window(window: &WebviewWindow) -> Result<(), String> {
     Ok(())
 }
 
-/// 托盘双击等：已有 main 则 show；否则走 `show_popup`（独立线程建窗）。
+/// 托盘双击等：按 `popupUi` 经 facade 唤起翻译弹窗（Restore 定位）。
+///
+/// 不得因 WebView `main` 已存在就短路 `present_window`：否则 `popupUi=winui`
+/// 时仍会始终打开 WebView，与设置项无关。
 pub fn show_window(app: &tauri::AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = present_window(&window);
-        return;
-    }
     let config = app
         .try_state::<crate::app::state::AppState>()
         .and_then(|s| s.config_store.get().ok())

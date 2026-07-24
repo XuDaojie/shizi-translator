@@ -103,7 +103,17 @@ fn ensure_active(app: &AppHandle) -> Result<(), String> {
         PopupUiKind::WinUi => {
             #[cfg(windows)]
             {
-                match winui_ui().ensure(app) {
+                // 首次失败时 host 侧通常已 reset；再 ensure 一次以覆盖
+                // 「读线程已断但 child 仍在、connection_alive 误判」后的瞬态。
+                let first = winui_ui().ensure(app);
+                let result = match first {
+                    Ok(()) => Ok(()),
+                    Err(e1) => {
+                        log::warn!("WinUI ensure 失败，尝试重建一次: {e1}");
+                        winui_ui().ensure(app)
+                    }
+                };
+                match result {
                     Ok(()) => {
                         with_session(app, |session| session.clear_session_fallback())?;
                         log::debug!("WinUI ensure 成功，已清除会话 webview 回退标志");

@@ -263,6 +263,9 @@ fn spawn_and_connect(exe: &Path) -> Result<(), String> {
     stream
         .set_nonblocking(false)
         .map_err(|e| format!("stream blocking: {e}"))?;
+    // 读超时仅用于让读线程周期性醒来；空闲超时 **不得** 当作断线。
+    // 历史上 60s 空闲读超时被当成失败 → 拆掉连接 → ensure 回退 webview，
+    // 用户表现为「popupUi=winui 却始终打开 WebView」。
     let _ = stream.set_read_timeout(Some(Duration::from_secs(60)));
     let _ = stream.set_write_timeout(Some(Duration::from_secs(10)));
 
@@ -313,6 +316,15 @@ fn spawn_and_connect(exe: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// 空闲读超时 / WouldBlock 属于正常周期醒来，不是连接断开。
+/// Windows 上 `set_read_timeout` 到期常为 `TimedOut`（WSAETIMEDOUT 10060）。
+fn is_transient_ipc_read_error(err: &std::io::Error) -> bool {
+    matches!(
+        err.kind(),
+        std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+    )
+}
+
 fn reader_loop(stream: TcpStream, tx: Sender<ReaderEvent>) {
     let mut reader = BufReader::new(stream);
     let mut line = String::new();
@@ -353,6 +365,10 @@ fn reader_loop(stream: TcpStream, tx: Sender<ReaderEvent>) {
                         log::warn!("popup host: 解析子进程行失败: {e}; line={trimmed}");
                     }
                 }
+            }
+            Err(e) if is_transient_ipc_read_error(&e) => {
+                // 无消息时的读超时：继续等，勿 teardown（否则空闲 ~60s 后 ensure 必回退 webview）
+                continue;
             }
             Err(e) => {
                 log::warn!("popup host: 读 IPC 失败: {e}");
@@ -570,6 +586,9 @@ pub fn ensure(app: &AppHandle) -> Result<(), String> {
 }
 
 pub fn show(x: f64, y: f64, mode: i32) -> Result<(), String> {
+    // 主进程刚收到快捷键/托盘输入，拥有前台切换权；授权给子进程后再 show，
+    // 否则 WinUI 侧 SetForegroundWindow/Activate 常被静默忽略（窗在但被盖住）。
+    allow_popup_set_foreground();
     call_op(IpcMessage {
         op: "show".into(),
         ok: None,
@@ -583,6 +602,22 @@ pub fn show(x: f64, y: f64, mode: i32) -> Result<(), String> {
         h: None,
         data: None,
     })
+}
+
+/// 把前台切换权授予 Shizi.Popup 子进程（best-effort）。
+///
+/// `AllowSetForegroundWindow` 参数是 **进程 ID**，不是 HWND。
+fn allow_popup_set_foreground() {
+    let pid = {
+        let Ok(guard) = host_mutex().lock() else {
+            return;
+        };
+        match guard.child.as_ref() {
+            Some(c) => c.id(),
+            None => return,
+        }
+    };
+    let _ = unsafe { windows::Win32::UI::WindowsAndMessaging::AllowSetForegroundWindow(pid) };
 }
 
 pub fn hide() -> Result<(), String> {
@@ -719,5 +754,25 @@ mod tests {
         if dev_exe_candidates().iter().any(|p| p.is_file()) {
             assert!(is_available());
         }
+    }
+
+    #[test]
+    fn transient_ipc_read_errors_are_timeout_and_would_block() {
+        assert!(is_transient_ipc_read_error(&std::io::Error::new(
+            std::io::ErrorKind::TimedOut,
+            "idle"
+        )));
+        assert!(is_transient_ipc_read_error(&std::io::Error::new(
+            std::io::ErrorKind::WouldBlock,
+            "nb"
+        )));
+        assert!(!is_transient_ipc_read_error(&std::io::Error::new(
+            std::io::ErrorKind::ConnectionReset,
+            "rst"
+        )));
+        assert!(!is_transient_ipc_read_error(&std::io::Error::new(
+            std::io::ErrorKind::BrokenPipe,
+            "pipe"
+        )));
     }
 }

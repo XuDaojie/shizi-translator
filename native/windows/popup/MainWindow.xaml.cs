@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -16,6 +17,28 @@ namespace Shizi.Popup;
 
 public sealed partial class MainWindow : Window
 {
+    private static readonly IntPtr HwndTopmost = new(-1);
+    private static readonly IntPtr HwndNoTopmost = new(-2);
+    private const uint SwpNomove = 0x0002;
+    private const uint SwpNosize = 0x0001;
+    private const uint SwpShowwindow = 0x0040;
+    private const uint SwpNoactivate = 0x0010;
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool BringWindowToTop(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetWindowPos(
+        IntPtr hWnd,
+        IntPtr hWndInsertAfter,
+        int x,
+        int y,
+        int cx,
+        int cy,
+        uint uFlags);
     private readonly AppWindow _appWindow;
     private readonly BridgeService _bridge = BridgeService.Instance;
     private readonly SpeechService _speech = new();
@@ -105,24 +128,70 @@ public sealed partial class MainWindow : Window
         }
 
         _appWindow.Show();
-        try
-        {
-            if (_appWindow.Presenter is OverlappedPresenter p)
-            {
-                p.IsAlwaysOnTop = _alwaysOnTop;
-            }
-        }
-        catch
-        {
-            // ignore
-        }
-
         IsPopupVisible = true;
+
+        // 快捷键/托盘在 shizi 主进程触发，弹窗在子进程：Windows 会拦截跨进程
+        // SetForegroundWindow/Activate。结果是「IPC show 成功、IsWindowVisible=true」，
+        // 但窗体被 IDEA/Chrome 等盖住，用户感觉「打不开」。先抬 z-order 再尝试激活。
+        BringPopupToFront();
+
         Activate();
         // 不要在 IPC 同步 Show 路径内立刻 report_content_size：
         // 否则 request 可能先于 show 的 result 到达 Rust，嵌套 set_size 与
         // 外层 show 的 OP_GATE 形成死锁/超时，导致 Rust 回退 webview。
         _ = DispatcherQueue.TryEnqueue(() => ReportContentSize());
+    }
+
+    /// <summary>
+    /// 强制把弹窗抬到可见 z-order 并尽量抢前台。
+    /// 临时 TOPMOST → 再按钉住状态恢复，避免仅 Activate 被静默忽略。
+    /// </summary>
+    private void BringPopupToFront()
+    {
+        try
+        {
+            var hwnd = WindowNative.GetWindowHandle(this);
+
+            // 1) Presenter 临时置顶（即使失败也不影响后续 Win32）
+            if (_appWindow.Presenter is OverlappedPresenter presenter)
+            {
+                presenter.IsAlwaysOnTop = true;
+            }
+
+            // 2) Win32：TOPMOST 抬 z-order，再尝试前台
+            _ = SetWindowPos(
+                hwnd,
+                HwndTopmost,
+                0,
+                0,
+                0,
+                0,
+                SwpNomove | SwpNosize | SwpShowwindow);
+            _ = BringWindowToTop(hwnd);
+            _ = SetForegroundWindow(hwnd);
+
+            // 3) 用户未钉住则撤掉 TOPMOST（保留当前相对 z-order 靠前）
+            if (!_alwaysOnTop)
+            {
+                if (_appWindow.Presenter is OverlappedPresenter p)
+                {
+                    p.IsAlwaysOnTop = false;
+                }
+
+                _ = SetWindowPos(
+                    hwnd,
+                    HwndNoTopmost,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SwpNomove | SwpNosize | SwpNoactivate);
+            }
+        }
+        catch
+        {
+            // best-effort：前台限制失败时至少窗体已 Show
+        }
     }
 
     public void HidePopup()
