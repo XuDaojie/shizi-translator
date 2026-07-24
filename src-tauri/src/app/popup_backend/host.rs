@@ -7,7 +7,6 @@ use super::types::{PopupPositionMode, PopupUiBackendKind, PopupViewModel};
 use super::view_model::apply_translation_event;
 
 /// 编译期：是否启用 WinUI 弹窗后端 feature（且在 Windows 上）。
-/// 任务 6 前 `popup-winui` 可能未在 Cargo.toml 声明，此时恒为 false。
 pub const POPUP_WINUI_FEATURE: bool = cfg!(all(windows, feature = "popup-winui"));
 
 /// 弹窗宿主：包装具体 `PopupBackend`，维护 ViewModel 并转发生命周期操作。
