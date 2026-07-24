@@ -13,7 +13,8 @@ pub struct WinuiPopupBackend {
     #[allow(dead_code)]
     app: tauri::AppHandle,
     hwnd: Option<NativePopupHwnd>,
-    /// 逻辑可见标志；与 HWND 可见性双轨，hide 后仍 alive。
+    /// 逻辑可见标志（show/hide 写入；`is_visible` 优先 `IsWindowVisible`）。
+    #[allow(dead_code)]
     visible: bool,
 }
 
@@ -82,10 +83,10 @@ impl PopupBackend for WinuiPopupBackend {
     }
 
     fn is_visible(&self) -> bool {
+        // 优先真实 HWND 的 IsWindowVisible；句柄无效则不可见
         if let Some(hwnd) = self.hwnd.as_ref() {
             if hwnd.is_valid() {
-                // 优先真实 HWND 状态；不可见时回落逻辑标志
-                return hwnd.is_visible() || self.visible;
+                return hwnd.is_visible();
             }
         }
         false
@@ -95,7 +96,14 @@ impl PopupBackend for WinuiPopupBackend {
         self.hwnd_alive()
     }
 
-    fn publish(&mut self, _vm: &PopupViewModel) {
-        // 任务 8：绑定 ViewModel 到原生控件；本任务仅占位
+    fn publish(&mut self, vm: &PopupViewModel) {
+        // 非阻塞：写共享快照 + PostMessage 触发 UI 线程 InvalidateRect。
+        // 注意：PopupHost 可能持锁调用本方法，禁止同步等待 UI 线程。
+        if let Some(hwnd) = self.hwnd.as_ref() {
+            ui::publish_view_model(hwnd, vm);
+        } else {
+            // 窗尚未创建时仍落快照，ensure/show 后首次 PAINT 可见
+            let _ = ui::store_paint_snapshot(vm);
+        }
     }
 }
