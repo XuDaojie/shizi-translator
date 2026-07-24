@@ -22,16 +22,20 @@
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
   </PropertyGroup>
 
-  <!-- Release：自包含 WASDK，用户无需预装 runtime -->
+  <!--
+    WASDK 始终自包含 + WindowsAppSdkBootstrapInitialize=false。
+    原因：本机常有 WindowsAppRuntime.1.5 但缺 Main.1.5，Framework-dependent
+    会弹 “requires Windows App SDK runtime version 1.5”。自包含不依赖 Main 包。
+  -->
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <SelfContained>true</SelfContained>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
   </PropertyGroup>
 
-  <!-- Debug：可 Framework-dependent；若本机无对应 runtime 请用 -c Release -->
+  <!-- Debug：.NET 可不自包含以加快迭代；WASDK 仍自包含避免缺 Main 弹窗 -->
   <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
     <SelfContained>false</SelfContained>
-    <WindowsAppSDKSelfContained>false</WindowsAppSDKSelfContained>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
   </PropertyGroup>
 
   <ItemGroup>

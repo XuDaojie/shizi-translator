@@ -30,18 +30,29 @@ Bridge 请求/推送信封与 `popup_bridge` 协议一致（`bridgeVersion: 1`�
 ## 构建
 
 ```bash
-# Release（自包含 WASDK 1.5，推荐；无需本机预装 Runtime Main 包）
+# 推荐：Release（.NET + WASDK 自包含）
 dotnet build native/windows/popup/Shizi.Popup.csproj -c Release -p:Platform=x64
 
-# Debug（Framework-dependent；需本机匹配 WASDK runtime）
+# Debug（WASDK 仍自包含；.NET 可为 framework-dependent）
 dotnet build native/windows/popup/Shizi.Popup.csproj -c Debug -p:Platform=x64
 ```
 
-### 自包含要点
+### 自包含要点 / Runtime 弹窗
 
-- `SelfContained=true` + `WindowsAppSDKSelfContained=true`（仅 Release）
-- `WindowsAppSdkBootstrapInitialize=false`（避免系统 Main 包版本错配 fail-fast）
+- `WindowsAppSDKSelfContained=true`（Debug + Release）
+- `WindowsAppSdkBootstrapInitialize=false`（**不要**走系统 Bootstrap）
 - NuGet：`Microsoft.WindowsAppSDK` **1.5.240802000**
+
+**为何会弹「requires Windows App SDK runtime version 1.5」？**
+
+| 包 | 作用 |
+|----|------|
+| `Microsoft.WindowsAppRuntime.1.5` | 框架本体（很多人「有」的是这个） |
+| `MicrosoftCorporationII.WinAppRuntime.Main.1.5` | unpackaged + **系统 Bootstrap** 时必需 |
+
+本机常见：有 Runtime.1.5、**没有** Main.1.5，且若 `WindowsAppSdkBootstrapInitialize=true` 或 Debug 未自包含 WASDK，就会弹安装框——**不是「完全没装 Runtime」**。
+
+当前工程用 **WASDK 自包含 + 关闭 Bootstrap 自动初始化**，不依赖 Main 包。联调请优先用 **Release 产物**（Rust host 也优先找 Release）。
 
 ### 产物路径
 
