@@ -4,8 +4,9 @@
 //! - `WS_EX_TOOLWINDOW`：不进任务栏
 //! - 初始 `SW_HIDE`，逻辑尺寸约 420×360
 //! - DWM 圆角（best-effort）
-//! - GDI 自绘：源文 + 结果卡 + 底部动作条
-//! - 用户动作：Esc 关闭、Ctrl+C 复制、工具栏点击、双击标题区关闭
+//! - GDI 自绘：源文 + 多服务结果卡（可滚动）+ 底部动作条
+//! - chrome：`is_translating` 时显示取消按钮
+//! - 用户动作：Esc 关闭、Ctrl+C 复制、滚轮滚动卡片区、工具栏点击、双击标题区关闭
 //! - 不依赖 Microsoft.UI.Xaml / WinAppSDK
 
 use std::sync::{Mutex, Once};
@@ -17,9 +18,10 @@ use windows::Win32::Graphics::Dwm::{
     DWM_WINDOW_CORNER_PREFERENCE,
 };
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, CreateSolidBrush, DeleteObject, DrawTextW, EndPaint, FillRect, InvalidateRect,
-    SetBkMode, SetTextColor, DT_CENTER, DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX, DT_SINGLELINE,
-    DT_VCENTER, DT_WORDBREAK, HGDIOBJ, PAINTSTRUCT, TRANSPARENT,
+    BeginPaint, CreateSolidBrush, DeleteObject, DrawTextW, EndPaint, FillRect, IntersectClipRect,
+    InvalidateRect, RestoreDC, SaveDC, SetBkMode, SetTextColor, DT_CALCRECT, DT_CENTER,
+    DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER, DT_WORDBREAK, HGDIOBJ,
+    PAINTSTRUCT, TRANSPARENT,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::HiDpi::{GetDpiForSystem, GetDpiForWindow};
@@ -29,7 +31,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     LoadCursorW, PostMessageW, RegisterClassExW, SetWindowPos, ShowWindow, CS_DBLCLKS, CS_HREDRAW,
     CS_VREDRAW, CW_USEDEFAULT, HMENU, HWND_TOP, IDC_ARROW, SWP_SHOWWINDOW, SW_HIDE, SW_SHOW,
     USER_DEFAULT_SCREEN_DPI, WM_CLOSE, WM_DESTROY, WM_KEYDOWN, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN,
-    WM_PAINT, WM_USER, WNDCLASSEXW, WS_CLIPCHILDREN, WS_EX_TOOLWINDOW, WS_POPUP,
+    WM_MOUSEWHEEL, WM_PAINT, WM_USER, WNDCLASSEXW, WS_CLIPCHILDREN, WS_EX_TOOLWINDOW, WS_POPUP,
 };
 
 use crate::app::popup_backend::types::{
@@ -123,6 +125,10 @@ impl ToolbarButton {
 pub struct PaintCardSnapshot {
     pub service_instance_id: String,
     pub service_name: String,
+    /// 协议 id（如 `openai_chat` / `microsoft_edge`），与 Web 结果卡一致。
+    pub protocol: String,
+    /// 模型名；`microsoft_edge` 绘制时不强调。
+    pub model_name: String,
     pub status: PopupCardStatus,
     pub text: String,
     pub error_message: String,
@@ -151,6 +157,8 @@ impl PaintSnapshot {
                 .map(|c| PaintCardSnapshot {
                     service_instance_id: c.service_instance_id.clone(),
                     service_name: c.service_name.clone(),
+                    protocol: c.protocol.clone(),
+                    model_name: c.model_name.clone(),
                     status: c.status.clone(),
                     text: c.text.clone(),
                     error_message: c.error_message.clone(),
@@ -169,14 +177,118 @@ static PAINT_SNAPSHOT: Mutex<PaintSnapshot> = Mutex::new(PaintSnapshot {
     cards: Vec::new(),
 });
 
+/// 卡片列表垂直滚动偏移（像素，向下为正）。
+static CARD_SCROLL_Y: Mutex<i32> = Mutex::new(0);
 
+/// 最近一次绘制测得的卡片内容高度 / 视口高度（供滚轮钳制）。
+static CARD_SCROLL_METRICS: Mutex<(i32, i32)> = Mutex::new((0, 0));
+
+/// 机器翻译协议（与前端 `resultCardMeta` 一致）：不展示模型。
+pub fn is_machine_translate_protocol(protocol: &str) -> bool {
+    protocol.trim() == "microsoft_edge"
+}
+
+/// 卡片副标题：优先 model；`microsoft_edge` 改用 protocol、不强调模型。
+///
+/// 空 / 占位 `—` `-` 的 model 回退到 protocol。
+pub fn card_detail_label(protocol: &str, model_name: &str) -> String {
+    if is_machine_translate_protocol(protocol) {
+        let p = protocol.trim();
+        if p.is_empty() {
+            String::new()
+        } else {
+            p.to_string()
+        }
+    } else {
+        let m = model_name.trim();
+        if !m.is_empty() && m != "—" && m != "-" {
+            m.to_string()
+        } else {
+            let p = protocol.trim();
+            if p.is_empty() {
+                String::new()
+            } else {
+                p.to_string()
+            }
+        }
+    }
+}
+
+/// 卡片标题行：`name · detail · status`（detail 空则省略）。
+pub fn format_card_header(card: &PaintCardSnapshot) -> String {
+    let name = if card.service_name.is_empty() {
+        "服务"
+    } else {
+        card.service_name.as_str()
+    };
+    let detail = card_detail_label(&card.protocol, &card.model_name);
+    let status = status_label(&card.status);
+    if detail.is_empty() {
+        format!("{name}  ·  {status}")
+    } else {
+        format!("{name}  ·  {detail}  ·  {status}")
+    }
+}
+
+/// 卡片区滚动偏移（测试 / 滚轮）。
+pub fn card_scroll_offset() -> i32 {
+    CARD_SCROLL_Y.lock().map(|g| *g).unwrap_or(0)
+}
+
+/// 钳制滚动偏移到 `[0, max(0, content_h - viewport_h)]`。
+pub fn clamp_card_scroll(offset: i32, content_h: i32, viewport_h: i32) -> i32 {
+    let max = (content_h - viewport_h).max(0);
+    offset.clamp(0, max)
+}
+
+fn set_card_scroll_offset(y: i32) {
+    if let Ok(mut g) = CARD_SCROLL_Y.lock() {
+        *g = y.max(0);
+    }
+}
+
+fn reset_card_scroll() {
+    set_card_scroll_offset(0);
+}
+
+fn store_scroll_metrics(content_h: i32, viewport_h: i32) {
+    if let Ok(mut g) = CARD_SCROLL_METRICS.lock() {
+        *g = (content_h, viewport_h);
+    }
+}
+
+fn load_scroll_metrics() -> (i32, i32) {
+    CARD_SCROLL_METRICS
+        .lock()
+        .map(|g| *g)
+        .unwrap_or((0, 0))
+}
+
+/// 滚轮增量（向下为正像素）；内部按当前 metrics 钳制。
+pub fn adjust_card_scroll(delta_px: i32) -> i32 {
+    let (content_h, viewport_h) = load_scroll_metrics();
+    let next = clamp_card_scroll(card_scroll_offset() + delta_px, content_h, viewport_h);
+    set_card_scroll_offset(next);
+    next
+}
 
 /// 将 ViewModel 写入共享快照（不碰 HWND；任意线程、短路径）。
 ///
 /// 返回写入后的快照副本，便于单测「入队/落盘」而不创建真实窗口。
+/// 源文变化时重置卡片区滚动，避免新批次停在旧偏移。
 pub fn store_paint_snapshot(vm: &PopupViewModel) -> PaintSnapshot {
     let snap = PaintSnapshot::from_view_model(vm);
     if let Ok(mut guard) = PAINT_SNAPSHOT.lock() {
+        let source_changed = guard.source_text != snap.source_text;
+        let cards_identity_changed = guard.cards.len() != snap.cards.len()
+            || guard
+                .cards
+                .iter()
+                .zip(snap.cards.iter())
+                .any(|(a, b)| a.service_instance_id != b.service_instance_id);
+        if source_changed || cards_identity_changed {
+            reset_card_scroll();
+        }
         *guard = snap.clone();
     }
     snap
@@ -360,6 +472,210 @@ unsafe fn draw_text_in_rect(
     }
 }
 
+/// 用 `DT_CALCRECT` 测算文本高度（不实际绘制）。
+unsafe fn measure_text_height(
+    hdc: windows::Win32::Graphics::Gdi::HDC,
+    text: &str,
+    width: i32,
+    flags: windows::Win32::Graphics::Gdi::DRAW_TEXT_FORMAT,
+) -> i32 {
+    if text.is_empty() || width <= 0 {
+        return 0;
+    }
+    let mut r = RECT {
+        left: 0,
+        top: 0,
+        right: width,
+        bottom: 0,
+    };
+    let mut buf = to_utf16(text);
+    let h = DrawTextW(hdc, &mut buf, &mut r, flags | DT_CALCRECT);
+    if h > 0 {
+        h
+    } else {
+        (r.bottom - r.top).max(0)
+    }
+}
+
+/// 单卡正文展示内容（空 text 时按状态给占位 / 失败信息）。
+pub fn card_body_text(card: &PaintCardSnapshot) -> String {
+    if !card.text.is_empty() {
+        return card.text.clone();
+    }
+    match card.status {
+        PopupCardStatus::Translating | PopupCardStatus::Pending => "…".to_string(),
+        PopupCardStatus::Failed => {
+            if card.error_message.is_empty() {
+                "翻译失败".to_string()
+            } else {
+                card.error_message.clone()
+            }
+        }
+        _ => String::new(),
+    }
+}
+
+/// 是否在正文之外再画一行失败信息（有译文且另有 error）。
+pub fn card_extra_error(card: &PaintCardSnapshot) -> Option<&str> {
+    if matches!(card.status, PopupCardStatus::Failed)
+        && !card.error_message.is_empty()
+        && !card.text.is_empty()
+    {
+        Some(card.error_message.as_str())
+    } else {
+        None
+    }
+}
+
+/// 估算 / 测算单卡块高度（header + body + 可选 error + 间距）。
+unsafe fn measure_card_height(
+    hdc: windows::Win32::Graphics::Gdi::HDC,
+    card: &PaintCardSnapshot,
+    content_w: i32,
+    scale: f64,
+) -> i32 {
+    let gap = ((8.0_f64) * scale).round() as i32;
+    let header_h = ((20.0_f64) * scale).round() as i32;
+    let mut h = header_h + 2;
+
+    let body = card_body_text(card);
+    if !body.is_empty() {
+        let max_body = ((120.0_f64) * scale).round() as i32;
+        let bh = measure_text_height(
+            hdc,
+            &body,
+            content_w,
+            DT_LEFT | DT_WORDBREAK | DT_NOPREFIX,
+        )
+        .max(((16.0_f64) * scale).round() as i32)
+        .min(max_body);
+        h += bh + gap;
+    }
+
+    if let Some(err) = card_extra_error(card) {
+        let max_err = ((48.0_f64) * scale).round() as i32;
+        let eh = measure_text_height(
+            hdc,
+            err,
+            content_w,
+            DT_LEFT | DT_WORDBREAK | DT_NOPREFIX,
+        )
+        .max(((14.0_f64) * scale).round() as i32)
+        .min(max_err);
+        h += eh + gap;
+    }
+
+    h
+}
+
+/// 绘制单张服务卡（name / protocol|model / 状态 / 文本 / 失败信息）。
+unsafe fn paint_one_card(
+    hdc: windows::Win32::Graphics::Gdi::HDC,
+    card: &PaintCardSnapshot,
+    left: i32,
+    right: i32,
+    top: i32,
+    scale: f64,
+    gap: i32,
+) {
+    let mut y = top;
+    let status_color = status_color_bgr(&card.status);
+    let header = format_card_header(card);
+    let header_h = ((20.0_f64) * scale).round() as i32;
+    {
+        let mut r = RECT {
+            left,
+            top: y,
+            right,
+            bottom: y + header_h,
+        };
+        let _ = draw_text_in_rect(
+            hdc,
+            &header,
+            &mut r,
+            status_color,
+            DT_LEFT | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS,
+        );
+        y += header_h + 2;
+    }
+
+    let body = card_body_text(card);
+    if !body.is_empty() {
+        let max_body = ((120.0_f64) * scale).round() as i32;
+        let mut r = RECT {
+            left,
+            top: y,
+            right,
+            bottom: y + max_body,
+        };
+        let color = if matches!(card.status, PopupCardStatus::Failed) && card.text.is_empty() {
+            status_color_bgr(&PopupCardStatus::Failed)
+        } else {
+            0x00_22_22_22
+        };
+        let h = draw_text_in_rect(
+            hdc,
+            &body,
+            &mut r,
+            color,
+            DT_LEFT | DT_WORDBREAK | DT_NOPREFIX | DT_END_ELLIPSIS,
+        );
+        y += h.max(((16.0_f64) * scale).round() as i32) + gap;
+    }
+
+    if let Some(err) = card_extra_error(card) {
+        let max_err = ((48.0_f64) * scale).round() as i32;
+        let mut r = RECT {
+            left,
+            top: y,
+            right,
+            bottom: y + max_err,
+        };
+        let _ = draw_text_in_rect(
+            hdc,
+            err,
+            &mut r,
+            status_color_bgr(&PopupCardStatus::Failed),
+            DT_LEFT | DT_WORDBREAK | DT_NOPREFIX | DT_END_ELLIPSIS,
+        );
+    }
+}
+
+/// 绘制简易竖向滚动条（内容超出视口时）。
+unsafe fn paint_simple_scrollbar(
+    hdc: windows::Win32::Graphics::Gdi::HDC,
+    track: &RECT,
+    content_h: i32,
+    viewport_h: i32,
+    scroll_y: i32,
+) {
+    if content_h <= viewport_h || viewport_h <= 0 {
+        return;
+    }
+    let track_h = (track.bottom - track.top).max(1);
+    let track_brush = CreateSolidBrush(COLORREF(0x00_E8_E8_E8));
+    FillRect(hdc, track, track_brush);
+    let _ = DeleteObject(HGDIOBJ(track_brush.0));
+
+    let thumb_h = ((viewport_h as f64 / content_h as f64) * track_h as f64)
+        .round()
+        .max(12.0) as i32;
+    let thumb_h = thumb_h.min(track_h);
+    let max_scroll = (content_h - viewport_h).max(1);
+    let travel = (track_h - thumb_h).max(0);
+    let thumb_top =
+        track.top + ((scroll_y as f64 / max_scroll as f64) * travel as f64).round() as i32;
+    let thumb = RECT {
+        left: track.left,
+        top: thumb_top,
+        right: track.right,
+        bottom: (thumb_top + thumb_h).min(track.bottom),
+    };
+    let thumb_brush = CreateSolidBrush(COLORREF(0x00_B0_B0_B0));
+    FillRect(hdc, &thumb, thumb_brush);
+    let _ = DeleteObject(HGDIOBJ(thumb_brush.0));
+}
+
 /// 计算底部工具栏按钮布局（客户区坐标）。
 pub fn layout_toolbar_buttons(
     client: &RECT,
@@ -522,6 +838,18 @@ unsafe fn paint_popup(hwnd: HWND, hdc: windows::Win32::Graphics::Gdi::HDC) {
         y += gap;
     }
 
+    // 多服务卡片区：裁剪 + 简易滚动条
+    let cards_top = y;
+    let cards_bottom = bottom;
+    let viewport_h = (cards_bottom - cards_top).max(0);
+    let sb_w = ((8.0_f64) * scale).round() as i32;
+    let content_right = if snap.cards.len() > 1 {
+        (right - sb_w - 2).max(pad + 1)
+    } else {
+        right
+    };
+    let content_w = (content_right - pad).max(1);
+
     if snap.cards.is_empty() {
         let mut r = RECT {
             left: pad,
@@ -536,100 +864,55 @@ unsafe fn paint_popup(hwnd: HWND, hdc: windows::Win32::Graphics::Gdi::HDC) {
             0x00_99_99_99,
             DT_LEFT | DT_SINGLELINE | DT_NOPREFIX,
         );
+        store_scroll_metrics(0, viewport_h);
     } else {
+        // 先测算总高度，再钳制滚动
+        let mut content_h = 0i32;
         for card in &snap.cards {
-            if y >= bottom {
+            content_h += measure_card_height(hdc, card, content_w, scale);
+        }
+        store_scroll_metrics(content_h, viewport_h);
+        let scroll_y = clamp_card_scroll(card_scroll_offset(), content_h, viewport_h);
+        set_card_scroll_offset(scroll_y);
+
+        let saved = SaveDC(hdc);
+        let _ = IntersectClipRect(hdc, pad, cards_top, content_right, cards_bottom);
+
+        // 按测算高度定位每块，保证滚动与裁剪一致
+        let mut content_offset = 0i32;
+        for card in &snap.cards {
+            let block_h = measure_card_height(hdc, card, content_w, scale);
+            let block_top = cards_top - scroll_y + content_offset;
+            content_offset += block_h;
+
+            if block_top + block_h < cards_top {
+                continue;
+            }
+            if block_top >= cards_bottom {
                 break;
             }
 
-            let header = format!(
-                "{}  ·  {}",
-                if card.service_name.is_empty() {
-                    "服务"
-                } else {
-                    card.service_name.as_str()
-                },
-                status_label(&card.status)
+            paint_one_card(
+                hdc,
+                card,
+                pad,
+                content_right,
+                block_top,
+                scale,
+                gap,
             );
-            let status_color = status_color_bgr(&card.status);
-            {
-                let mut r = RECT {
-                    left: pad,
-                    top: y,
-                    right,
-                    bottom: y + 20,
-                };
-                let _ = draw_text_in_rect(
-                    hdc,
-                    &header,
-                    &mut r,
-                    status_color,
-                    DT_LEFT | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS,
-                );
-                y += 20 + 2;
-            }
+        }
 
-            if y < bottom {
-                let body = if card.text.is_empty() {
-                    match card.status {
-                        PopupCardStatus::Translating | PopupCardStatus::Pending => "…",
-                        PopupCardStatus::Failed => {
-                            if card.error_message.is_empty() {
-                                "翻译失败"
-                            } else {
-                                card.error_message.as_str()
-                            }
-                        }
-                        _ => "",
-                    }
-                } else {
-                    card.text.as_str()
-                };
-                if !body.is_empty() {
-                    let remain = (bottom - y).max(0);
-                    let mut r = RECT {
-                        left: pad,
-                        top: y,
-                        right,
-                        bottom: y + remain,
-                    };
-                    let color =
-                        if matches!(card.status, PopupCardStatus::Failed) && card.text.is_empty() {
-                            status_color_bgr(&PopupCardStatus::Failed)
-                        } else {
-                            0x00_22_22_22
-                        };
-                    let h = draw_text_in_rect(
-                        hdc,
-                        body,
-                        &mut r,
-                        color,
-                        DT_LEFT | DT_WORDBREAK | DT_NOPREFIX | DT_END_ELLIPSIS,
-                    );
-                    y += h.max(16) + gap;
-                }
-            }
+        let _ = RestoreDC(hdc, saved);
 
-            if matches!(card.status, PopupCardStatus::Failed)
-                && !card.error_message.is_empty()
-                && !card.text.is_empty()
-                && y < bottom
-            {
-                let mut r = RECT {
-                    left: pad,
-                    top: y,
-                    right,
-                    bottom: (y + 36).min(bottom),
-                };
-                let h = draw_text_in_rect(
-                    hdc,
-                    &card.error_message,
-                    &mut r,
-                    status_color_bgr(&PopupCardStatus::Failed),
-                    DT_LEFT | DT_WORDBREAK | DT_NOPREFIX | DT_END_ELLIPSIS,
-                );
-                y += h.max(14) + gap;
-            }
+        if content_h > viewport_h && viewport_h > 0 {
+            let track = RECT {
+                left: content_right + 2,
+                top: cards_top,
+                right,
+                bottom: cards_bottom,
+            };
+            paint_simple_scrollbar(hdc, &track, content_h, viewport_h, scroll_y);
         }
     }
 
@@ -754,6 +1037,28 @@ unsafe extern "system" fn wnd_proc(
         }
         WM_KEYDOWN => {
             handle_keydown(wparam);
+            LRESULT(0)
+        }
+        WM_MOUSEWHEEL => {
+            // HIWORD(wParam) = wheel delta（上滚为正）；向下浏览 → 增大 scroll offset
+            let delta = ((wparam.0 as u32) >> 16) as i16 as i32;
+            if delta != 0 {
+                let scale = window_scale(hwnd);
+                let step = ((48.0_f64) * scale).round().max(1.0) as i32;
+                // 高分辨率触控板：按 120 归一，至少滚动一档
+                let notches = {
+                    let n = delta / 120;
+                    if n != 0 {
+                        n.clamp(-5, 5)
+                    } else if delta > 0 {
+                        1
+                    } else {
+                        -1
+                    }
+                };
+                let _ = adjust_card_scroll(-notches * step);
+                let _ = InvalidateRect(hwnd, None, BOOL(1));
+            }
             LRESULT(0)
         }
         WM_CLOSE => {
@@ -932,6 +1237,34 @@ mod tests {
 
     static SNAPSHOT_TEST_LOCK: Mutex<()> = Mutex::new(());
 
+    fn sample_card(
+        id: &str,
+        name: &str,
+        protocol: &str,
+        model: &str,
+        status: PopupCardStatus,
+        text: &str,
+        error: &str,
+    ) -> PopupCardVm {
+        PopupCardVm {
+            service_instance_id: id.into(),
+            service_name: name.into(),
+            service_type: if protocol == "microsoft_edge" {
+                "mt".into()
+            } else {
+                "llm".into()
+            },
+            protocol: protocol.into(),
+            model_name: model.into(),
+            status,
+            text: text.into(),
+            error_message: error.into(),
+            usage_input: None,
+            usage_output: None,
+            detected_source_lang: None,
+        }
+    }
+
     fn sample_vm() -> PopupViewModel {
         PopupViewModel {
             session_id: Some("s1".into()),
@@ -940,19 +1273,35 @@ mod tests {
             source_lang: "en".into(),
             target_lang: "zh".into(),
             is_translating: true,
-            cards: vec![PopupCardVm {
-                service_instance_id: "svc-1".into(),
-                service_name: "Mock".into(),
-                service_type: "llm".into(),
-                protocol: "mock".into(),
-                model_name: "mock".into(),
-                status: PopupCardStatus::Translating,
-                text: "你好".into(),
-                error_message: String::new(),
-                usage_input: None,
-                usage_output: None,
-                detected_source_lang: None,
-            }],
+            cards: vec![sample_card(
+                "svc-1",
+                "Mock",
+                "mock",
+                "mock",
+                PopupCardStatus::Translating,
+                "你好",
+                "",
+            )],
+        }
+    }
+
+    fn paint_card(
+        id: &str,
+        name: &str,
+        protocol: &str,
+        model: &str,
+        status: PopupCardStatus,
+        text: &str,
+        error: &str,
+    ) -> PaintCardSnapshot {
+        PaintCardSnapshot {
+            service_instance_id: id.into(),
+            service_name: name.into(),
+            protocol: protocol.into(),
+            model_name: model.into(),
+            status,
+            text: text.into(),
+            error_message: error.into(),
         }
     }
 
@@ -970,11 +1319,204 @@ mod tests {
         assert_eq!(snap.cards.len(), 1);
         assert_eq!(snap.cards[0].service_name, "Mock");
         assert_eq!(snap.cards[0].service_instance_id, "svc-1");
+        assert_eq!(snap.cards[0].protocol, "mock");
+        assert_eq!(snap.cards[0].model_name, "mock");
         assert_eq!(snap.cards[0].text, "你好");
         assert_eq!(snap.cards[0].status, PopupCardStatus::Translating);
 
         let loaded = load_paint_snapshot();
         assert_eq!(loaded, snap);
+    }
+
+    #[test]
+    fn multi_card_snapshot_preserves_protocol_and_model() {
+        let _guard = SNAPSHOT_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let vm = PopupViewModel {
+            session_id: Some("batch".into()),
+            source_text: "hi".into(),
+            source_type: "selection".into(),
+            source_lang: "en".into(),
+            target_lang: "zh".into(),
+            is_translating: true,
+            cards: vec![
+                sample_card(
+                    "llm-1",
+                    "GPT",
+                    "openai_chat",
+                    "gpt-4o-mini",
+                    PopupCardStatus::Translating,
+                    "你好",
+                    "",
+                ),
+                sample_card(
+                    "mt-1",
+                    "Edge",
+                    "microsoft_edge",
+                    "should-hide",
+                    PopupCardStatus::Finished,
+                    "嗨",
+                    "",
+                ),
+                sample_card(
+                    "fail-1",
+                    "Claude",
+                    "claude_messages",
+                    "claude-3",
+                    PopupCardStatus::Failed,
+                    "",
+                    "超时",
+                ),
+            ],
+        };
+        let snap = store_paint_snapshot(&vm);
+        assert_eq!(snap.cards.len(), 3);
+        assert_eq!(snap.cards[0].protocol, "openai_chat");
+        assert_eq!(snap.cards[0].model_name, "gpt-4o-mini");
+        assert_eq!(snap.cards[1].protocol, "microsoft_edge");
+        assert_eq!(snap.cards[2].error_message, "超时");
+        assert!(snap.is_translating);
+    }
+
+    #[test]
+    fn card_detail_label_hides_model_for_microsoft_edge() {
+        assert_eq!(
+            card_detail_label("microsoft_edge", "gpt-x"),
+            "microsoft_edge"
+        );
+        assert_eq!(
+            card_detail_label("openai_chat", "gpt-4o-mini"),
+            "gpt-4o-mini"
+        );
+        assert_eq!(card_detail_label("openai_chat", "—"), "openai_chat");
+        assert_eq!(card_detail_label("openai_chat", ""), "openai_chat");
+        assert!(is_machine_translate_protocol("microsoft_edge"));
+        assert!(!is_machine_translate_protocol("openai_chat"));
+    }
+
+    #[test]
+    fn format_card_header_includes_name_detail_status() {
+        let llm = paint_card(
+            "1",
+            "GPT",
+            "openai_chat",
+            "gpt-4o-mini",
+            PopupCardStatus::Finished,
+            "ok",
+            "",
+        );
+        let h = format_card_header(&llm);
+        assert!(h.contains("GPT"));
+        assert!(h.contains("gpt-4o-mini"));
+        assert!(h.contains("完成"));
+
+        let edge = paint_card(
+            "2",
+            "Edge",
+            "microsoft_edge",
+            "hidden-model",
+            PopupCardStatus::Translating,
+            "",
+            "",
+        );
+        let he = format_card_header(&edge);
+        assert!(he.contains("Edge"));
+        assert!(he.contains("microsoft_edge"));
+        assert!(!he.contains("hidden-model"));
+        assert!(he.contains("翻译中"));
+    }
+
+    #[test]
+    fn card_body_and_extra_error() {
+        let ok = paint_card(
+            "1",
+            "A",
+            "mock",
+            "m",
+            PopupCardStatus::Finished,
+            "译文",
+            "",
+        );
+        assert_eq!(card_body_text(&ok), "译文");
+        assert_eq!(card_extra_error(&ok), None);
+
+        let fail_only = paint_card(
+            "2",
+            "B",
+            "mock",
+            "m",
+            PopupCardStatus::Failed,
+            "",
+            "网络错误",
+        );
+        assert_eq!(card_body_text(&fail_only), "网络错误");
+        assert_eq!(card_extra_error(&fail_only), None);
+
+        let fail_both = paint_card(
+            "3",
+            "C",
+            "mock",
+            "m",
+            PopupCardStatus::Failed,
+            "部分译文",
+            "截断",
+        );
+        assert_eq!(card_body_text(&fail_both), "部分译文");
+        assert_eq!(card_extra_error(&fail_both), Some("截断"));
+
+        let pending = paint_card(
+            "4",
+            "D",
+            "mock",
+            "m",
+            PopupCardStatus::Pending,
+            "",
+            "",
+        );
+        assert_eq!(card_body_text(&pending), "…");
+    }
+
+    #[test]
+    fn clamp_and_adjust_card_scroll() {
+        let _guard = SNAPSHOT_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        assert_eq!(clamp_card_scroll(-10, 500, 200), 0);
+        assert_eq!(clamp_card_scroll(100, 500, 200), 100);
+        assert_eq!(clamp_card_scroll(999, 500, 200), 300);
+        assert_eq!(clamp_card_scroll(50, 100, 200), 0);
+
+        store_scroll_metrics(500, 200);
+        set_card_scroll_offset(0);
+        assert_eq!(adjust_card_scroll(100), 100);
+        assert_eq!(adjust_card_scroll(250), 300);
+        assert_eq!(adjust_card_scroll(-50), 250);
+        assert_eq!(card_scroll_offset(), 250);
+        reset_card_scroll();
+        assert_eq!(card_scroll_offset(), 0);
+    }
+
+    #[test]
+    fn store_snapshot_resets_scroll_on_source_change() {
+        let _guard = SNAPSHOT_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let mut vm = sample_vm();
+        let _ = store_paint_snapshot(&vm);
+        store_scroll_metrics(800, 200);
+        set_card_scroll_offset(120);
+        assert_eq!(card_scroll_offset(), 120);
+
+        // 同源、同服务 id 仅改译文 → 保留滚动
+        vm.cards[0].text = "新译文".into();
+        let _ = store_paint_snapshot(&vm);
+        assert_eq!(card_scroll_offset(), 120);
+
+        // 源文变化 → 重置
+        vm.source_text = "Other".into();
+        let _ = store_paint_snapshot(&vm);
+        assert_eq!(card_scroll_offset(), 0);
     }
 
     #[test]
@@ -1065,24 +1607,45 @@ mod tests {
             target_lang: "zh".into(),
             is_translating: false,
             cards: vec![
-                PaintCardSnapshot {
-                    service_instance_id: "a".into(),
-                    service_name: "A".into(),
-                    status: PopupCardStatus::Pending,
-                    text: String::new(),
-                    error_message: String::new(),
-                },
-                PaintCardSnapshot {
-                    service_instance_id: "b".into(),
-                    service_name: "B".into(),
-                    status: PopupCardStatus::Finished,
-                    text: "译文".into(),
-                    error_message: String::new(),
-                },
+                paint_card("a", "A", "mock", "m", PopupCardStatus::Pending, "", ""),
+                paint_card("b", "B", "mock", "m", PopupCardStatus::Finished, "译文", ""),
             ],
         };
         assert_eq!(first_copyable_service_id(&snap).as_deref(), Some("b"));
         assert_eq!(resolve_copy_text(&snap, "b").as_deref(), Some("译文"));
+    }
+
+    #[test]
+    fn toolbar_cancel_hidden_when_idle_shown_when_translating() {
+        let client = RECT {
+            left: 0,
+            top: 0,
+            right: 420,
+            bottom: 360,
+        };
+        let idle = layout_toolbar_buttons(&client, false, 1.0);
+        assert!(
+            idle.iter().all(|(b, _)| *b != ToolbarButton::Cancel),
+            "空闲时不得显示取消"
+        );
+        let busy = layout_toolbar_buttons(&client, true, 1.0);
+        assert!(
+            busy.iter().any(|(b, _)| *b == ToolbarButton::Cancel),
+            "翻译中应显示取消"
+        );
+        // busy 布局能命中取消；idle 布局中不存在 Cancel 热区
+        let (_, r) = busy
+            .iter()
+            .find(|(b, _)| *b == ToolbarButton::Cancel)
+            .expect("cancel rect");
+        assert_eq!(
+            hit_test_toolbar(r.left + 1, r.top + 1, &client, true, 1.0),
+            Some(ToolbarButton::Cancel)
+        );
+        assert_ne!(
+            hit_test_toolbar(r.left + 1, r.top + 1, &client, false, 1.0),
+            Some(ToolbarButton::Cancel)
+        );
     }
 
     #[test]

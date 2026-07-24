@@ -138,6 +138,8 @@ mod tests {
                 PaintCardSnapshot {
                     service_instance_id: "a".into(),
                     service_name: "A".into(),
+                    protocol: "mock".into(),
+                    model_name: "m".into(),
                     status: PopupCardStatus::Finished,
                     text: String::new(),
                     error_message: String::new(),
@@ -145,6 +147,8 @@ mod tests {
                 PaintCardSnapshot {
                     service_instance_id: "b".into(),
                     service_name: "B".into(),
+                    protocol: "openai_chat".into(),
+                    model_name: "gpt".into(),
                     status: PopupCardStatus::Finished,
                     text: "你好".into(),
                     error_message: String::new(),
@@ -177,6 +181,8 @@ mod tests {
             cards: vec![PaintCardSnapshot {
                 service_instance_id: "e".into(),
                 service_name: "E".into(),
+                protocol: "mock".into(),
+                model_name: "m".into(),
                 status: PopupCardStatus::Failed,
                 text: String::new(),
                 error_message: "超时".into(),
