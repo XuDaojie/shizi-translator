@@ -103,7 +103,9 @@ fn ensure_active(app: &AppHandle) -> Result<(), String> {
                     Ok(()) => Ok(()),
                     Err(e) => {
                         // 与 resolve_after_ensure(WinUi, false) == Webview 一致；不写 config。
-                        log::warn!("WinUI ensure 失败，本会话回退 webview: {e}");
+                        log::warn!(
+                            "WinUI ensure 失败，本会话回退 webview（config.popupUi 仍为 winui）: {e}"
+                        );
                         with_session(app, |session| {
                             session.fallback_to_webview_for_session();
                             debug_assert_eq!(
@@ -177,9 +179,14 @@ pub fn show_for_config(
             #[cfg(windows)]
             {
                 match winui_ui().show(app, mode) {
-                    Ok(()) => Ok(()),
+                    Ok(()) => {
+                        log::info!("WinUI show 成功 mode={mode:?}");
+                        Ok(())
+                    }
                     Err(e) => {
-                        log::warn!("WinUI show 失败，本会话回退 webview: {e}");
+                        log::warn!(
+                            "WinUI show 失败，本会话回退 webview（config.popupUi 仍为 winui）: {e}"
+                        );
                         with_session(app, |session| {
                             session.fallback_to_webview_for_session();
                             debug_assert_eq!(

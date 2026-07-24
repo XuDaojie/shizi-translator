@@ -119,7 +119,10 @@ public sealed partial class MainWindow : Window
 
         IsPopupVisible = true;
         Activate();
-        ReportContentSize();
+        // 不要在 IPC 同步 Show 路径内立刻 report_content_size：
+        // 否则 request 可能先于 show 的 result 到达 Rust，嵌套 set_size 与
+        // 外层 show 的 OP_GATE 形成死锁/超时，导致 Rust 回退 webview。
+        _ = DispatcherQueue.TryEnqueue(() => ReportContentSize());
     }
 
     public void HidePopup()

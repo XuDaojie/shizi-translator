@@ -186,9 +186,12 @@ fn spawn_and_connect(exe: &Path) -> Result<(), String> {
 
     log::info!("popup host: 启动 {} --port {}", exe.display(), port);
 
+    // 工作目录必须为 exe 所在目录，否则 WASDK/native 依赖可能从错误 CWD 加载失败。
+    let work_dir = exe.parent().unwrap_or(Path::new("."));
     let mut child = Command::new(exe)
         .arg("--port")
         .arg(port.to_string())
+        .current_dir(work_dir)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -434,15 +437,18 @@ fn wait_result(op: &str, timeout: Duration) -> Result<(), String> {
                 ok,
                 error,
             }) => {
-                if op_name
-                    .as_deref()
-                    .is_none_or(|n| n == op || n.is_empty())
-                {
-                    if ok {
-                        return Ok(());
-                    }
-                    return Err(error.unwrap_or_else(|| format!("op={op} 失败")));
+                // 忽略不匹配的 result（例如 fire-and-forget set_size 的应答）
+                let matches = match op_name.as_deref() {
+                    None | Some("") => true,
+                    Some(n) => n == op,
+                };
+                if !matches {
+                    continue;
                 }
+                if ok {
+                    return Ok(());
+                }
+                return Err(error.unwrap_or_else(|| format!("op={op} 失败")));
             }
             Ok(ReaderEvent::Hello) => {}
             Ok(ReaderEvent::Disconnected) => {
@@ -471,6 +477,13 @@ fn call_op(msg: IpcMessage) -> Result<(), String> {
         .map_err(|_| "popup op gate 损坏".to_string())?;
     write_msg(&msg)?;
     wait_result(&op, Duration::from_secs(10))
+}
+
+/// 写命令但不等待 result。用于 Bridge 回调里再调 set_size 等，避免与外层
+/// `call_op`（持有 OP_GATE 等待中）形成死锁。
+fn write_op_fire_and_forget(msg: IpcMessage) -> Result<(), String> {
+    // 不拿 OP_GATE：外层 show/ensure 可能正持有 gate 等待；只串行化写锁 via host writer。
+    write_msg(&msg)
 }
 
 fn teardown_locked(guard: &mut HostInner) {
@@ -554,7 +567,13 @@ pub fn set_always_on_top(on: bool) -> Result<(), String> {
 }
 
 pub fn set_size(w: f64, h: f64) -> Result<(), String> {
-    call_op(IpcMessage {
+    // 常由 UI 在 show 过程中 report_content_size 触发；若走 call_op 会与
+    // 外层 show 的 OP_GATE 死锁（show 等 result，set_size 等 gate）。
+    // 尺寸调整允许 best-effort：只下发、不等待。
+    if !is_running() {
+        return Ok(());
+    }
+    write_op_fire_and_forget(IpcMessage {
         op: "set_size".into(),
         ok: None,
         error: None,
