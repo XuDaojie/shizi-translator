@@ -2,7 +2,7 @@
 //!
 //! 启动真切换：`resolve_popup_backend_kind` + [`create_backend`] / [`create_host_with_winui_fallback`]。
 //! `popup-winui` feature + Windows 时 `Winui` kind 使用 [`winui::WinuiPopupBackend`]
-//!（**路径 B：Win32 表面**，非 XAML）；否则回退 WebView。
+//!（**路径 R：windows-reactor 真 WinUI 3**）；否则回退 WebView。
 //! WinUI `ensure_created` 失败时同进程降级为 WebView，并（仅 Windows）一次性提示 Runtime。
 
 // 部分辅助 API（如 with_host 外扩展点）未必在所有 cfg 下全量引用。
@@ -49,7 +49,7 @@ pub fn create_backend(app: &AppHandle, kind: PopupUiBackendKind) -> Box<dyn Popu
 
 /// 创建 [`PopupHost`]：若 kind 为 WinUI 且 `ensure_created` 失败，则降级 WebView 并提示。
 ///
-/// 路径 B 成功时不弹 dialog；非 Windows 不弹 dialog（`cfg`）。
+/// 路径 R 成功时不弹 dialog；非 Windows 不弹 dialog（`cfg`）。
 pub fn create_host_with_winui_fallback(app: &AppHandle, kind: PopupUiBackendKind) -> PopupHost {
     let mut host = PopupHost::from_backend(create_backend(app, kind));
     if kind == PopupUiBackendKind::Winui {

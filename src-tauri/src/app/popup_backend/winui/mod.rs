@@ -1,7 +1,8 @@
 //! 原生弹窗后端（Windows + `popup-winui` feature）。
 //!
-//! **采用路径 B：Win32 表面**（`WS_POPUP` + `WS_EX_TOOLWINDOW` + DWM 圆角），
-//! 不依赖 Windows App SDK / Microsoft.UI.Xaml。配置枚举值仍为 `winui`。
+//! **路径 R：windows-reactor 真 WinUI 3**（专用 STA + 哨兵；`WinuiPopupBackend` →
+//! `ReactorHostHandle`）。配置枚举值仍为 `winui`。GDI `ui.rs` 仍可编译（遗留，
+//! 任务 11 删除），backend 不再引用。
 
 #![cfg(all(windows, feature = "popup-winui"))]
 

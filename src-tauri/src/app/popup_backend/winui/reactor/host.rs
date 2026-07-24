@@ -26,8 +26,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 // 注意：windows_reactor 将 `Result` 重导出为 `Result<T> = Result<T, Error>`，
 // 本模块的 API 错误类型用 `String`，故显式使用 `std::result::Result`。
 use windows_reactor::{
-    App, AsyncSetState, Backdrop, DispatcherTimer, Element, ReactorWindow, RenderCx, button,
-    text_block, vstack,
+    App, AsyncSetState, Backdrop, DispatcherTimer, Element, ReactorWindow, RenderCx, text_block,
 };
 
 use crate::app::popup_backend::types::{PopupPositionMode, PopupViewModel};
@@ -35,6 +34,7 @@ use crate::app::popup_window::{compute_popup_position, LogicalPos, LogicalRect, 
 use crate::platform::cursor_logical_context;
 
 use super::state::{self, store_global};
+use super::view;
 
 /// 哨兵窗标题（主 App 窗；始终存活，默认隐藏）。
 pub const SENTINEL_TITLE: &str = "Shizi Reactor Sentinel";
@@ -368,43 +368,8 @@ fn popup_root(cx: &mut RenderCx, shared: Arc<SharedUi>) -> Element {
         }
     });
 
-    let source = if vm.source_text.is_empty() {
-        String::from("(empty)")
-    } else {
-        vm.source_text.clone()
-    };
-    let card_text = vm
-        .cards
-        .first()
-        .map(|c| {
-            let t = c.text.trim();
-            if !t.is_empty() {
-                t.to_string()
-            } else {
-                let e = c.error_message.trim();
-                if !e.is_empty() {
-                    e.to_string()
-                } else {
-                    String::new()
-                }
-            }
-        })
-        .unwrap_or_default();
-
-    let shared_close = Arc::clone(&shared);
-    vstack((
-        text_block("Reactor host")
-            .font_size(14.0)
-            .semibold(),
-        text_block(source).font_size(18.0).bold(),
-        text_block(card_text).font_size(14.0),
-        button("Close").on_click(move || {
-            // hide，不 Close → 不触发 last-window-exit
-            hide_popup_hwnd(&shared_close);
-        }),
-    ))
-    .spacing(12.0)
-    .into()
+    // 最小 UI 统一走 view，避免 host 内嵌第二套控件树。
+    view::render_popup(&vm)
 }
 
 fn open_popup(shared: Arc<SharedUi>) -> std::result::Result<(), String> {

@@ -114,12 +114,16 @@ fn copy_card_text(service_instance_id: &str) -> Result<(), String> {
     write_clipboard_text(&text).map_err(|e| e.to_string())
 }
 
-/// 注册 UI 动作分发（函数指针，`ui` 不反向依赖本模块类型以外的符号环）。
+/// 注册 UI 动作分发（函数指针，避免 UI 模块编译期反向依赖本模块业务路径）。
 ///
-/// GDI 仍是默认产品路径：继续注册 `ui::set_action_handler`，复制只读
-/// `reactor::state` 全局快照（由 `store_paint_snapshot` 双写维护）。
+/// - GDI `ui.rs`：继续 `set_action_handler`（遗留，任务 11 删除）
+/// - 路径 R `reactor::view`：注册同一 [`handle_user_action`]（view 经静态
+///   指针分发，避免 `view → actions → host → view` 环）
+///
+/// 复制统一只读 `reactor::state` 全局快照。
 pub fn install_action_handler() {
     super::ui::set_action_handler(handle_user_action);
+    super::reactor::view::set_user_action_handler(handle_user_action);
 }
 
 #[cfg(test)]

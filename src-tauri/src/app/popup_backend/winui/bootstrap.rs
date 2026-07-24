@@ -1,11 +1,8 @@
 //! 原生弹窗 Runtime 探测 / Bootstrap。
 //!
-//! **路径 R 探测（M0）**：调用 `windows_reactor::bootstrap()`（进程级一次）。
-//! 成功表示 Windows App Runtime 可用；失败时 `ok: false`，上层可降级 WebView。
-//!
-//! 注意：当前 `WinuiPopupBackend` 仍为路径 B（GDI）；本探测为路径 R 否决门与后续切换预留。
-//! GDI `ensure_created` 仍调用本函数——本机有 Runtime 时 GDI 继续可用；无 Runtime 时
-//! 会走 `create_host_with_winui_fallback` 降级（与路径 R 最终行为一致）。
+//! **路径 R 探测**：调用 `windows_reactor::bootstrap()`（进程级一次）。
+//! 成功表示 Windows App Runtime 可用；失败时 `ok: false`，上层
+//! `WinuiPopupBackend::ensure_created` → `create_host_with_winui_fallback` 降级 WebView。
 
 /// Bootstrap / 运行时探测结果。
 #[derive(Debug, Clone, PartialEq, Eq)]
