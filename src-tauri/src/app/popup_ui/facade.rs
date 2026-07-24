@@ -1,6 +1,6 @@
 //! 弹窗 UI facade：按 config/session 选择 backend，统一 ensure/show/hide。
 //!
-//! 本任务 WinUI 宿主未接入：desired=winui 时会话级回退到 webview。
+//! WinUI：ensure/show 失败则会话级回退 webview（不写回 config）。
 
 use std::sync::{Mutex, OnceLock};
 
@@ -13,8 +13,16 @@ use crate::app::popup_window::PopupPositionMode;
 use crate::app::state::AppState;
 use crate::core::config::AppConfig;
 
+#[cfg(windows)]
+use super::WinUiPopupUi;
+
 fn webview_ui() -> WebviewPopupUi {
     WebviewPopupUi::new()
+}
+
+#[cfg(windows)]
+fn winui_ui() -> WinUiPopupUi {
+    WinUiPopupUi::new()
 }
 
 /// 进程级后备 session（AppState 尚未 manage 时）。优先用 AppState 单一真相。
@@ -47,17 +55,6 @@ fn active_kind(app: &AppHandle) -> PopupUiKind {
     with_session(app, |session| session.active()).unwrap_or(PopupUiKind::Webview)
 }
 
-/// 若 active 为 WinUi（宿主未就绪），会话回退到 webview 并返回最终 active。
-fn resolve_active_with_winui_stub(app: &AppHandle) -> Result<PopupUiKind, String> {
-    let active = active_kind(app);
-    if active == PopupUiKind::WinUi {
-        log::warn!("WinUI 弹窗宿主尚未就绪，本会话回退到 webview");
-        with_session(app, |session| session.fallback_to_webview_for_session())?;
-        return Ok(PopupUiKind::Webview);
-    }
-    Ok(active)
-}
-
 /// 按 config 同步 desired，并在 `window_precreate` 允许时 ensure 当前 active 后端。
 pub fn ensure_for_config(app: &AppHandle, config: &AppConfig) -> Result<(), String> {
     sync_desired_from_config(app, config)?;
@@ -69,12 +66,29 @@ pub fn ensure_for_config(app: &AppHandle, config: &AppConfig) -> Result<(), Stri
         return Ok(());
     }
 
-    let active = resolve_active_with_winui_stub(app)?;
+    ensure_active(app)
+}
+
+fn ensure_active(app: &AppHandle) -> Result<(), String> {
+    let active = active_kind(app);
     match active {
         PopupUiKind::Webview => webview_ui().ensure(app),
         PopupUiKind::WinUi => {
-            // resolve 已回退；防御性分支
-            webview_ui().ensure(app)
+            #[cfg(windows)]
+            {
+                match winui_ui().ensure(app) {
+                    Ok(()) => Ok(()),
+                    Err(e) => {
+                        log::warn!("WinUI ensure 失败，本会话回退 webview: {e}");
+                        with_session(app, |session| session.fallback_to_webview_for_session())?;
+                        webview_ui().ensure(app)
+                    }
+                }
+            }
+            #[cfg(not(windows))]
+            {
+                webview_ui().ensure(app)
+            }
         }
     }
 }
@@ -96,7 +110,21 @@ fn push_show_context(mode: PopupPositionMode) {
     );
 }
 
-/// 按 config 同步 session；show 前 hide 非 active 后端；active 为 winui 时 stub 回退。
+fn hide_inactive(app: &AppHandle, active: PopupUiKind) {
+    match active {
+        PopupUiKind::Webview => {
+            #[cfg(windows)]
+            {
+                let _ = winui_ui().hide(app);
+            }
+        }
+        PopupUiKind::WinUi => {
+            let _ = webview_ui().hide(app);
+        }
+    }
+}
+
+/// 按 config 同步 session；show 前 hide 非 active 后端。
 pub fn show_for_config(
     app: &AppHandle,
     config: &AppConfig,
@@ -104,19 +132,31 @@ pub fn show_for_config(
 ) -> Result<(), String> {
     sync_desired_from_config(app, config)?;
 
-    let active = resolve_active_with_winui_stub(app)?;
-    // 互斥：hide 非 active。WinUI 尚未实现，仅保证 webview 在非 webview 时被 hide。
-    match active {
-        PopupUiKind::Webview => {
-            // 未来：hide winui
-        }
-        PopupUiKind::WinUi => {
-            let _ = webview_ui().hide(app);
-        }
-    }
+    // 先 ensure（含 winui 失败回退）
+    ensure_active(app)?;
+    let active = active_kind(app);
+    hide_inactive(app, active);
 
     let result = match active {
-        PopupUiKind::Webview | PopupUiKind::WinUi => webview_ui().show(app, mode),
+        PopupUiKind::Webview => webview_ui().show(app, mode),
+        PopupUiKind::WinUi => {
+            #[cfg(windows)]
+            {
+                match winui_ui().show(app, mode) {
+                    Ok(()) => Ok(()),
+                    Err(e) => {
+                        log::warn!("WinUI show 失败，本会话回退 webview: {e}");
+                        with_session(app, |session| session.fallback_to_webview_for_session())?;
+                        let _ = winui_ui().hide(app);
+                        webview_ui().show(app, mode)
+                    }
+                }
+            }
+            #[cfg(not(windows))]
+            {
+                webview_ui().show(app, mode)
+            }
+        }
     };
 
     if result.is_ok() {
@@ -125,27 +165,38 @@ pub fn show_for_config(
     result
 }
 
-/// 与 `show_for_config` 相同的 session/backend 路由，但 webview 分支用阻塞 show（冷路径/已 spawn 的线程内）。
+/// 与 `show_for_config` 相同的 session/backend 路由，但 webview 分支用阻塞 show。
 pub fn show_blocking_for_config(
     app: &AppHandle,
     config: &AppConfig,
     mode: PopupPositionMode,
 ) -> Result<(), String> {
     sync_desired_from_config(app, config)?;
-
-    let active = resolve_active_with_winui_stub(app)?;
-    match active {
-        PopupUiKind::Webview => {
-            // 未来：hide winui
-        }
-        PopupUiKind::WinUi => {
-            let _ = webview_ui().hide(app);
-        }
-    }
+    ensure_active(app)?;
+    let active = active_kind(app);
+    hide_inactive(app, active);
 
     let result = match active {
-        PopupUiKind::Webview | PopupUiKind::WinUi => {
+        PopupUiKind::Webview => {
             crate::app::popup_window::show_popup_blocking(app, config, mode)
+        }
+        PopupUiKind::WinUi => {
+            #[cfg(windows)]
+            {
+                match winui_ui().show(app, mode) {
+                    Ok(()) => Ok(()),
+                    Err(e) => {
+                        log::warn!("WinUI show(blocking) 失败，本会话回退 webview: {e}");
+                        with_session(app, |session| session.fallback_to_webview_for_session())?;
+                        let _ = winui_ui().hide(app);
+                        crate::app::popup_window::show_popup_blocking(app, config, mode)
+                    }
+                }
+            }
+            #[cfg(not(windows))]
+            {
+                crate::app::popup_window::show_popup_blocking(app, config, mode)
+            }
         }
     };
     if result.is_ok() {
@@ -154,10 +205,13 @@ pub fn show_blocking_for_config(
     result
 }
 
-/// 隐藏当前（及未来其它）弹窗后端；可同时 hide 两边保证互斥。
+/// 隐藏当前弹窗后端；可同时 hide 两边保证互斥。
 pub fn hide_active(app: &AppHandle) -> Result<(), String> {
-    webview_ui().hide(app)?;
-    // 未来：hide winui
+    let _ = webview_ui().hide(app);
+    #[cfg(windows)]
+    {
+        let _ = winui_ui().hide(app);
+    }
     Ok(())
 }
 
@@ -171,3 +225,12 @@ pub fn on_popup_ui_config_changed(app: &AppHandle, new_config: &AppConfig) {
         log::warn!("popup_ui 配置变更后 hide 失败: {error}");
     }
 }
+
+/// 进程退出时 best-effort 关闭 WinUI 子进程。
+#[cfg(windows)]
+pub fn shutdown_winui_host() {
+    crate::app::popup_bridge::host::shutdown();
+}
+
+#[cfg(not(windows))]
+pub fn shutdown_winui_host() {}

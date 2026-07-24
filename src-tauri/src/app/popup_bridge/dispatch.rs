@@ -9,13 +9,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use tauri::Manager;
 
 use super::protocol::{
     BridgeEnvelope, ReportContentSizePayload, SetSessionLanguagesPayload, StartTranslationPayload,
 };
 use crate::{
     app::{
-        popup_ui::{PopupUi, WebviewPopupUi},
+        popup_ui::{PopupUi, PopupUiKind, WebviewPopupUi},
         shortcuts::trigger_ocr_translate,
         state::AppState,
         window::request_show_settings_window,
@@ -23,6 +24,31 @@ use crate::{
     core::config::AppConfig,
     ui::web_popup::{start_translation_from_input, start_translation_from_text},
 };
+
+#[cfg(windows)]
+use crate::app::popup_ui::WinUiPopupUi;
+
+/// 按当前 session active 调整弹窗尺寸。
+fn report_content_size(app: &tauri::AppHandle, width: f64, height: f64) -> Result<(), String> {
+    let active = app
+        .try_state::<AppState>()
+        .and_then(|s| s.popup_ui_session.lock().ok().map(|g| g.active()))
+        .unwrap_or(PopupUiKind::Webview);
+
+    match active {
+        PopupUiKind::WinUi => {
+            #[cfg(windows)]
+            {
+                WinUiPopupUi::new().set_size(app, width, height)
+            }
+            #[cfg(not(windows))]
+            {
+                WebviewPopupUi::new().set_size(app, width, height)
+            }
+        }
+        PopupUiKind::Webview => WebviewPopupUi::new().set_size(app, width, height),
+    }
+}
 
 /// 与协议信封一致的 bridgeVersion。
 pub const BRIDGE_VERSION: u32 = 1;
@@ -235,8 +261,9 @@ pub fn handle_bridge_request(
 
         BridgeOp::ReportContentSize => match parse_payload::<ReportContentSizePayload>(envelope) {
             Ok(p) => {
-                // 当前 active 后端尚未完全接入时，用 WebviewPopupUi.set_size（任务约定）。
-                match WebviewPopupUi::new().set_size(app, p.width, p.height) {
+                // 优先 WinUI（若会话 active 为 winui 且宿主在跑）；否则 webview。
+                let result = report_content_size(app, p.width, p.height);
+                match result {
                     Ok(()) => BridgeResponse::ok(request_id, None),
                     Err(e) => BridgeResponse::err(request_id, e),
                 }

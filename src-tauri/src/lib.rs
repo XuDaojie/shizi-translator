@@ -177,12 +177,20 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("构建应用失败")
-        .run(|_app_handle, event| {
+        .run(|app_handle, event| {
             // 托盘驻留：无窗 / 关最后一窗不退出；托盘「退出」走 app.exit 带 code，不拦截。
-            if let tauri::RunEvent::ExitRequested { api, code, .. } = event {
-                if code.is_none() {
-                    api.prevent_exit();
+            match event {
+                tauri::RunEvent::ExitRequested { api, code, .. } => {
+                    if code.is_none() {
+                        api.prevent_exit();
+                    }
                 }
+                tauri::RunEvent::Exit => {
+                    // best-effort 关闭 WinUI 子进程
+                    let _ = app_handle;
+                    crate::app::popup_ui::facade::shutdown_winui_host();
+                }
+                _ => {}
             }
         });
 }

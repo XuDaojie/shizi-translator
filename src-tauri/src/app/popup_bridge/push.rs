@@ -23,8 +23,6 @@ impl BridgePushHub {
     }
 
     /// 注册或清除宿主回调（`None` 清除）。
-    /// WinUI host 接线前可能无外部调用方。
-    #[allow(dead_code)]
     pub fn set_sink(&self, f: Option<Arc<dyn Fn(String) + Send + Sync>>) {
         if let Ok(mut guard) = self.sink.lock() {
             *guard = f;
