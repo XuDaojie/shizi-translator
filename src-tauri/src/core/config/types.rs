@@ -59,6 +59,17 @@ fn normalize_update_channel(value: String) -> String {
     }
 }
 
+fn default_popup_ui_backend() -> String {
+    "webview".to_string()
+}
+
+fn normalize_popup_ui_backend(value: String) -> String {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "winui" => "winui".to_string(),
+        _ => "webview".to_string(),
+    }
+}
+
 fn default_history_limit() -> usize {
     500
 }
@@ -270,6 +281,9 @@ pub struct AppConfig {
     /// 登录 Windows 后自动启动（HKCU Run；默认关闭，用户显式开启）。
     #[serde(default)]
     pub launch_at_login: bool,
+    /// 翻译弹窗 UI 后端：`webview`（默认）或 `winui`。
+    #[serde(default = "default_popup_ui_backend")]
+    pub popup_ui_backend: String,
 }
 
 impl ServiceInstanceConfig {
@@ -367,6 +381,7 @@ impl AppConfig {
             update_channel: default_update_channel(),
             auto_check_update: true,
             launch_at_login: false,
+            popup_ui_backend: default_popup_ui_backend(),
         }
         .normalized()
     }
@@ -393,6 +408,7 @@ impl AppConfig {
         }
         self.log_level = normalize_log_level(self.log_level);
         self.update_channel = normalize_update_channel(self.update_channel);
+        self.popup_ui_backend = normalize_popup_ui_backend(self.popup_ui_backend);
         self
     }
 
@@ -1146,5 +1162,37 @@ mod tests {
         config.update_channel = "nightly".into();
         let config = config.normalized();
         assert_eq!(config.update_channel, "stable");
+    }
+
+    #[test]
+    fn app_config_defaults_popup_ui_backend_webview() {
+        let config = AppConfig::default();
+        assert_eq!(config.popup_ui_backend, "webview");
+    }
+
+    #[test]
+    fn app_config_missing_popup_ui_backend_deserializes_to_webview() {
+        let json = r#"{"targetLang":"zh-CN","services":[],"ocrServices":[]}"#;
+        let config: AppConfig = serde_json::from_str(json).expect("deserialize");
+        let config = config.normalized();
+        assert_eq!(config.popup_ui_backend, "webview");
+    }
+
+    #[test]
+    fn app_config_popup_ui_backend_roundtrip_camel_case() {
+        let mut config = AppConfig::default();
+        config.popup_ui_backend = "winui".into();
+        let json = serde_json::to_string(&config).expect("ser");
+        assert!(json.contains("\"popupUiBackend\":\"winui\""), "got {json}");
+        let back: AppConfig = serde_json::from_str(&json).expect("de");
+        assert_eq!(back.popup_ui_backend, "winui");
+    }
+
+    #[test]
+    fn normalized_rejects_unknown_popup_ui_backend() {
+        let mut config = AppConfig::default();
+        config.popup_ui_backend = "qt".into();
+        let n = config.normalized();
+        assert_eq!(n.popup_ui_backend, "webview");
     }
 }
