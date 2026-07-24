@@ -95,6 +95,24 @@ pub fn handle_user_action_with(app: &AppHandle, action: PopupUserAction) {
                 }
             });
         }
+        PopupUserAction::TogglePin => {
+            let next = super::reactor::state::toggle_pinned();
+            // best-effort 置顶 HWND（FindWindow 回退）；UI 线程路径由 host 命令更稳妥，
+            // 此处不依赖 backend 暴露，避免扩 PopupBackend trait。
+            super::reactor::apply_popup_topmost(next);
+            // 刷新标题栏 active 样式
+            if let Err(e) = with_host(app, |host| host.publish_current()) {
+                log::warn!("置顶后刷新弹窗失败: {e}");
+            }
+            log::debug!("Reactor 弹窗置顶: {next}");
+        }
+        PopupUserAction::TriggerOcr => {
+            // 先 hide，避免挡截图 overlay
+            if let Err(e) = with_host(app, |host| host.hide()) {
+                log::warn!("截图译前 hide 弹窗失败: {e}");
+            }
+            crate::app::shortcuts::trigger_ocr_translate(app);
+        }
     }
 }
 

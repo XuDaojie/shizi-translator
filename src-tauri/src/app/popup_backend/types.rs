@@ -67,4 +67,8 @@ pub enum PopupUserAction {
         source_lang: String,
         target_lang: String,
     },
+    /// 切换弹窗置顶（路径 R 标题栏钉）。
+    TogglePin,
+    /// 触发截图译（先 hide 弹窗，再走既有 OCR 入口）。
+    TriggerOcr,
 }

@@ -1,8 +1,27 @@
 //! 路径 R：线程安全 ViewModel 快照与复制纯函数（无窗口）。
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::app::popup_backend::types::PopupViewModel;
+
+/// 弹窗置顶状态（跨 publish 保留；不进 ViewModel）。
+static PINNED: AtomicBool = AtomicBool::new(false);
+
+pub fn is_pinned() -> bool {
+    PINNED.load(Ordering::SeqCst)
+}
+
+pub fn set_pinned(pinned: bool) {
+    PINNED.store(pinned, Ordering::SeqCst);
+}
+
+/// 切换置顶标志，返回切换后的值。
+pub fn toggle_pinned() -> bool {
+    let next = !is_pinned();
+    set_pinned(next);
+    next
+}
 
 /// 供 Reactor UI 线程与 backend `publish` 共享的 ViewModel 快照。
 #[derive(Clone, Default)]
@@ -77,6 +96,16 @@ pub fn first_copyable_service_id(vm: &PopupViewModel) -> Option<String> {
 mod tests {
     use super::*;
     use crate::app::popup_backend::types::{PopupCardStatus, PopupCardVm, PopupViewModel};
+
+    #[test]
+    fn pin_flag_toggles_independently() {
+        set_pinned(false);
+        assert!(!is_pinned());
+        assert!(toggle_pinned());
+        assert!(is_pinned());
+        assert!(!toggle_pinned());
+        assert!(!is_pinned());
+    }
 
     fn card(
         id: &str,

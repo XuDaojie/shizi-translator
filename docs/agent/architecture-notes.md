@@ -22,7 +22,7 @@ Spike / 共存结论：`docs/agent/spike-2026-07-24-winui-reactor-tauri.md`。
 | `PopupBackend` | trait：`ensure_created` / `show` / `hide` / `destroy` / `publish`（`app/popup_backend/trait_api.rs`） |
 | `PopupHost` | 进程级调度：持有 `Box<dyn PopupBackend>` + `PopupViewModel`；可选 `degraded_from_winui` |
 | `WebviewPopupBackend` | 包装现网 `popup_window`；`publish` no-op（前端仍收 `translation:event`） |
-| `WinuiPopupBackend` | **路径 R：`windows-reactor` 真 WinUI 3**（配置枚举值仍为 `winui`）；声明式 Rust 控件树，**非** GDI 自绘、**非** 独立 XAML 文件；五区对齐 Open Design `#popup-winui3`（标题栏 / 源文 / 语言栏 / 结果卡 / 状态栏，宽约 468） |
+| `WinuiPopupBackend` | **路径 R：`windows-reactor` 真 WinUI 3**（配置枚举值仍为 `winui`）；声明式 Rust 控件树，**非** GDI 自绘、**非** 独立 XAML 文件；五区对齐 Open Design `#popup-winui3`（标题栏 / 源文 / 语言栏 / 结果卡 / 状态栏，宽约 468）；UI 分区见 `reactor/{tokens,title_bar,source_card,language_bar,result_cards,status_bar,view}.rs`；动作含 `TogglePin` / `TriggerOcr`（浅色打磨：`docs/superpowers/specs/2026-07-24-winui-reactor-popup-polish-design.md`） |
 | 共存模型 | **S1**：同进程 + 专用 STA 线程 `shizi-reactor-ui`；主 `App` 哨兵窗防 last-window-exit；弹窗 `ReactorWindow` 仅 hide/show，不 Close 哨兵 |
 | feature | `popup-winui`（`Cargo.toml` default 含此项）= 启用路径 R；`--no-default-features` 仅 WebView |
 

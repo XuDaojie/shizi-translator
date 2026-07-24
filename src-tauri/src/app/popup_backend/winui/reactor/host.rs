@@ -20,8 +20,9 @@ use windows::core::PCWSTR;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::HiDpi::{GetDpiForSystem, GetDpiForWindow};
 use windows::Win32::UI::WindowsAndMessaging::{
-    FindWindowW, IsWindow, IsWindowVisible, SetWindowPos, ShowWindow, HWND_TOP, SWP_NOACTIVATE,
-    SWP_SHOWWINDOW, SW_HIDE, SW_SHOW, USER_DEFAULT_SCREEN_DPI,
+    FindWindowW, IsWindow, IsWindowVisible, SetWindowPos, ShowWindow, HWND_NOTOPMOST, HWND_TOP,
+    HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, SW_HIDE, SW_SHOW,
+    USER_DEFAULT_SCREEN_DPI,
 };
 // 注意：windows_reactor 将 `Result` 重导出为 `Result<T> = Result<T, Error>`，
 // 本模块的 API 错误类型用 `String`，故显式使用 `std::result::Result`。
@@ -69,6 +70,8 @@ pub enum HostCmd {
     Publish(PopupViewModel),
     /// 兼容 M0：更新 `source_text` 并 re-render。
     SetLabel(String),
+    /// 设置弹窗 HWND 置顶（UI 线程执行）。
+    SetTopmost(bool),
     /// 仅 hide 弹窗并保留哨兵；**不会**退出进程。
     Shutdown,
 }
@@ -231,6 +234,35 @@ impl ReactorHostHandle {
     /// 非阻塞：hide 弹窗，保留哨兵与 STA 循环。
     pub fn shutdown(&self) {
         let _ = self.tx.send(HostCmd::Shutdown);
+    }
+
+    /// 非阻塞：在 UI 线程设置弹窗置顶。
+    pub fn set_topmost(&self, topmost: bool) {
+        let _ = self.tx.send(HostCmd::SetTopmost(topmost));
+    }
+}
+
+/// 任意线程：按标题查找弹窗 HWND 并设置置顶（best-effort；UI 线程路径优先用 [`ReactorHostHandle::set_topmost`]）。
+pub fn apply_popup_topmost(topmost: bool) {
+    let Some(hwnd) = find_hwnd(POPUP_TITLE) else {
+        log::debug!("apply_popup_topmost：未找到弹窗 HWND");
+        return;
+    };
+    set_hwnd_topmost(hwnd, topmost);
+}
+
+fn set_hwnd_topmost(hwnd: HWND, topmost: bool) {
+    let insert = if topmost { HWND_TOPMOST } else { HWND_NOTOPMOST };
+    unsafe {
+        let _ = SetWindowPos(
+            hwnd,
+            insert,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+        );
     }
 }
 
@@ -421,6 +453,16 @@ fn pump_commands(rx: &Arc<Mutex<Receiver<HostCmd>>>, shared: &Arc<SharedUi>) {
                 vm.source_text = s;
                 store_global(&vm);
                 apply_publish(shared, &vm);
+            }
+            HostCmd::SetTopmost(topmost) => {
+                if let Some(hwnd) = shared
+                    .popup_hwnd()
+                    .or_else(|| find_hwnd(POPUP_TITLE).inspect(|h| shared.set_popup_hwnd(*h)))
+                {
+                    set_hwnd_topmost(hwnd, topmost);
+                } else {
+                    log::debug!("SetTopmost：无弹窗 HWND");
+                }
             }
         }
     }
