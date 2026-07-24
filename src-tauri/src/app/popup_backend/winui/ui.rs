@@ -651,6 +651,10 @@ pub fn destroy_stub() -> Result<(), String> {
 mod tests {
     use super::*;
     use crate::app::popup_backend::types::PopupCardVm;
+    use std::sync::Mutex;
+
+    /// 全局 `PAINT_SNAPSHOT` 会被并行测试互相覆盖，读写快照的用例须串行。
+    static SNAPSHOT_TEST_LOCK: Mutex<()> = Mutex::new(());
 
     fn sample_vm() -> PopupViewModel {
         PopupViewModel {
@@ -678,6 +682,9 @@ mod tests {
 
     #[test]
     fn store_paint_snapshot_captures_source_and_cards() {
+        let _guard = SNAPSHOT_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let vm = sample_vm();
         let snap = store_paint_snapshot(&vm);
         assert_eq!(snap.source_text, "Hello world");
@@ -692,6 +699,9 @@ mod tests {
 
     #[test]
     fn store_paint_snapshot_streaming_overwrite() {
+        let _guard = SNAPSHOT_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let mut vm = sample_vm();
         let _ = store_paint_snapshot(&vm);
         vm.cards[0].text = "你好，世界".into();
@@ -751,6 +761,9 @@ mod tests {
 
     #[test]
     fn publish_view_model_updates_snapshot_without_blocking() {
+        let _guard = SNAPSHOT_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let win = create_hidden_popup().expect("create");
         let vm = sample_vm();
         // 应快速返回：写快照 + PostMessage
