@@ -9,6 +9,7 @@ const baseState: AppSettings = {
     language: 'zh-CN',
     updateChannel: 'stable',
     autoCheckUpdate: true,
+    popupUi: 'webview',
   },
   windowPrecreate: {
     manual: { popup: true, overlay: false },

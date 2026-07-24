@@ -328,6 +328,7 @@ const makeAppConfig = (services: ServiceInstanceConfig[], over: Partial<AppConfi
   windowPrecreate: { manual: { popup: true, overlay: false }, autostart: { popup: false, overlay: false } }, 
   ocrServices: [], collectUsage: true,
   logLevel: 'info', updateChannel: 'stable', autoCheckUpdate: true,
+  popupUi: 'webview',
   shortcuts: {}, ...over,
 })
 
@@ -1031,6 +1032,24 @@ describe('syncFromBackend', () => {
     await settings.syncFromBackend();
 
     expect(settings.saveStatus.value).toBe('idle');
+  });
+
+  it('syncFromBackend 把后端 popupUi 写入 state.general.popupUi', async () => {
+    vi.mocked(isTauriReady).mockReturnValue(true);
+    const settings = useSettings();
+    const localId = settings.state.services[0].id;
+    expect(settings.state.general.popupUi).toBe('webview');
+
+    vi.mocked(invokeGetAppConfig).mockResolvedValue(
+      makeAppConfig([makeBackend({ id: localId })], {
+        popupUi: 'winui',
+        interfaceLanguage: 'auto',
+      }),
+    );
+
+    await settings.syncFromBackend();
+
+    expect(settings.state.general.popupUi).toBe('winui');
   });
 
   it('校验状态变化不触发自动保存', async () => {

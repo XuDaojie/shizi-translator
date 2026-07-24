@@ -68,5 +68,7 @@ export interface AppConfig {
   autoCheckUpdate: boolean;
   /** 登录系统后自动启动（Windows Run 键）。旧 config 可能缺省。 */
   launchAtLogin?: boolean;
+  /** 翻译弹窗 UI 后端：webview（默认）或 winui（Windows 原生）。旧 config 可能缺省。 */
+  popupUi: 'webview' | 'winui';
   shortcuts: Record<string, string>;
 }

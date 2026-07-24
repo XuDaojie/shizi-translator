@@ -3,6 +3,7 @@ import type { ServiceProtocolId, WindowPrecreateConfig } from '@/types/config';
 export type ThemeMode = 'light' | 'dark' | 'system'
 export type UILanguage = 'auto' | 'zh-CN' | 'zh-TW' | 'en-US' | 'ja-JP' | 'ko-KR' | 'fr-FR' | 'de-DE' | 'es-ES' | (string & {})
 export type UpdateChannel = 'stable' | 'beta'
+export type PopupUi = 'webview' | 'winui'
 export type LogLevel = 'error' | 'warn' | 'info' | 'debug'
 
 export interface GeneralSettings {
@@ -12,6 +13,8 @@ export interface GeneralSettings {
   language: UILanguage
   updateChannel: UpdateChannel
   autoCheckUpdate: boolean
+  /** 翻译弹窗 UI：webview（默认）或 winui（仅 Windows）。 */
+  popupUi: PopupUi
 }
 
 export interface AdvancedSettings {

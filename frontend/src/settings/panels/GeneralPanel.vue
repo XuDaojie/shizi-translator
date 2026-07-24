@@ -41,6 +41,22 @@ const updateChannelOptions = computed(() => [
   { label: 'Beta', value: 'beta' },
 ])
 
+/** 仅 Windows 桌面壳可选 WinUI；纯 vite / 非 win 禁用。 */
+const popupUiWinuiAvailable = computed(() => {
+  const p = (navigator.userAgentData as { platform?: string } | undefined)?.platform
+    ?? navigator.platform
+  return /Win/i.test(String(p))
+})
+const popupUiOptions = computed(() => [
+  { label: t('settings.option.popupUiWebview'), value: 'webview' },
+  { label: t('settings.option.popupUiWinui'), value: 'winui' },
+])
+const popupUiDescription = computed(() =>
+  popupUiWinuiAvailable.value
+    ? t('settings.description.popupUi')
+    : t('settings.description.popupUiWindowsOnly'),
+)
+
 const checking = ref(false)
 const updateDialogOpen = ref(false)
 const pendingUpdate = ref<CheckUpdateResult | null>(null)
@@ -149,6 +165,16 @@ const openDirectory = async () => {
           </div>
         </DevOnly>
       </div>
+    </SettingRow>
+    <SettingRow
+      :title="t('settings.field.popupUi')"
+      :description="popupUiDescription"
+    >
+      <SettingSelect
+        v-model="state.general.popupUi"
+        :options="popupUiOptions"
+        :disabled="!popupUiWinuiAvailable"
+      />
     </SettingRow>
     <DevOnly>
       <p v-for="error in interfaceLanguageErrors" :key="`${error.file}:${error.message}`" class="text-xs text-destructive">{{ error.file }}: {{ error.message }}</p>

@@ -30,6 +30,7 @@ const makeState = (services: ServiceInstance[]): AppSettings => ({
     language: 'auto',
     updateChannel: 'stable',
     autoCheckUpdate: true,
+    popupUi: 'webview',
   },
   windowPrecreate: {
     manual: { popup: true, overlay: false },
@@ -224,6 +225,13 @@ describe('projectToAppConfig', () => {
     state.general.launchAtLogin = true;
     expect(projectToAppConfig(state).launchAtLogin).toBe(true);
   });
+
+  it('投影 popupUi（默认 webview）', () => {
+    const state = makeState([])
+    expect(projectToAppConfig(state).popupUi).toBe('webview')
+    state.general.popupUi = 'winui'
+    expect(projectToAppConfig(state).popupUi).toBe('winui')
+  })
 });
 
 describe('validateConfig', () => {
@@ -244,6 +252,7 @@ describe('validateConfig', () => {
     logLevel: 'info',
     updateChannel: 'stable',
     autoCheckUpdate: true,
+    popupUi: 'webview',
     shortcuts: {},
   };
 
