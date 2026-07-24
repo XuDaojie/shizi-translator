@@ -8,6 +8,7 @@
 mod actions;
 mod backend;
 mod bootstrap;
+mod reactor;
 mod ui;
 
 #[allow(unused_imports)]

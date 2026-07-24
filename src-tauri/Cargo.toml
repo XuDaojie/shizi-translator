@@ -14,6 +14,8 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [features]
 default = ["popup-winui"]
 popup-winui = []
+# 预留：路径 B（GDI）回退 feature；本阶段未接线
+popup-winui-gdi = []
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -71,6 +73,11 @@ windows = { version = "0.58", features = [
   "Win32_UI_Shell",
   "Win32_UI_WindowsAndMessaging",
 ] }
+# 路径 R：windows-reactor（M0 候选 rev；绿后锁定，见 spike 文档）
+windows-reactor = { git = "https://github.com/microsoft/windows-rs", rev = "884c9bbc1bd0a2315f00e0f04e34f6b1714653b9", package = "windows-reactor" }
+
+[target.'cfg(windows)'.build-dependencies]
+windows-reactor-setup = { git = "https://github.com/microsoft/windows-rs", rev = "884c9bbc1bd0a2315f00e0f04e34f6b1714653b9", package = "windows-reactor-setup" }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt"] }
