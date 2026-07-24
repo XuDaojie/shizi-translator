@@ -2,9 +2,9 @@
 //!
 //! - `WS_POPUP | WS_CLIPCHILDREN`，无系统厚边框
 //! - `WS_EX_TOOLWINDOW`：不进任务栏
-//! - 逻辑尺寸约 **468×480**（对齐 Open Design WinUI3 原型宽度；高度上限内卡片区滚动）
+//! - 逻辑尺寸约 **468×520**（宽对齐 Open Design WinUI3 原型；高度略抬以减滚动压迫感）
 //! - DWM 圆角 + 边框色（best-effort）；`CS_DROPSHADOW` 轻阴影
-//! - GDI 自绘 Fluent 浅色：标题栏 / 源文卡 / 语言栏（列表）/ 结果卡 / 状态栏
+//! - GDI 精修：`RoundRect` 卡片、几何图标、引擎字标、状态点；非 WinUI XAML 控件
 //! - 用户动作：Esc 关闭、Ctrl+C 复制、滚轮滚动、标题栏拖动；语言交换与列表选择
 //! - 不依赖 Microsoft.UI.Xaml / WinAppSDK
 //!
@@ -19,11 +19,12 @@ use windows::Win32::Graphics::Dwm::{
     DWM_WINDOW_CORNER_PREFERENCE,
 };
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, CreateFontW, CreateSolidBrush, DeleteObject, DrawTextW, EndPaint, FillRect,
-    IntersectClipRect, InvalidateRect, RestoreDC, SaveDC, ScreenToClient, SelectObject, SetBkMode,
-    SetTextColor, CLEARTYPE_QUALITY, DEFAULT_CHARSET, DEFAULT_PITCH, DT_CALCRECT, DT_CENTER,
-    DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX, DT_RIGHT, DT_SINGLELINE, DT_VCENTER, DT_WORDBREAK,
-    FF_DONTCARE, FW_NORMAL, FW_SEMIBOLD, HFONT, HGDIOBJ, PAINTSTRUCT, TRANSPARENT,
+    BeginPaint, CreateFontW, CreatePen, CreateSolidBrush, DeleteObject, DrawTextW, Ellipse,
+    EndPaint, FillRect, IntersectClipRect, InvalidateRect, LineTo, MoveToEx, RestoreDC, RoundRect,
+    SaveDC, ScreenToClient, SelectObject, SetBkMode, SetTextColor, CLEARTYPE_QUALITY,
+    DEFAULT_CHARSET, DEFAULT_PITCH, DT_CALCRECT, DT_CENTER, DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX,
+    DT_RIGHT, DT_SINGLELINE, DT_VCENTER, DT_WORDBREAK, FF_DONTCARE, FW_NORMAL, FW_SEMIBOLD, HFONT,
+    HGDIOBJ, PAINTSTRUCT, PS_SOLID, TRANSPARENT,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
@@ -71,17 +72,19 @@ fn dispatch_bound_action(action: PopupUserAction) {
 
 /// 弹窗逻辑宽度（对齐 Open Design WinUI3 原型 468）。
 pub const POPUP_LOGICAL_WIDTH: f64 = 468.0;
-/// 弹窗逻辑高度上限（卡片区内部滚动）。
-pub const POPUP_LOGICAL_HEIGHT: f64 = 480.0;
+/// 弹窗逻辑高度上限（卡片区内部滚动；略高于 v1 以减少首屏压迫）。
+pub const POPUP_LOGICAL_HEIGHT: f64 = 520.0;
 
 const TITLEBAR_LOGICAL_H: f64 = 44.0;
 const STATUS_LOGICAL_H: f64 = 28.0;
 const LANG_BAR_LOGICAL_H: f64 = 36.0;
-const SOURCE_MAX_LOGICAL_H: f64 = 110.0;
+const SOURCE_MAX_LOGICAL_H: f64 = 118.0;
 const PAD_LOGICAL: f64 = 14.0;
 const GAP_LOGICAL: f64 = 10.0;
 const TITLE_BTN_LOGICAL: f64 = 36.0;
 const WIN_BTN_LOGICAL_W: f64 = 46.0;
+/// 卡片圆角（原型 8px → RoundRect 直径 16）。
+const CARD_RADIUS_LOGICAL: f64 = 8.0;
 
 // Fluent / 原型 token（COLORREF = 0x00BBGGRR）
 const COL_BG: u32 = 0x00_F4_F4_F4; // #F4F4F4 Mica 实色近似
@@ -89,18 +92,20 @@ const COL_CARD_BG: u32 = 0x00_FF_FF_FF;
 const COL_FG: u32 = 0x00_1A_1A_1A; // #1A1A1A
 const COL_FG_2: u32 = 0x00_5D_5D_5D; // #5D5D5D
 const COL_FG_3: u32 = 0x00_8A_8A_8A; // #8A8A8A
-const COL_BORDER: u32 = 0x00_E8_E8_E8; // ≈ rgba(0,0,0,0.06) on light
-const COL_BORDER_2: u32 = 0x00_D0_D0_D0;
+const COL_BORDER: u32 = 0x00_F0_F0_F0; // ≈ rgba(0,0,0,0.06)
+const COL_BORDER_2: u32 = 0x00_E0_E0_E0;
 const COL_ACCENT: u32 = 0x00_1F_5A_D5; // #D55A1F 柿子橙
-const COL_ACCENT_SOFT: u32 = 0x00_E8_F0_FB; // 浅橙底（近似）
+const COL_ACCENT_SOFT: u32 = 0x00_E4_EB_F8; // #F8EBE4 ≈ accent 10%
 const COL_SUCCESS: u32 = 0x00_10_7C_10;
 const COL_WARNING: u32 = 0x00_10_50_CA;
 const COL_DANGER: u32 = 0x00_1C_2B_C4; // #C42B1C
 const COL_SCROLL_TRACK: u32 = 0x00_EE_EE_EE;
 const COL_SCROLL_THUMB: u32 = 0x00_C8_C8_C8;
-const COL_HOVER: u32 = 0x00_F2_F2_F2;
+const COL_HOVER: u32 = 0x00_F5_F5_F5;
 const COL_FLYOUT_BG: u32 = 0x00_F9_F9_F9;
 const COL_STATUS_ACTION: u32 = COL_ACCENT;
+const COL_SHADOW: u32 = 0x00_E8_E8_E8;
+const COL_ICON_BADGE: u32 = 0x00_F0_F0_F0;
 
 const CLASS_NAME: PCWSTR = w!("Shizi.NativePopup.B");
 const WM_POPUP_REFRESH: u32 = WM_USER + 0x51;
@@ -476,20 +481,29 @@ struct UiFonts {
     body: HFONT,
     body_semibold: HFONT,
     small: HFONT,
+    /// ~10.3px 引擎名 / 状态栏（对齐原型 0.6875rem）
+    micro: HFONT,
 }
 
 impl UiFonts {
     unsafe fn create(scale: f64) -> Self {
         Self {
             caption: create_ui_font(font_px(12.0, scale), FW_NORMAL.0 as i32),
-            body: create_ui_font(font_px(13.0, scale), FW_NORMAL.0 as i32),
+            body: create_ui_font(font_px(12.2, scale), FW_NORMAL.0 as i32),
             body_semibold: create_ui_font(font_px(13.0, scale), FW_SEMIBOLD.0 as i32),
             small: create_ui_font(font_px(11.0, scale), FW_NORMAL.0 as i32),
+            micro: create_ui_font(font_px(10.3, scale), FW_NORMAL.0 as i32),
         }
     }
 
     unsafe fn destroy(self) {
-        for f in [self.caption, self.body, self.body_semibold, self.small] {
+        for f in [
+            self.caption,
+            self.body,
+            self.body_semibold,
+            self.small,
+            self.micro,
+        ] {
             if !f.is_invalid() {
                 let _ = DeleteObject(HGDIOBJ(f.0));
             }
@@ -513,51 +527,220 @@ unsafe fn fill_solid_rect(hdc: windows::Win32::Graphics::Gdi::HDC, rect: &RECT, 
     let _ = DeleteObject(HGDIOBJ(brush.0));
 }
 
-unsafe fn stroke_rect_1px(hdc: windows::Win32::Graphics::Gdi::HDC, rect: &RECT, color: u32) {
-    // 顶
-    fill_solid_rect(
+/// 圆角填充 + 1px 描边（对齐原型 8px 圆角卡片）。
+unsafe fn fill_round_card(
+    hdc: windows::Win32::Graphics::Gdi::HDC,
+    rect: &RECT,
+    fill: u32,
+    border: u32,
+    scale: f64,
+) {
+    let dia = ((CARD_RADIUS_LOGICAL * 2.0) * scale).round().max(4.0) as i32;
+    // 轻阴影：下移 1px 灰底（近似 box-shadow 0 1.6px）
+    let shadow = RECT {
+        left: rect.left + 1,
+        top: rect.top + 1,
+        right: rect.right + 1,
+        bottom: rect.bottom + 1,
+    };
+    let brush_s = CreateSolidBrush(COLORREF(COL_SHADOW));
+    let pen_null = CreatePen(PS_SOLID, 1, COLORREF(COL_SHADOW));
+    let old_b = SelectObject(hdc, HGDIOBJ(brush_s.0));
+    let old_p = SelectObject(hdc, HGDIOBJ(pen_null.0));
+    let _ = RoundRect(
         hdc,
-        &RECT {
-            left: rect.left,
-            top: rect.top,
-            right: rect.right,
-            bottom: rect.top + 1,
-        },
-        color,
+        shadow.left,
+        shadow.top,
+        shadow.right,
+        shadow.bottom,
+        dia,
+        dia,
     );
-    // 底
-    fill_solid_rect(
-        hdc,
-        &RECT {
-            left: rect.left,
-            top: rect.bottom - 1,
-            right: rect.right,
-            bottom: rect.bottom,
-        },
-        color,
-    );
-    // 左
-    fill_solid_rect(
-        hdc,
-        &RECT {
-            left: rect.left,
-            top: rect.top,
-            right: rect.left + 1,
-            bottom: rect.bottom,
-        },
-        color,
-    );
-    // 右
-    fill_solid_rect(
-        hdc,
-        &RECT {
-            left: rect.right - 1,
-            top: rect.top,
-            right: rect.right,
-            bottom: rect.bottom,
-        },
-        color,
-    );
+    let _ = SelectObject(hdc, old_b);
+    let _ = SelectObject(hdc, old_p);
+    let _ = DeleteObject(HGDIOBJ(brush_s.0));
+    let _ = DeleteObject(HGDIOBJ(pen_null.0));
+
+    let brush = CreateSolidBrush(COLORREF(fill));
+    let pen = CreatePen(PS_SOLID, 1, COLORREF(border));
+    let old_b = SelectObject(hdc, HGDIOBJ(brush.0));
+    let old_p = SelectObject(hdc, HGDIOBJ(pen.0));
+    let _ = RoundRect(hdc, rect.left, rect.top, rect.right, rect.bottom, dia, dia);
+    let _ = SelectObject(hdc, old_b);
+    let _ = SelectObject(hdc, old_p);
+    let _ = DeleteObject(HGDIOBJ(brush.0));
+    let _ = DeleteObject(HGDIOBJ(pen.0));
+}
+
+unsafe fn with_stroke_pen<F>(
+    hdc: windows::Win32::Graphics::Gdi::HDC,
+    color: u32,
+    width: i32,
+    f: F,
+) where
+    F: FnOnce(),
+{
+    let pen = CreatePen(PS_SOLID, width.max(1), COLORREF(color));
+    let old = SelectObject(hdc, HGDIOBJ(pen.0));
+    f();
+    let _ = SelectObject(hdc, old);
+    let _ = DeleteObject(HGDIOBJ(pen.0));
+}
+
+unsafe fn line_to(
+    hdc: windows::Win32::Graphics::Gdi::HDC,
+    x1: i32,
+    y1: i32,
+    x2: i32,
+    y2: i32,
+) {
+    let _ = MoveToEx(hdc, x1, y1, None);
+    let _ = LineTo(hdc, x2, y2);
+}
+
+unsafe fn fill_ellipse(
+    hdc: windows::Win32::Graphics::Gdi::HDC,
+    left: i32,
+    top: i32,
+    right: i32,
+    bottom: i32,
+    color: u32,
+) {
+    let brush = CreateSolidBrush(COLORREF(color));
+    let pen = CreatePen(PS_SOLID, 1, COLORREF(color));
+    let old_b = SelectObject(hdc, HGDIOBJ(brush.0));
+    let old_p = SelectObject(hdc, HGDIOBJ(pen.0));
+    let _ = Ellipse(hdc, left, top, right, bottom);
+    let _ = SelectObject(hdc, old_b);
+    let _ = SelectObject(hdc, old_p);
+    let _ = DeleteObject(HGDIOBJ(brush.0));
+    let _ = DeleteObject(HGDIOBJ(pen.0));
+}
+
+/// 在按钮矩形中心绘制 18px 逻辑图标（几何线段，非文字）。
+unsafe fn paint_chrome_icon(
+    hdc: windows::Win32::Graphics::Gdi::HDC,
+    hit: ChromeHit,
+    rect: &RECT,
+    scale: f64,
+    color: u32,
+) {
+    let cx = (rect.left + rect.right) / 2;
+    let cy = (rect.top + rect.bottom) / 2;
+    let s = ((9.0_f64) * scale).round().max(7.0) as i32; // half-size
+    let w = ((1.6_f64) * scale).round().max(1.0) as i32;
+
+    with_stroke_pen(hdc, color, w, || match hit {
+        ChromeHit::Close => {
+            line_to(hdc, cx - s + 2, cy - s + 2, cx + s - 2, cy + s - 2);
+            line_to(hdc, cx + s - 2, cy - s + 2, cx - s + 2, cy + s - 2);
+        }
+        ChromeHit::Minimize => {
+            line_to(hdc, cx - s + 1, cy, cx + s - 1, cy);
+        }
+        ChromeHit::Settings => {
+            // 齿轮简化：十字 + 对角 + 中心点
+            let r = s - 1;
+            line_to(hdc, cx, cy - r, cx, cy + r);
+            line_to(hdc, cx - r, cy, cx + r, cy);
+            line_to(
+                hdc,
+                cx - r * 7 / 10,
+                cy - r * 7 / 10,
+                cx + r * 7 / 10,
+                cy + r * 7 / 10,
+            );
+            line_to(
+                hdc,
+                cx + r * 7 / 10,
+                cy - r * 7 / 10,
+                cx - r * 7 / 10,
+                cy + r * 7 / 10,
+            );
+        }
+        ChromeHit::Theme => {
+            // 新月：大半圆弦
+            line_to(hdc, cx + s / 3, cy - s + 1, cx + s / 3, cy + s - 1);
+            line_to(hdc, cx + s / 3, cy - s + 1, cx - s + 2, cy);
+            line_to(hdc, cx + s / 3, cy + s - 1, cx - s + 2, cy);
+            line_to(hdc, cx - s + 2, cy - s / 2, cx - s + 2, cy + s / 2);
+        }
+        ChromeHit::Bookmark => {
+            // 书签：竖折
+            line_to(hdc, cx - s + 2, cy - s + 1, cx - s + 2, cy + s - 1);
+            line_to(hdc, cx + s - 2, cy - s + 1, cx + s - 2, cy + s - 1);
+            line_to(hdc, cx - s + 2, cy - s + 1, cx + s - 2, cy - s + 1);
+            line_to(hdc, cx - s + 2, cy + s - 1, cx, cy + s / 3);
+            line_to(hdc, cx + s - 2, cy + s - 1, cx, cy + s / 3);
+        }
+        ChromeHit::Shot => {
+            // 框选四角
+            let a = s - 1;
+            let t = (s / 2).max(3);
+            line_to(hdc, cx - a, cy - a, cx - a + t, cy - a);
+            line_to(hdc, cx - a, cy - a, cx - a, cy - a + t);
+            line_to(hdc, cx + a, cy - a, cx + a - t, cy - a);
+            line_to(hdc, cx + a, cy - a, cx + a, cy - a + t);
+            line_to(hdc, cx - a, cy + a, cx - a + t, cy + a);
+            line_to(hdc, cx - a, cy + a, cx - a, cy + a - t);
+            line_to(hdc, cx + a, cy + a, cx + a - t, cy + a);
+            line_to(hdc, cx + a, cy + a, cx + a, cy + a - t);
+            line_to(hdc, cx - a / 2, cy, cx + a / 2, cy);
+        }
+        ChromeHit::Fav => {
+            // 五角星简化为菱形 + 顶
+            line_to(hdc, cx, cy - s + 1, cx + s - 2, cy);
+            line_to(hdc, cx + s - 2, cy, cx, cy + s - 1);
+            line_to(hdc, cx, cy + s - 1, cx - s + 2, cy);
+            line_to(hdc, cx - s + 2, cy, cx, cy - s + 1);
+            line_to(hdc, cx - s / 2, cy - 1, cx + s / 2, cy - 1);
+        }
+        ChromeHit::Pin => {
+            // 图钉：头 + 针
+            line_to(hdc, cx - s + 3, cy - s / 3, cx + s - 3, cy - s / 3);
+            line_to(hdc, cx - s + 3, cy - s / 3, cx - s + 3, cy + s / 4);
+            line_to(hdc, cx + s - 3, cy - s / 3, cx + s - 3, cy + s / 4);
+            line_to(hdc, cx - s + 3, cy + s / 4, cx + s - 3, cy + s / 4);
+            line_to(hdc, cx, cy + s / 4, cx, cy + s - 1);
+        }
+        _ => {}
+    });
+}
+
+unsafe fn paint_chevron_down(
+    hdc: windows::Win32::Graphics::Gdi::HDC,
+    cx: i32,
+    cy: i32,
+    scale: f64,
+    color: u32,
+) {
+    let s = ((5.0_f64) * scale).round().max(3.0) as i32;
+    let w = ((1.5_f64) * scale).round().max(1.0) as i32;
+    with_stroke_pen(hdc, color, w, || {
+        line_to(hdc, cx - s, cy - s / 2, cx, cy + s / 2);
+        line_to(hdc, cx, cy + s / 2, cx + s, cy - s / 2);
+    });
+}
+
+unsafe fn paint_swap_icon(
+    hdc: windows::Win32::Graphics::Gdi::HDC,
+    cx: i32,
+    cy: i32,
+    scale: f64,
+    color: u32,
+) {
+    let s = ((7.0_f64) * scale).round().max(5.0) as i32;
+    let w = ((1.5_f64) * scale).round().max(1.0) as i32;
+    with_stroke_pen(hdc, color, w, || {
+        // 左箭头
+        line_to(hdc, cx - s, cy, cx + s / 3, cy);
+        line_to(hdc, cx - s, cy, cx - s / 2, cy - s / 2);
+        line_to(hdc, cx - s, cy, cx - s / 2, cy + s / 2);
+        // 右箭头
+        line_to(hdc, cx + s, cy, cx - s / 3, cy);
+        line_to(hdc, cx + s, cy, cx + s / 2, cy - s / 2);
+        line_to(hdc, cx + s, cy, cx + s / 2, cy + s / 2);
+    });
 }
 
 pub fn enqueue_repaint(hwnd_raw: isize) -> bool {
@@ -763,10 +946,11 @@ unsafe fn measure_card_height(
     scale: f64,
 ) -> i32 {
     let gap = ((GAP_LOGICAL) * scale).round() as i32;
-    let card_pad = ((10.0_f64) * scale).round() as i32;
+    let card_pad_x = ((12.0_f64) * scale).round() as i32;
+    let card_pad_y = ((8.0_f64) * scale).round() as i32;
     let header_h = ((22.0_f64) * scale).round() as i32;
-    let text_w = (content_w - card_pad * 2).max(1);
-    let mut h = card_pad + header_h + 2;
+    let text_w = (content_w - card_pad_x * 2).max(1);
+    let mut h = card_pad_y + header_h + 2;
 
     let body = card_body_text(card);
     if !body.is_empty() {
@@ -790,7 +974,7 @@ unsafe fn measure_card_height(
         h += ((16.0_f64) * scale).round() as i32;
     }
 
-    h + card_pad + gap
+    h + card_pad_y + gap
 }
 
 fn content_pad(scale: f64) -> i32 {
@@ -1171,7 +1355,8 @@ unsafe fn paint_one_card(
     gap: i32,
     fonts: &UiFonts,
 ) {
-    let card_pad = ((10.0_f64) * scale).round() as i32;
+    let card_pad_x = ((12.0_f64) * scale).round() as i32;
+    let card_pad_y = ((8.0_f64) * scale).round() as i32;
     let face_bottom = (top + block_h - gap / 2).max(top + 1);
     let face = RECT {
         left,
@@ -1179,26 +1364,53 @@ unsafe fn paint_one_card(
         right,
         bottom: face_bottom,
     };
-    fill_solid_rect(hdc, &face, COL_CARD_BG);
-    stroke_rect_1px(hdc, &face, COL_BORDER);
+    fill_round_card(hdc, &face, COL_CARD_BG, COL_BORDER, scale);
 
-    let text_left = left + card_pad;
-    let text_right = right - card_pad;
-    let mut y = top + card_pad;
+    let text_left = left + card_pad_x;
+    let text_right = right - card_pad_x;
+    let mut y = top + card_pad_y;
 
-    // 引擎名
     let name = if card.service_name.is_empty() {
         "服务"
     } else {
         card.service_name.as_str()
     };
-    let header_h = ((20.0_f64) * scale).round() as i32;
+    let header_h = ((22.0_f64) * scale).round() as i32;
+    let badge = ((14.0_f64) * scale).round() as i32;
+    // 引擎字标圆角方块
     {
-        let old = select_font(hdc, fonts.small);
-        let mut r = RECT {
+        let letter = name
+            .chars()
+            .next()
+            .map(|c| c.to_uppercase().to_string())
+            .unwrap_or_else(|| "?".into());
+        let br = RECT {
             left: text_left,
+            top: y + (header_h - badge) / 2,
+            right: text_left + badge,
+            bottom: y + (header_h - badge) / 2 + badge,
+        };
+        fill_ellipse(hdc, br.left, br.top, br.right, br.bottom, COL_ICON_BADGE);
+        let old = select_font(hdc, fonts.micro);
+        let mut tr = br;
+        let _ = draw_text_in_rect(
+            hdc,
+            &letter,
+            &mut tr,
+            COL_FG_2,
+            DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX,
+        );
+        if !old.0.is_null() {
+            let _ = SelectObject(hdc, old);
+        }
+    }
+    {
+        let name_left = text_left + badge + ((6.0_f64) * scale).round() as i32;
+        let old = select_font(hdc, fonts.micro);
+        let mut r = RECT {
+            left: name_left,
             top: y,
-            right: text_right,
+            right: text_right - ((48.0_f64) * scale).round() as i32,
             bottom: y + header_h,
         };
         let _ = draw_text_in_rect(
@@ -1208,25 +1420,43 @@ unsafe fn paint_one_card(
             COL_FG_2,
             DT_LEFT | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS | DT_VCENTER,
         );
-        // 状态点文案靠右
-        let st = status_label(&card.status);
-        let mut rr = RECT {
-            left: text_left,
-            top: y,
-            right: text_right,
-            bottom: y + header_h,
-        };
-        let _ = draw_text_in_rect(
-            hdc,
-            st,
-            &mut rr,
-            status_color_bgr(&card.status),
-            DT_RIGHT | DT_SINGLELINE | DT_NOPREFIX | DT_VCENTER,
-        );
+        // 翻译中：橙点；失败：红点；完成不画点
+        match card.status {
+            PopupCardStatus::Translating | PopupCardStatus::Pending => {
+                let d = ((6.0_f64) * scale).round() as i32;
+                let dx = text_right - d - 2;
+                let dy = y + (header_h - d) / 2;
+                fill_ellipse(hdc, dx, dy, dx + d, dy + d, COL_ACCENT);
+            }
+            PopupCardStatus::Failed => {
+                let d = ((6.0_f64) * scale).round() as i32;
+                let dx = text_right - d - 2;
+                let dy = y + (header_h - d) / 2;
+                fill_ellipse(hdc, dx, dy, dx + d, dy + d, COL_DANGER);
+            }
+            _ => {
+                let st = status_label(&card.status);
+                if matches!(card.status, PopupCardStatus::Cancelled) {
+                    let mut rr = RECT {
+                        left: text_left,
+                        top: y,
+                        right: text_right,
+                        bottom: y + header_h,
+                    };
+                    let _ = draw_text_in_rect(
+                        hdc,
+                        st,
+                        &mut rr,
+                        COL_FG_3,
+                        DT_RIGHT | DT_SINGLELINE | DT_NOPREFIX | DT_VCENTER,
+                    );
+                }
+            }
+        }
         if !old.0.is_null() {
             let _ = SelectObject(hdc, old);
         }
-        y += header_h + 2;
+        y += header_h + ((2.0_f64) * scale).round() as i32;
     }
 
     let body = card_body_text(card);
@@ -1295,7 +1525,7 @@ unsafe fn paint_one_card(
             right: text_right,
             bottom: y + ((16.0_f64) * scale).round() as i32,
         };
-        let old = select_font(hdc, fonts.small);
+        let old = select_font(hdc, fonts.micro);
         let _ = draw_text_in_rect(
             hdc,
             &meta,
@@ -1347,7 +1577,7 @@ unsafe fn paint_titlebar(
 ) {
     let th = titlebar_h(scale);
     let pad = content_pad(scale);
-    // 品牌图标 + 名
+    // 品牌：柿子橙圆角方 +「文」
     let icon = ((20.0_f64) * scale).round() as i32;
     let icon_r = RECT {
         left: pad,
@@ -1355,7 +1585,24 @@ unsafe fn paint_titlebar(
         right: pad + icon,
         bottom: (th - icon) / 2 + icon,
     };
-    fill_solid_rect(hdc, &icon_r, COL_ACCENT);
+    let dia = ((10.0_f64) * scale).round() as i32;
+    let brush = CreateSolidBrush(COLORREF(COL_ACCENT));
+    let pen = CreatePen(PS_SOLID, 1, COLORREF(COL_ACCENT));
+    let old_b = SelectObject(hdc, HGDIOBJ(brush.0));
+    let old_p = SelectObject(hdc, HGDIOBJ(pen.0));
+    let _ = RoundRect(
+        hdc,
+        icon_r.left,
+        icon_r.top,
+        icon_r.right,
+        icon_r.bottom,
+        dia,
+        dia,
+    );
+    let _ = SelectObject(hdc, old_b);
+    let _ = SelectObject(hdc, old_p);
+    let _ = DeleteObject(HGDIOBJ(brush.0));
+    let _ = DeleteObject(HGDIOBJ(pen.0));
     {
         let old = select_font(hdc, fonts.small);
         let mut tr = icon_r;
@@ -1375,7 +1622,7 @@ unsafe fn paint_titlebar(
         let mut r = RECT {
             left: pad + icon + ((8.0_f64) * scale).round() as i32,
             top: 0,
-            right: pad + ((80.0_f64) * scale).round() as i32,
+            right: pad + ((90.0_f64) * scale).round() as i32,
             bottom: th,
         };
         let _ = draw_text_in_rect(
@@ -1390,40 +1637,26 @@ unsafe fn paint_titlebar(
         }
     }
 
-    let labels: &[(ChromeHit, &str)] = &[
-        (ChromeHit::Pin, "钉"),
-        (ChromeHit::Fav, "★"),
-        (ChromeHit::Shot, "框"),
-        (ChromeHit::Bookmark, "书"),
-        (ChromeHit::Settings, "设"),
-        (ChromeHit::Theme, "☾"),
-        (ChromeHit::Minimize, "─"),
-        (ChromeHit::Close, "×"),
-    ];
-    let old = select_font(hdc, fonts.caption);
+    // 窗口控件与工具按钮：几何图标
     for (hit, r) in layout_titlebar_buttons(client, scale) {
-        let label = labels
-            .iter()
-            .find(|(h, _)| *h == hit)
-            .map(|(_, s)| *s)
-            .unwrap_or("?");
-        let color = if hit == ChromeHit::Close {
-            COL_FG
-        } else {
-            COL_FG_2
-        };
-        let mut rr = r;
-        let _ = draw_text_in_rect(
-            hdc,
-            label,
-            &mut rr,
-            color,
-            DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX,
-        );
+        let color = COL_FG_2;
+        paint_chrome_icon(hdc, hit, &r, scale, color);
     }
-    if !old.0.is_null() {
-        let _ = SelectObject(hdc, old);
-    }
+
+    // 关闭 / 最小化 与工具区分隔线
+    let win_w = ((WIN_BTN_LOGICAL_W) * scale).round() as i32;
+    let sep_x = client.right - win_w * 2 - ((4.0_f64) * scale).round() as i32;
+    let sep_h = ((16.0_f64) * scale).round() as i32;
+    fill_solid_rect(
+        hdc,
+        &RECT {
+            left: sep_x,
+            top: (th - sep_h) / 2,
+            right: sep_x + 1,
+            bottom: (th - sep_h) / 2 + sep_h,
+        },
+        COL_BORDER,
+    );
 }
 
 unsafe fn paint_source_card(
@@ -1436,32 +1669,33 @@ unsafe fn paint_source_card(
     fonts: &UiFonts,
 ) -> i32 {
     let max_h = (SOURCE_MAX_LOGICAL_H * scale).round() as i32;
-    let pad = ((10.0_f64) * scale).round() as i32;
-    let text_w = (right - left - pad * 2).max(1);
+    let pad_x = ((12.0_f64) * scale).round() as i32;
+    let pad_y = ((10.0_f64) * scale).round() as i32;
+    let meta_h = ((22.0_f64) * scale).round() as i32;
+    let text_w = (right - left - pad_x * 2).max(1);
     let src = if snap.source_text.is_empty() {
-        "（暂无源文）"
+        "输入要翻译的文本…"
     } else {
         snap.source_text.as_str()
     };
     let old = select_font(hdc, fonts.body);
     let text_h = measure_text_height(hdc, src, text_w, DT_LEFT | DT_WORDBREAK | DT_NOPREFIX)
-        .max(((32.0_f64) * scale).round() as i32)
-        .min(max_h - pad * 2 - ((18.0_f64) * scale).round() as i32);
-    let block_h = (pad + text_h + ((22.0_f64) * scale).round() as i32 + pad).min(max_h);
+        .max(((36.0_f64) * scale).round() as i32)
+        .min(max_h - pad_y * 2 - meta_h);
+    let block_h = (pad_y + text_h + meta_h + pad_y).min(max_h);
     let face = RECT {
         left,
         top,
         right,
         bottom: top + block_h,
     };
-    fill_solid_rect(hdc, &face, COL_CARD_BG);
-    stroke_rect_1px(hdc, &face, COL_BORDER);
+    fill_round_card(hdc, &face, COL_CARD_BG, COL_BORDER, scale);
 
     let mut r = RECT {
-        left: left + pad,
-        top: top + pad,
-        right: right - pad,
-        bottom: top + pad + text_h,
+        left: left + pad_x,
+        top: top + pad_y,
+        right: right - pad_x,
+        bottom: top + pad_y + text_h,
     };
     let _ = draw_text_in_rect(
         hdc,
@@ -1478,21 +1712,59 @@ unsafe fn paint_source_card(
         let _ = SelectObject(hdc, old);
     }
 
-    // 语言 badge
+    // meta 顶部分割线
+    let meta_top = top + block_h - pad_y - meta_h + 2;
+    fill_solid_rect(
+        hdc,
+        &RECT {
+            left: left + pad_x,
+            top: meta_top,
+            right: right - pad_x,
+            bottom: meta_top + 1,
+        },
+        COL_BORDER,
+    );
+
+    // 语言 badge 胶囊（右对齐）
     let badge = lang_display_name(&snap.source_lang);
-    let old = select_font(hdc, fonts.small);
-    let mut br = RECT {
-        left: left + pad,
-        top: top + block_h - pad - ((16.0_f64) * scale).round() as i32,
-        right: right - pad,
-        bottom: top + block_h - pad,
+    let old = select_font(hdc, fonts.micro);
+    let badge_h = ((18.0_f64) * scale).round() as i32;
+    let badge_w = ((badge.chars().count() as f64 * 11.0 + 16.0) * scale)
+        .round()
+        .max(36.0) as i32;
+    let bx = right - pad_x - badge_w;
+    let by = top + block_h - pad_y - badge_h + 2;
+    let badge_r = RECT {
+        left: bx,
+        top: by,
+        right: bx + badge_w,
+        bottom: by + badge_h,
     };
+    let dia = badge_h;
+    let brush = CreateSolidBrush(COLORREF(COL_ACCENT_SOFT));
+    let pen = CreatePen(PS_SOLID, 1, COLORREF(COL_ACCENT_SOFT));
+    let old_b = SelectObject(hdc, HGDIOBJ(brush.0));
+    let old_p = SelectObject(hdc, HGDIOBJ(pen.0));
+    let _ = RoundRect(
+        hdc,
+        badge_r.left,
+        badge_r.top,
+        badge_r.right,
+        badge_r.bottom,
+        dia,
+        dia,
+    );
+    let _ = SelectObject(hdc, old_b);
+    let _ = SelectObject(hdc, old_p);
+    let _ = DeleteObject(HGDIOBJ(brush.0));
+    let _ = DeleteObject(HGDIOBJ(pen.0));
+    let mut br = badge_r;
     let _ = draw_text_in_rect(
         hdc,
         badge,
         &mut br,
         COL_ACCENT,
-        DT_RIGHT | DT_SINGLELINE | DT_NOPREFIX | DT_VCENTER,
+        DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX,
     );
     if !old.0.is_null() {
         let _ = SelectObject(hdc, old);
@@ -1515,31 +1787,52 @@ unsafe fn paint_lang_bar(
         right: parts[2].1.right,
         bottom: bar_top + lang_bar_h(scale),
     };
-    fill_solid_rect(hdc, &full, COL_CARD_BG);
-    stroke_rect_1px(hdc, &full, COL_BORDER);
+    fill_round_card(hdc, &full, COL_CARD_BG, COL_BORDER, scale);
 
-    let old = select_font(hdc, fonts.body);
+    let old = select_font(hdc, fonts.body_semibold);
     let src_label = lang_display_name(&snap.source_lang);
     let tgt_label = lang_display_name(&snap.target_lang);
-    for (hit, mut r) in parts {
-        let label = match hit {
-            ChromeHit::LangSource => format!("{src_label} ▾"),
-            ChromeHit::LangTarget => format!("{tgt_label} ▾"),
-            ChromeHit::LangSwap => "⇄".to_string(),
-            _ => String::new(),
-        };
-        let color = if hit == ChromeHit::LangSwap {
-            COL_FG_2
-        } else {
-            COL_FG
-        };
-        let _ = draw_text_in_rect(
-            hdc,
-            &label,
-            &mut r,
-            color,
-            DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS,
-        );
+    for (hit, r) in &parts {
+        match *hit {
+            ChromeHit::LangSource | ChromeHit::LangTarget => {
+                let label = if *hit == ChromeHit::LangSource {
+                    src_label
+                } else {
+                    tgt_label
+                };
+                // 文字略偏左，右侧画 chevron
+                let mut tr = RECT {
+                    left: r.left + ((8.0_f64) * scale).round() as i32,
+                    top: r.top,
+                    right: r.right - ((20.0_f64) * scale).round() as i32,
+                    bottom: r.bottom,
+                };
+                let _ = draw_text_in_rect(
+                    hdc,
+                    label,
+                    &mut tr,
+                    COL_FG,
+                    DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS,
+                );
+                paint_chevron_down(
+                    hdc,
+                    r.right - ((12.0_f64) * scale).round() as i32,
+                    (r.top + r.bottom) / 2,
+                    scale,
+                    COL_FG_3,
+                );
+            }
+            ChromeHit::LangSwap => {
+                paint_swap_icon(
+                    hdc,
+                    (r.left + r.right) / 2,
+                    (r.top + r.bottom) / 2,
+                    scale,
+                    COL_FG_2,
+                );
+            }
+            _ => {}
+        }
     }
     if !old.0.is_null() {
         let _ = SelectObject(hdc, old);
@@ -1559,8 +1852,7 @@ unsafe fn paint_flyout(
     };
     let codes = lang_codes_for_side(is_source);
     let (fly, item_h) = flyout_metrics(client, scale, bar_top);
-    fill_solid_rect(hdc, &fly, COL_FLYOUT_BG);
-    stroke_rect_1px(hdc, &fly, COL_BORDER_2);
+    fill_round_card(hdc, &fly, COL_FLYOUT_BG, COL_BORDER_2, scale);
 
     let selected = if is_source {
         snap.source_lang.as_str()
@@ -1673,9 +1965,25 @@ unsafe fn paint_status_bar(
     let chars = snap.source_text.chars().count();
     let count = format!("{chars} 字");
 
-    let old = select_font(hdc, fonts.small);
+    // 状态点（原型 status-dot）
+    let d = ((6.0_f64) * scale).round() as i32;
+    let dy = top + (sh - d) / 2;
+    let dot_color = if snap.is_translating {
+        COL_ACCENT
+    } else if snap
+        .cards
+        .iter()
+        .any(|c| matches!(c.status, PopupCardStatus::Failed))
+    {
+        COL_DANGER
+    } else {
+        COL_SUCCESS
+    };
+    fill_ellipse(hdc, pad, dy, pad + d, dy + d, dot_color);
+
+    let old = select_font(hdc, fonts.micro);
     let mut left_r = RECT {
-        left: pad,
+        left: pad + d + ((6.0_f64) * scale).round() as i32,
         top,
         right: client.right / 2,
         bottom: client.bottom,
@@ -2704,7 +3012,7 @@ mod tests {
     #[test]
     fn popup_logical_size_matches_winui3_prototype_width() {
         assert!((POPUP_LOGICAL_WIDTH - 468.0).abs() < f64::EPSILON);
-        assert!((POPUP_LOGICAL_HEIGHT - 480.0).abs() < f64::EPSILON);
+        assert!((POPUP_LOGICAL_HEIGHT - 520.0).abs() < f64::EPSILON);
     }
 
     #[test]
