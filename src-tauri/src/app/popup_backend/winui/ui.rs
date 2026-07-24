@@ -2,9 +2,9 @@
 //!
 //! - `WS_POPUP | WS_CLIPCHILDREN`，无系统厚边框
 //! - `WS_EX_TOOLWINDOW`：不进任务栏
-//! - 初始 `SW_HIDE`，逻辑尺寸约 420×360
-//! - DWM 圆角（best-effort）
-//! - GDI 自绘：源文 + 多服务结果卡（可滚动）+ 底部动作条
+//! - 初始 `SW_HIDE`，逻辑尺寸约 420×480（与 WebView `present_popup` 定位高一致）
+//! - DWM 圆角 + 边框色（best-effort）；`CS_DROPSHADOW` 轻阴影（未用 `WS_EX_LAYERED`）
+//! - GDI 自绘：Segoe UI 字体、Fluent 暖色板、源文 + 多服务结果卡（可滚动）+ 底部动作条
 //! - chrome：`is_translating` 时显示取消按钮
 //! - 用户动作：Esc 关闭、Ctrl+C 复制、滚轮滚动卡片区、工具栏点击、双击标题区关闭
 //! - 不依赖 Microsoft.UI.Xaml / WinAppSDK
@@ -14,24 +14,26 @@ use std::sync::{Mutex, Once};
 use windows::core::{w, PCWSTR};
 use windows::Win32::Foundation::{BOOL, COLORREF, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Dwm::{
-    DwmSetWindowAttribute, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND,
+    DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND,
     DWM_WINDOW_CORNER_PREFERENCE,
 };
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, CreateSolidBrush, DeleteObject, DrawTextW, EndPaint, FillRect, IntersectClipRect,
-    InvalidateRect, RestoreDC, SaveDC, SetBkMode, SetTextColor, DT_CALCRECT, DT_CENTER,
-    DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER, DT_WORDBREAK, HGDIOBJ,
-    PAINTSTRUCT, TRANSPARENT,
+    BeginPaint, CreateFontW, CreateSolidBrush, DeleteObject, DrawTextW, EndPaint, FillRect,
+    IntersectClipRect, InvalidateRect, RestoreDC, SaveDC, SelectObject, SetBkMode, SetTextColor,
+    CLEARTYPE_QUALITY, DEFAULT_CHARSET, DEFAULT_PITCH, DT_CALCRECT, DT_CENTER, DT_END_ELLIPSIS,
+    DT_LEFT, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER, DT_WORDBREAK, FF_DONTCARE, FW_NORMAL,
+    FW_SEMIBOLD, HFONT, HGDIOBJ, PAINTSTRUCT, TRANSPARENT,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::HiDpi::{GetDpiForSystem, GetDpiForWindow};
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, SetFocus, VK_CONTROL, VK_ESCAPE};
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, GetClientRect, IsWindow, IsWindowVisible,
-    LoadCursorW, PostMessageW, RegisterClassExW, SetWindowPos, ShowWindow, CS_DBLCLKS, CS_HREDRAW,
-    CS_VREDRAW, CW_USEDEFAULT, HMENU, HWND_TOP, IDC_ARROW, SWP_SHOWWINDOW, SW_HIDE, SW_SHOW,
-    USER_DEFAULT_SCREEN_DPI, WM_CLOSE, WM_DESTROY, WM_KEYDOWN, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN,
-    WM_MOUSEWHEEL, WM_PAINT, WM_USER, WNDCLASSEXW, WS_CLIPCHILDREN, WS_EX_TOOLWINDOW, WS_POPUP,
+    LoadCursorW, PostMessageW, RegisterClassExW, SetWindowPos, ShowWindow, CS_DBLCLKS,
+    CS_DROPSHADOW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, HMENU, HWND_TOP, IDC_ARROW,
+    SWP_SHOWWINDOW, SW_HIDE, SW_SHOW, USER_DEFAULT_SCREEN_DPI, WM_CLOSE, WM_DESTROY, WM_KEYDOWN,
+    WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MOUSEWHEEL, WM_PAINT, WM_USER, WNDCLASSEXW,
+    WS_CLIPCHILDREN, WS_EX_TOOLWINDOW, WS_POPUP,
 };
 
 use crate::app::popup_backend::types::{
@@ -65,16 +67,31 @@ fn dispatch_bound_action(action: PopupUserAction) {
     }
 }
 
-/// 弹窗逻辑宽度（与 WebView 弹窗一致）。
+/// 弹窗逻辑宽度（与 WebView `.popup` / `present_popup` 一致）。
 pub const POPUP_LOGICAL_WIDTH: f64 = 420.0;
-/// 弹窗逻辑高度（与 WebView builder 初始高度一致）。
-pub const POPUP_LOGICAL_HEIGHT: f64 = 360.0;
+/// 弹窗逻辑高度上限（与 WebView `present_popup` 的 `POPUP_H` 对齐；多卡区内部滚动）。
+pub const POPUP_LOGICAL_HEIGHT: f64 = 480.0;
 
-/// 底部动作条高度（物理像素近似；按 DPI 缩放时由布局函数乘 scale）。
-const TOOLBAR_LOGICAL_H: i32 = 36;
-const BTN_LOGICAL_W: i32 = 56;
-const BTN_GAP: i32 = 6;
-const TITLE_HIT_LOGICAL_H: i32 = 28;
+/// 底部动作条高度（逻辑像素；按 DPI 由布局函数乘 scale）。
+const TOOLBAR_LOGICAL_H: i32 = 40;
+const BTN_LOGICAL_W: i32 = 60;
+const BTN_GAP: i32 = 8;
+const TITLE_HIT_LOGICAL_H: i32 = 32;
+const PAD_LOGICAL: f64 = 14.0;
+const GAP_LOGICAL: f64 = 10.0;
+
+// Fluent / 弹窗 token 近似色（COLORREF = 0x00BBGGRR）
+const COL_BG: u32 = 0x00_EC_F2_F5; // #F5F2EC
+const COL_CARD_BG: u32 = 0x00_FF_FF_FF;
+const COL_FG: u32 = 0x00_1B_1E_1F; // #1F1E1B
+const COL_FG_2: u32 = 0x00_4F_58_5B; // #5B584F
+const COL_FG_3: u32 = 0x00_70_77_7A; // #7A7770
+const COL_BORDER: u32 = 0x00_D8_E2_E6; // #E6E2D8
+const COL_BORDER_2: u32 = 0x00_C5_D3_D8; // #D8D3C5
+const COL_TOOLBAR_BG: u32 = 0x00_F3_F8_FA; // #FAF8F3
+const COL_BTN_BG: u32 = 0x00_FF_FF_FF;
+const COL_SCROLL_TRACK: u32 = 0x00_E5_ED_F0;
+const COL_SCROLL_THUMB: u32 = 0x00_C5_D3_D8;
 
 const CLASS_NAME: PCWSTR = w!("Shizi.NativePopup.B");
 
@@ -336,15 +353,89 @@ pub fn status_label(status: &PopupCardStatus) -> &'static str {
     }
 }
 
-/// 状态 → 文本色（COLORREF，0x00BBGGRR）。
+/// 状态 → 文本色（COLORREF，0x00BBGGRR；对齐 Fluent success/warning/danger）。
 pub fn status_color_bgr(status: &PopupCardStatus) -> u32 {
     match status {
-        PopupCardStatus::Pending => 0x00_88_88_88,
-        PopupCardStatus::Translating => 0x00_C0_70_20,
-        PopupCardStatus::Finished => 0x00_2E_8B_2E,
-        PopupCardStatus::Failed => 0x00_22_22_CC,
-        PopupCardStatus::Cancelled => 0x00_88_88_88,
+        PopupCardStatus::Pending => COL_FG_3,
+        PopupCardStatus::Translating => 0x00_10_50_CA, // #CA5010 warning
+        PopupCardStatus::Finished => 0x00_10_7C_10,    // #107C10 success
+        PopupCardStatus::Failed => 0x00_18_23_B4,      // #b42318 danger
+        PopupCardStatus::Cancelled => COL_FG_3,
     }
+}
+
+/// 创建系统 UI 字体（Segoe UI + ClearType）；失败时返回空 HFONT。
+unsafe fn create_ui_font(height_px: i32, weight: i32) -> HFONT {
+    CreateFontW(
+        -height_px.abs(),
+        0,
+        0,
+        0,
+        weight,
+        0,
+        0,
+        0,
+        DEFAULT_CHARSET.0 as u32,
+        0,
+        0,
+        CLEARTYPE_QUALITY.0 as u32,
+        DEFAULT_PITCH.0 as u32 | (FF_DONTCARE.0 as u32),
+        w!("Segoe UI"),
+    )
+}
+
+/// 逻辑字号 → 物理像素高度（最小 11）。
+fn font_px(logical_pt: f64, scale: f64) -> i32 {
+    ((logical_pt * scale).round() as i32).max(11)
+}
+
+struct UiFonts {
+    caption: HFONT,
+    body: HFONT,
+    body_semibold: HFONT,
+    button: HFONT,
+}
+
+impl UiFonts {
+    unsafe fn create(scale: f64) -> Self {
+        Self {
+            caption: create_ui_font(font_px(12.0, scale), FW_NORMAL.0 as i32),
+            body: create_ui_font(font_px(13.0, scale), FW_NORMAL.0 as i32),
+            body_semibold: create_ui_font(font_px(13.0, scale), FW_SEMIBOLD.0 as i32),
+            button: create_ui_font(font_px(12.0, scale), FW_NORMAL.0 as i32),
+        }
+    }
+
+    unsafe fn destroy(self) {
+        if !self.caption.is_invalid() {
+            let _ = DeleteObject(HGDIOBJ(self.caption.0));
+        }
+        if !self.body.is_invalid() {
+            let _ = DeleteObject(HGDIOBJ(self.body.0));
+        }
+        if !self.body_semibold.is_invalid() {
+            let _ = DeleteObject(HGDIOBJ(self.body_semibold.0));
+        }
+        if !self.button.is_invalid() {
+            let _ = DeleteObject(HGDIOBJ(self.button.0));
+        }
+    }
+}
+
+unsafe fn select_font(
+    hdc: windows::Win32::Graphics::Gdi::HDC,
+    font: HFONT,
+) -> HGDIOBJ {
+    if font.is_invalid() {
+        return HGDIOBJ(std::ptr::null_mut());
+    }
+    SelectObject(hdc, HGDIOBJ(font.0))
+}
+
+unsafe fn fill_solid_rect(hdc: windows::Win32::Graphics::Gdi::HDC, rect: &RECT, color: u32) {
+    let brush = CreateSolidBrush(COLORREF(color));
+    FillRect(hdc, rect, brush);
+    let _ = DeleteObject(HGDIOBJ(brush.0));
 }
 
 /// 请求 UI 线程重绘：`PostMessage(WM_POPUP_REFRESH)`（非阻塞）。
@@ -422,7 +513,8 @@ unsafe fn register_class_inner() -> Result<(), String> {
 
     let wc = WNDCLASSEXW {
         cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
-        style: CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS,
+        // CS_DROPSHADOW：轻阴影，无需 WS_EX_LAYERED 自绘
+        style: CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS | CS_DROPSHADOW,
         lpfnWndProc: Some(wnd_proc),
         cbClsExtra: 0,
         cbWndExtra: 0,
@@ -527,29 +619,31 @@ pub fn card_extra_error(card: &PaintCardSnapshot) -> Option<&str> {
     }
 }
 
-/// 估算 / 测算单卡块高度（header + body + 可选 error + 间距）。
+/// 估算 / 测算单卡块高度（内边距 + header + body + 可选 error + 底部分隔）。
 unsafe fn measure_card_height(
     hdc: windows::Win32::Graphics::Gdi::HDC,
     card: &PaintCardSnapshot,
     content_w: i32,
     scale: f64,
 ) -> i32 {
-    let gap = ((8.0_f64) * scale).round() as i32;
+    let gap = ((GAP_LOGICAL) * scale).round() as i32;
+    let card_pad = ((8.0_f64) * scale).round() as i32;
     let header_h = ((20.0_f64) * scale).round() as i32;
-    let mut h = header_h + 2;
+    let text_w = (content_w - card_pad * 2).max(1);
+    let mut h = card_pad + header_h + 2;
 
     let body = card_body_text(card);
     if !body.is_empty() {
-        let max_body = ((120.0_f64) * scale).round() as i32;
+        let max_body = ((140.0_f64) * scale).round() as i32;
         let bh = measure_text_height(
             hdc,
             &body,
-            content_w,
+            text_w,
             DT_LEFT | DT_WORDBREAK | DT_NOPREFIX,
         )
         .max(((16.0_f64) * scale).round() as i32)
         .min(max_body);
-        h += bh + gap;
+        h += bh + gap / 2;
     }
 
     if let Some(err) = card_extra_error(card) {
@@ -557,36 +651,82 @@ unsafe fn measure_card_height(
         let eh = measure_text_height(
             hdc,
             err,
-            content_w,
+            text_w,
             DT_LEFT | DT_WORDBREAK | DT_NOPREFIX,
         )
         .max(((14.0_f64) * scale).round() as i32)
         .min(max_err);
-        h += eh + gap;
+        h += eh + gap / 2;
     }
 
-    h
+    h + card_pad + gap
 }
 
-/// 绘制单张服务卡（name / protocol|model / 状态 / 文本 / 失败信息）。
+/// 绘制单张服务卡（浅底 + 边框 + name/model/状态/正文）。
+/// `block_h` 须与滚动测高同一字体上下文下的 `measure_card_height` 结果一致。
 unsafe fn paint_one_card(
     hdc: windows::Win32::Graphics::Gdi::HDC,
     card: &PaintCardSnapshot,
     left: i32,
     right: i32,
     top: i32,
+    block_h: i32,
     scale: f64,
     gap: i32,
+    fonts: &UiFonts,
 ) {
-    let mut y = top;
+    let card_pad = ((8.0_f64) * scale).round() as i32;
+    // 块底含 gap，卡片面略短一截，露出分隔呼吸感
+    let face_bottom = (top + block_h - gap / 2).max(top + 1);
+    let face = RECT {
+        left,
+        top,
+        right,
+        bottom: face_bottom,
+    };
+    fill_solid_rect(hdc, &face, COL_CARD_BG);
+    // 顶边与左右细边（底边用分隔区留白代替）
+    let border_top = RECT {
+        left,
+        top,
+        right,
+        bottom: top + 1,
+    };
+    fill_solid_rect(hdc, &border_top, COL_BORDER);
+    let border_left = RECT {
+        left,
+        top,
+        right: left + 1,
+        bottom: face_bottom,
+    };
+    fill_solid_rect(hdc, &border_left, COL_BORDER);
+    let border_right = RECT {
+        left: right - 1,
+        top,
+        right,
+        bottom: face_bottom,
+    };
+    fill_solid_rect(hdc, &border_right, COL_BORDER);
+    let border_bottom = RECT {
+        left,
+        top: face_bottom - 1,
+        right,
+        bottom: face_bottom,
+    };
+    fill_solid_rect(hdc, &border_bottom, COL_BORDER);
+
+    let text_left = left + card_pad;
+    let text_right = right - card_pad;
+    let mut y = top + card_pad;
     let status_color = status_color_bgr(&card.status);
     let header = format_card_header(card);
     let header_h = ((20.0_f64) * scale).round() as i32;
     {
+        let old = select_font(hdc, fonts.body_semibold);
         let mut r = RECT {
-            left,
+            left: text_left,
             top: y,
-            right,
+            right: text_right,
             bottom: y + header_h,
         };
         let _ = draw_text_in_rect(
@@ -596,23 +736,27 @@ unsafe fn paint_one_card(
             status_color,
             DT_LEFT | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS,
         );
+        if !old.0.is_null() {
+            let _ = SelectObject(hdc, old);
+        }
         y += header_h + 2;
     }
 
     let body = card_body_text(card);
     if !body.is_empty() {
-        let max_body = ((120.0_f64) * scale).round() as i32;
+        let max_body = ((140.0_f64) * scale).round() as i32;
         let mut r = RECT {
-            left,
+            left: text_left,
             top: y,
-            right,
+            right: text_right,
             bottom: y + max_body,
         };
         let color = if matches!(card.status, PopupCardStatus::Failed) && card.text.is_empty() {
             status_color_bgr(&PopupCardStatus::Failed)
         } else {
-            0x00_22_22_22
+            COL_FG
         };
+        let old = select_font(hdc, fonts.body);
         let h = draw_text_in_rect(
             hdc,
             &body,
@@ -620,17 +764,21 @@ unsafe fn paint_one_card(
             color,
             DT_LEFT | DT_WORDBREAK | DT_NOPREFIX | DT_END_ELLIPSIS,
         );
-        y += h.max(((16.0_f64) * scale).round() as i32) + gap;
+        if !old.0.is_null() {
+            let _ = SelectObject(hdc, old);
+        }
+        y += h.max(((16.0_f64) * scale).round() as i32) + gap / 2;
     }
 
     if let Some(err) = card_extra_error(card) {
         let max_err = ((48.0_f64) * scale).round() as i32;
         let mut r = RECT {
-            left,
+            left: text_left,
             top: y,
-            right,
+            right: text_right,
             bottom: y + max_err,
         };
+        let old = select_font(hdc, fonts.caption);
         let _ = draw_text_in_rect(
             hdc,
             err,
@@ -638,6 +786,9 @@ unsafe fn paint_one_card(
             status_color_bgr(&PopupCardStatus::Failed),
             DT_LEFT | DT_WORDBREAK | DT_NOPREFIX | DT_END_ELLIPSIS,
         );
+        if !old.0.is_null() {
+            let _ = SelectObject(hdc, old);
+        }
     }
 }
 
@@ -653,9 +804,7 @@ unsafe fn paint_simple_scrollbar(
         return;
     }
     let track_h = (track.bottom - track.top).max(1);
-    let track_brush = CreateSolidBrush(COLORREF(0x00_E8_E8_E8));
-    FillRect(hdc, track, track_brush);
-    let _ = DeleteObject(HGDIOBJ(track_brush.0));
+    fill_solid_rect(hdc, track, COL_SCROLL_TRACK);
 
     let thumb_h = ((viewport_h as f64 / content_h as f64) * track_h as f64)
         .round()
@@ -671,9 +820,7 @@ unsafe fn paint_simple_scrollbar(
         right: track.right,
         bottom: (thumb_top + thumb_h).min(track.bottom),
     };
-    let thumb_brush = CreateSolidBrush(COLORREF(0x00_B0_B0_B0));
-    FillRect(hdc, &thumb, thumb_brush);
-    let _ = DeleteObject(HGDIOBJ(thumb_brush.0));
+    fill_solid_rect(hdc, &thumb, COL_SCROLL_THUMB);
 }
 
 /// 计算底部工具栏按钮布局（客户区坐标）。
@@ -685,7 +832,8 @@ pub fn layout_toolbar_buttons(
     let toolbar_h = ((TOOLBAR_LOGICAL_H as f64) * scale).round() as i32;
     let btn_w = ((BTN_LOGICAL_W as f64) * scale).round() as i32;
     let gap = ((BTN_GAP as f64) * scale).round() as i32;
-    let pad = ((8.0_f64) * scale).round() as i32;
+    let pad = ((PAD_LOGICAL) * scale).round() as i32;
+    let v_inset = ((6.0_f64) * scale).round() as i32;
 
     let mut buttons = vec![ToolbarButton::Close];
     if is_translating {
@@ -695,8 +843,8 @@ pub fn layout_toolbar_buttons(
     buttons.push(ToolbarButton::Copy);
     buttons.push(ToolbarButton::Settings);
 
-    let top = (client.bottom - toolbar_h + pad / 2).max(client.top);
-    let bottom = (client.bottom - pad / 2).max(top + 1);
+    let top = (client.bottom - toolbar_h + v_inset).max(client.top);
+    let bottom = (client.bottom - v_inset).max(top + 1);
     let mut x = pad;
     let mut out = Vec::with_capacity(buttons.len());
     for btn in buttons {
@@ -751,20 +899,18 @@ unsafe fn paint_popup(hwnd: HWND, hdc: windows::Win32::Graphics::Gdi::HDC) {
     let mut client = RECT::default();
     let _ = GetClientRect(hwnd, &mut client);
 
-    let brush = CreateSolidBrush(COLORREF(0x00F5F5F5));
-    FillRect(hdc, &client, brush);
-    let _ = DeleteObject(HGDIOBJ(brush.0));
-
+    fill_solid_rect(hdc, &client, COL_BG);
     SetBkMode(hdc, TRANSPARENT);
 
     let snap = load_paint_snapshot();
     let scale = window_scale(hwnd);
-    let pad = ((12.0_f64) * scale).round() as i32;
-    let gap = ((8.0_f64) * scale).round() as i32;
+    let fonts = UiFonts::create(scale);
+    let pad = ((PAD_LOGICAL) * scale).round() as i32;
+    let gap = ((GAP_LOGICAL) * scale).round() as i32;
     let toolbar_h = ((TOOLBAR_LOGICAL_H as f64) * scale).round() as i32;
     let mut y = pad;
     let right = client.right - pad;
-    let bottom = (client.bottom - toolbar_h - pad).max(y + 1);
+    let bottom = (client.bottom - toolbar_h - pad / 2).max(y + 1);
 
     // 源文标题 + 语言摘要
     {
@@ -785,25 +931,30 @@ unsafe fn paint_popup(hwnd: HWND, hdc: windows::Win32::Graphics::Gdi::HDC) {
                 }
             )
         };
+        let caption_h = ((18.0_f64) * scale).round() as i32;
         let mut r = RECT {
             left: pad,
             top: y,
             right,
-            bottom: y + 20,
+            bottom: y + caption_h,
         };
+        let old = select_font(hdc, fonts.caption);
         let _ = draw_text_in_rect(
             hdc,
             &lang_hint,
             &mut r,
-            0x00_88_88_88,
+            COL_FG_3,
             DT_LEFT | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS,
         );
-        y += 20 + 4;
+        if !old.0.is_null() {
+            let _ = SelectObject(hdc, old);
+        }
+        y += caption_h + ((4.0_f64) * scale).round() as i32;
     }
 
     // 源文正文
     {
-        let max_h = 96i32;
+        let max_h = ((96.0_f64) * scale).round() as i32;
         let mut r = RECT {
             left: pad,
             top: y,
@@ -815,14 +966,18 @@ unsafe fn paint_popup(hwnd: HWND, hdc: windows::Win32::Graphics::Gdi::HDC) {
         } else {
             snap.source_text.as_str()
         };
+        let old = select_font(hdc, fonts.body);
         let h = draw_text_in_rect(
             hdc,
             src,
             &mut r,
-            0x00_33_33_33,
+            COL_FG,
             DT_LEFT | DT_WORDBREAK | DT_NOPREFIX | DT_END_ELLIPSIS,
         );
-        y += h.max(18) + gap;
+        if !old.0.is_null() {
+            let _ = SelectObject(hdc, old);
+        }
+        y += h.max(((18.0_f64) * scale).round() as i32) + gap;
     }
 
     if y + 2 < bottom {
@@ -832,9 +987,7 @@ unsafe fn paint_popup(hwnd: HWND, hdc: windows::Win32::Graphics::Gdi::HDC) {
             right,
             bottom: y + 1,
         };
-        let sep_brush = CreateSolidBrush(COLORREF(0x00_DD_DD_DD));
-        FillRect(hdc, &sep, sep_brush);
-        let _ = DeleteObject(HGDIOBJ(sep_brush.0));
+        fill_solid_rect(hdc, &sep, COL_BORDER);
         y += gap;
     }
 
@@ -850,6 +1003,9 @@ unsafe fn paint_popup(hwnd: HWND, hdc: windows::Win32::Graphics::Gdi::HDC) {
     };
     let content_w = (content_right - pad).max(1);
 
+    // 测算前选 body 字体，保证高度与绘制一致
+    let old_measure = select_font(hdc, fonts.body);
+
     if snap.cards.is_empty() {
         let mut r = RECT {
             left: pad,
@@ -857,20 +1013,27 @@ unsafe fn paint_popup(hwnd: HWND, hdc: windows::Win32::Graphics::Gdi::HDC) {
             right,
             bottom: y + 20,
         };
+        let old = select_font(hdc, fonts.caption);
         let _ = draw_text_in_rect(
             hdc,
             "（暂无结果）",
             &mut r,
-            0x00_99_99_99,
+            COL_FG_3,
             DT_LEFT | DT_SINGLELINE | DT_NOPREFIX,
         );
+        if !old.0.is_null() {
+            let _ = SelectObject(hdc, old);
+        }
         store_scroll_metrics(0, viewport_h);
     } else {
-        // 先测算总高度，再钳制滚动
-        let mut content_h = 0i32;
-        for card in &snap.cards {
-            content_h += measure_card_height(hdc, card, content_w, scale);
-        }
+        // 统一用 body 字体测高，避免绘制过程中切字体导致滚动与块高不一致
+        let _ = select_font(hdc, fonts.body);
+        let card_heights: Vec<i32> = snap
+            .cards
+            .iter()
+            .map(|card| measure_card_height(hdc, card, content_w, scale))
+            .collect();
+        let content_h: i32 = card_heights.iter().sum();
         store_scroll_metrics(content_h, viewport_h);
         let scroll_y = clamp_card_scroll(card_scroll_offset(), content_h, viewport_h);
         set_card_scroll_offset(scroll_y);
@@ -878,10 +1041,8 @@ unsafe fn paint_popup(hwnd: HWND, hdc: windows::Win32::Graphics::Gdi::HDC) {
         let saved = SaveDC(hdc);
         let _ = IntersectClipRect(hdc, pad, cards_top, content_right, cards_bottom);
 
-        // 按测算高度定位每块，保证滚动与裁剪一致
         let mut content_offset = 0i32;
-        for card in &snap.cards {
-            let block_h = measure_card_height(hdc, card, content_w, scale);
+        for (card, &block_h) in snap.cards.iter().zip(card_heights.iter()) {
             let block_top = cards_top - scroll_y + content_offset;
             content_offset += block_h;
 
@@ -898,8 +1059,10 @@ unsafe fn paint_popup(hwnd: HWND, hdc: windows::Win32::Graphics::Gdi::HDC) {
                 pad,
                 content_right,
                 block_top,
+                block_h,
                 scale,
                 gap,
+                &fonts,
             );
         }
 
@@ -916,7 +1079,12 @@ unsafe fn paint_popup(hwnd: HWND, hdc: windows::Win32::Graphics::Gdi::HDC) {
         }
     }
 
-    paint_toolbar(hdc, &client, &snap, scale);
+    if !old_measure.0.is_null() {
+        let _ = SelectObject(hdc, old_measure);
+    }
+
+    paint_toolbar(hdc, &client, &snap, scale, &fonts);
+    fonts.destroy();
 }
 
 unsafe fn paint_toolbar(
@@ -924,6 +1092,7 @@ unsafe fn paint_toolbar(
     client: &RECT,
     snap: &PaintSnapshot,
     scale: f64,
+    fonts: &UiFonts,
 ) {
     let toolbar_h = ((TOOLBAR_LOGICAL_H as f64) * scale).round() as i32;
     let bar = RECT {
@@ -932,9 +1101,7 @@ unsafe fn paint_toolbar(
         right: client.right,
         bottom: client.bottom,
     };
-    let bar_brush = CreateSolidBrush(COLORREF(0x00_EE_EE_EE));
-    FillRect(hdc, &bar, bar_brush);
-    let _ = DeleteObject(HGDIOBJ(bar_brush.0));
+    fill_solid_rect(hdc, &bar, COL_TOOLBAR_BG);
 
     let sep = RECT {
         left: bar.left,
@@ -942,21 +1109,56 @@ unsafe fn paint_toolbar(
         right: bar.right,
         bottom: bar.top + 1,
     };
-    let sep_brush = CreateSolidBrush(COLORREF(0x00_CC_CC_CC));
-    FillRect(hdc, &sep, sep_brush);
-    let _ = DeleteObject(HGDIOBJ(sep_brush.0));
+    fill_solid_rect(hdc, &sep, COL_BORDER);
 
+    let old = select_font(hdc, fonts.button);
     for (btn, mut r) in layout_toolbar_buttons(client, snap.is_translating, scale) {
-        let btn_brush = CreateSolidBrush(COLORREF(0x00_E0_E0_E0));
-        FillRect(hdc, &r, btn_brush);
-        let _ = DeleteObject(HGDIOBJ(btn_brush.0));
+        fill_solid_rect(hdc, &r, COL_BTN_BG);
+        // 按钮外框
+        let edge = RECT {
+            left: r.left,
+            top: r.top,
+            right: r.right,
+            bottom: r.top + 1,
+        };
+        fill_solid_rect(hdc, &edge, COL_BORDER_2);
+        let edge_b = RECT {
+            left: r.left,
+            top: r.bottom - 1,
+            right: r.right,
+            bottom: r.bottom,
+        };
+        fill_solid_rect(hdc, &edge_b, COL_BORDER_2);
+        let edge_l = RECT {
+            left: r.left,
+            top: r.top,
+            right: r.left + 1,
+            bottom: r.bottom,
+        };
+        fill_solid_rect(hdc, &edge_l, COL_BORDER_2);
+        let edge_r = RECT {
+            left: r.right - 1,
+            top: r.top,
+            right: r.right,
+            bottom: r.bottom,
+        };
+        fill_solid_rect(hdc, &edge_r, COL_BORDER_2);
+
+        let label_color = if matches!(btn, ToolbarButton::Cancel) {
+            status_color_bgr(&PopupCardStatus::Failed)
+        } else {
+            COL_FG_2
+        };
         let _ = draw_text_in_rect(
             hdc,
             btn.label(),
             &mut r,
-            0x00_22_22_22,
+            label_color,
             DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX,
         );
+    }
+    if !old.0.is_null() {
+        let _ = SelectObject(hdc, old);
     }
 }
 
@@ -1094,7 +1296,7 @@ fn system_scale() -> f64 {
     dpi as f64 / USER_DEFAULT_SCREEN_DPI as f64
 }
 
-fn apply_dwm_round_corners(hwnd: HWND) {
+fn apply_dwm_chrome(hwnd: HWND) {
     let pref = DWMWCP_ROUND;
     let _ = unsafe {
         DwmSetWindowAttribute(
@@ -1104,9 +1306,19 @@ fn apply_dwm_round_corners(hwnd: HWND) {
             std::mem::size_of::<DWM_WINDOW_CORNER_PREFERENCE>() as u32,
         )
     };
+    // 边框色接近 token `--popup-border`（COLORREF BGR）；旧系统忽略即可
+    let border = COLORREF(COL_BORDER);
+    let _ = unsafe {
+        DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_BORDER_COLOR,
+            &border as *const COLORREF as *const core::ffi::c_void,
+            std::mem::size_of::<COLORREF>() as u32,
+        )
+    };
 }
 
-/// 创建隐藏的原生弹窗（约 420×360 逻辑像素）。
+/// 创建隐藏的原生弹窗（约 420×480 逻辑像素，与 WebView NearCursor 定位高一致）。
 pub fn create_hidden_popup() -> Result<NativePopupHwnd, String> {
     register_class_once()?;
 
@@ -1139,7 +1351,7 @@ pub fn create_hidden_popup() -> Result<NativePopupHwnd, String> {
         return Err("CreateWindowExW 返回无效 HWND".to_string());
     }
 
-    apply_dwm_round_corners(hwnd);
+    apply_dwm_chrome(hwnd);
 
     unsafe {
         let _ = ShowWindow(hwnd, SW_HIDE);
@@ -1646,6 +1858,13 @@ mod tests {
             hit_test_toolbar(r.left + 1, r.top + 1, &client, false, 1.0),
             Some(ToolbarButton::Cancel)
         );
+    }
+
+    #[test]
+    fn popup_logical_size_matches_webview_near_cursor() {
+        // WebView present_popup 使用 420×480 参与 compute_popup_position
+        assert!((POPUP_LOGICAL_WIDTH - 420.0).abs() < f64::EPSILON);
+        assert!((POPUP_LOGICAL_HEIGHT - 480.0).abs() < f64::EPSILON);
     }
 
     #[test]

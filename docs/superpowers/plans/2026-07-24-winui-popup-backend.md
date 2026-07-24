@@ -1180,10 +1180,10 @@ git commit -m "feat(popup): 原生弹窗多服务卡片与翻译中状态"
 **文件：**
 - `winui/ui.rs`、定位常量
 
-- [ ] 圆角/阴影/字体接近系统 Fluent（路径 A 用 WinUI 主题；路径 B 用 DWM + 合理 padding）
-- [ ] 宽度 ~420；高度随内容有上限（可先固定 max height + 滚动）
-- [ ] `NearCursor` 与 WebView 共用 `compute_popup_position`
-- [ ] Commit：`style(popup): 原生弹窗视觉与定位打磨`
+- [x] 圆角/阴影/字体接近系统 Fluent（路径 A 用 WinUI 主题；路径 B 用 DWM + 合理 padding）
+- [x] 宽度 ~420；高度随内容有上限（可先固定 max height + 滚动）
+- [x] `NearCursor` 与 WebView 共用 `compute_popup_position`
+- [x] Commit：`style(popup): 原生弹窗视觉与定位打磨`
 
 ---
 
