@@ -25,6 +25,11 @@ pub fn read_clipboard_text() -> Result<String, SelectionError> {
     normalize_clipboard_text(clipboard::read_text()?)
 }
 
+/// 写入系统剪贴板文本（供原生弹窗复制等 UI 路径复用）。
+pub fn write_clipboard_text(text: &str) -> Result<(), SelectionError> {
+    clipboard::write_text(text)
+}
+
 fn normalize_clipboard_text(text: Option<String>) -> Result<String, SelectionError> {
     let text = text.unwrap_or_default().trim().to_string();
     if text.is_empty() {

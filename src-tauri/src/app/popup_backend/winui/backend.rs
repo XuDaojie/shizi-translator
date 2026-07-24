@@ -3,6 +3,7 @@
 //! 配置枚举仍为 `winui`；实际 UI 为 Win32 `WS_POPUP` 壳，不依赖 XAML Runtime。
 //! 翻译协议 / 配置持久化 / 历史写入不在本层。
 
+use super::actions;
 use super::bootstrap;
 use super::ui::{self, NativePopupHwnd};
 use crate::app::popup_backend::trait_api::PopupBackend;
@@ -10,7 +11,6 @@ use crate::app::popup_backend::types::{PopupPositionMode, PopupUiBackendKind, Po
 
 /// 基于 Win32 原生表面的翻译弹窗后端（feature 名 / 配置值仍为 winui）。
 pub struct WinuiPopupBackend {
-    #[allow(dead_code)]
     app: tauri::AppHandle,
     hwnd: Option<NativePopupHwnd>,
     /// 逻辑可见标志（show/hide 写入；`is_visible` 优先 `IsWindowVisible`）。
@@ -30,6 +30,12 @@ impl WinuiPopupBackend {
     fn hwnd_alive(&self) -> bool {
         self.hwnd.as_ref().is_some_and(|h| h.is_valid())
     }
+
+    /// 绑定 `AppHandle` 与动作处理器，供 `wnd_proc` 分发用户动作。
+    fn bind_app_for_ui(&self) {
+        actions::install_action_handler();
+        actions::bind_app(self.app.clone());
+    }
 }
 
 impl PopupBackend for WinuiPopupBackend {
@@ -39,6 +45,8 @@ impl PopupBackend for WinuiPopupBackend {
 
     fn ensure_created(&mut self) -> Result<(), String> {
         if self.hwnd_alive() {
+            // 句柄仍有效时也刷新绑定（测试/热重载路径）
+            self.bind_app_for_ui();
             return Ok(());
         }
         // 失效句柄先清掉
@@ -50,6 +58,8 @@ impl PopupBackend for WinuiPopupBackend {
         }
         log::debug!("native popup bootstrap: {}", status.message);
 
+        // 先绑定 AppHandle，再 CreateWindow：首帧消息即可分发动作
+        self.bind_app_for_ui();
         let hwnd = ui::create_hidden_popup()?;
         self.hwnd = Some(hwnd);
         self.visible = false;
@@ -97,7 +107,7 @@ impl PopupBackend for WinuiPopupBackend {
     }
 
     fn publish(&mut self, vm: &PopupViewModel) {
-        // 非阻塞：写共享快照 + PostMessage 触发 UI 线程 InvalidateRect。
+        // 非阻塞：写快照 + PostMessage 触发 UI 线程 InvalidateRect。
         // 注意：PopupHost 可能持锁调用本方法，禁止同步等待 UI 线程。
         if let Some(hwnd) = self.hwnd.as_ref() {
             ui::publish_view_model(hwnd, vm);
