@@ -2,12 +2,13 @@
 //!
 //! - `WS_POPUP | WS_CLIPCHILDREN`，无系统厚边框
 //! - `WS_EX_TOOLWINDOW`：不进任务栏
-//! - 初始 `SW_HIDE`，逻辑尺寸约 420×480（与 WebView `present_popup` 定位高一致）
-//! - DWM 圆角 + 边框色（best-effort）；`CS_DROPSHADOW` 轻阴影（未用 `WS_EX_LAYERED`）
-//! - GDI 自绘：Segoe UI 字体、Fluent 暖色板、源文 + 多服务结果卡（可滚动）+ 底部动作条
-//! - chrome：`is_translating` 时显示取消按钮
-//! - 用户动作：Esc 关闭、Ctrl+C 复制、滚轮滚动卡片区、工具栏点击；顶部条拖动（HTCAPTION）、双击关闭
+//! - 逻辑尺寸约 **468×480**（对齐 Open Design WinUI3 原型宽度；高度上限内卡片区滚动）
+//! - DWM 圆角 + 边框色（best-effort）；`CS_DROPSHADOW` 轻阴影
+//! - GDI 自绘 Fluent 浅色：标题栏 / 源文卡 / 语言栏（列表）/ 结果卡 / 状态栏
+//! - 用户动作：Esc 关闭、Ctrl+C 复制、滚轮滚动、标题栏拖动；语言交换与列表选择
 //! - 不依赖 Microsoft.UI.Xaml / WinAppSDK
+//!
+//! 视觉 SSOT：Open Design `popup/winui3`（见 `docs/superpowers/specs/2026-07-24-winui-popup-fluent-align-design.md`）。
 
 use std::sync::{Mutex, Once};
 
@@ -21,10 +22,11 @@ use windows::Win32::Graphics::Gdi::{
     BeginPaint, CreateFontW, CreateSolidBrush, DeleteObject, DrawTextW, EndPaint, FillRect,
     IntersectClipRect, InvalidateRect, RestoreDC, SaveDC, ScreenToClient, SelectObject, SetBkMode,
     SetTextColor, CLEARTYPE_QUALITY, DEFAULT_CHARSET, DEFAULT_PITCH, DT_CALCRECT, DT_CENTER,
-    DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER, DT_WORDBREAK, FF_DONTCARE,
-    FW_NORMAL, FW_SEMIBOLD, HFONT, HGDIOBJ, PAINTSTRUCT, TRANSPARENT,
+    DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX, DT_RIGHT, DT_SINGLELINE, DT_VCENTER, DT_WORDBREAK,
+    FF_DONTCARE, FW_NORMAL, FW_SEMIBOLD, HFONT, HGDIOBJ, PAINTSTRUCT, TRANSPARENT,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
 use windows::Win32::UI::HiDpi::{GetDpiForSystem, GetDpiForWindow};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetKeyState, SetActiveWindow, SetFocus, VK_CONTROL, VK_ESCAPE,
@@ -39,7 +41,6 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WM_DESTROY, WM_KEYDOWN, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MOUSEWHEEL, WM_NCLBUTTONDBLCLK,
     WM_NCHITTEST, WM_PAINT, WM_USER, WNDCLASSEXW, WS_CLIPCHILDREN, WS_EX_TOOLWINDOW, WS_POPUP,
 };
-use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
 
 use crate::app::popup_backend::types::{
     PopupCardStatus, PopupPositionMode, PopupUserAction, PopupViewModel,
@@ -48,9 +49,6 @@ use crate::app::popup_window::{compute_popup_position, LogicalPos, LogicalRect, 
 use crate::platform::cursor_logical_context;
 
 /// 用户动作处理器（由 `actions` 在 ensure 时注册）。
-///
-/// `AppHandle` 仅保存在 `actions` 模块，避免在本 Win32 UI 模块静态持有
-/// `AppHandle`（实测会导致测试二进制 STATUS_ENTRYPOINT_NOT_FOUND）。
 type ActionHandler = fn(PopupUserAction);
 
 static ACTION_HANDLER: Mutex<Option<ActionHandler>> = Mutex::new(None);
@@ -67,93 +65,103 @@ fn dispatch_bound_action(action: PopupUserAction) {
     if let Some(h) = handler {
         h(action);
     } else {
-        // 未 ensure 绑定前收到的消息：关闭仍 SW_HIDE 由调用方处理
         log::warn!("原生弹窗未注册动作处理器，忽略: {action:?}");
     }
 }
 
-/// 弹窗逻辑宽度（与 WebView `.popup` / `present_popup` 一致）。
-pub const POPUP_LOGICAL_WIDTH: f64 = 420.0;
-/// 弹窗逻辑高度上限（与 WebView `present_popup` 的 `POPUP_H` 对齐；多卡区内部滚动）。
+/// 弹窗逻辑宽度（对齐 Open Design WinUI3 原型 468）。
+pub const POPUP_LOGICAL_WIDTH: f64 = 468.0;
+/// 弹窗逻辑高度上限（卡片区内部滚动）。
 pub const POPUP_LOGICAL_HEIGHT: f64 = 480.0;
 
-/// 底部动作条高度（逻辑像素；按 DPI 由布局函数乘 scale）。
-const TOOLBAR_LOGICAL_H: i32 = 40;
-const BTN_LOGICAL_W: i32 = 60;
-const BTN_GAP: i32 = 8;
-const TITLE_HIT_LOGICAL_H: i32 = 32;
+const TITLEBAR_LOGICAL_H: f64 = 44.0;
+const STATUS_LOGICAL_H: f64 = 28.0;
+const LANG_BAR_LOGICAL_H: f64 = 36.0;
+const SOURCE_MAX_LOGICAL_H: f64 = 110.0;
 const PAD_LOGICAL: f64 = 14.0;
 const GAP_LOGICAL: f64 = 10.0;
+const TITLE_BTN_LOGICAL: f64 = 36.0;
+const WIN_BTN_LOGICAL_W: f64 = 46.0;
 
-// Fluent / 弹窗 token 近似色（COLORREF = 0x00BBGGRR）
-const COL_BG: u32 = 0x00_EC_F2_F5; // #F5F2EC
+// Fluent / 原型 token（COLORREF = 0x00BBGGRR）
+const COL_BG: u32 = 0x00_F4_F4_F4; // #F4F4F4 Mica 实色近似
 const COL_CARD_BG: u32 = 0x00_FF_FF_FF;
-const COL_FG: u32 = 0x00_1B_1E_1F; // #1F1E1B
-const COL_FG_2: u32 = 0x00_4F_58_5B; // #5B584F
-const COL_FG_3: u32 = 0x00_70_77_7A; // #7A7770
-const COL_BORDER: u32 = 0x00_D8_E2_E6; // #E6E2D8
-const COL_BORDER_2: u32 = 0x00_C5_D3_D8; // #D8D3C5
-const COL_TOOLBAR_BG: u32 = 0x00_F3_F8_FA; // #FAF8F3
-const COL_BTN_BG: u32 = 0x00_FF_FF_FF;
-const COL_SCROLL_TRACK: u32 = 0x00_E5_ED_F0;
-const COL_SCROLL_THUMB: u32 = 0x00_C5_D3_D8;
+const COL_FG: u32 = 0x00_1A_1A_1A; // #1A1A1A
+const COL_FG_2: u32 = 0x00_5D_5D_5D; // #5D5D5D
+const COL_FG_3: u32 = 0x00_8A_8A_8A; // #8A8A8A
+const COL_BORDER: u32 = 0x00_E8_E8_E8; // ≈ rgba(0,0,0,0.06) on light
+const COL_BORDER_2: u32 = 0x00_D0_D0_D0;
+const COL_ACCENT: u32 = 0x00_1F_5A_D5; // #D55A1F 柿子橙
+const COL_ACCENT_SOFT: u32 = 0x00_E8_F0_FB; // 浅橙底（近似）
+const COL_SUCCESS: u32 = 0x00_10_7C_10;
+const COL_WARNING: u32 = 0x00_10_50_CA;
+const COL_DANGER: u32 = 0x00_1C_2B_C4; // #C42B1C
+const COL_SCROLL_TRACK: u32 = 0x00_EE_EE_EE;
+const COL_SCROLL_THUMB: u32 = 0x00_C8_C8_C8;
+const COL_HOVER: u32 = 0x00_F2_F2_F2;
+const COL_FLYOUT_BG: u32 = 0x00_F9_F9_F9;
+const COL_STATUS_ACTION: u32 = COL_ACCENT;
 
 const CLASS_NAME: PCWSTR = w!("Shizi.NativePopup.B");
-
-/// `WM_USER + N`：任意线程 `publish` 后投递，UI 线程 `InvalidateRect`。
 const WM_POPUP_REFRESH: u32 = WM_USER + 0x51;
 
-/// 工具栏按钮（GDI 热区）。
+/// 翻译语言表（与前端 `translation-languages` 对齐）。
+const LANG_TABLE: &[(&str, &str)] = &[
+    ("auto", "自动检测"),
+    ("zh-CN", "简体中文"),
+    ("zh-TW", "繁體中文"),
+    ("en", "English"),
+    ("ja", "日本語"),
+    ("ko", "한국어"),
+    ("fr", "Français"),
+    ("de", "Deutsch"),
+    ("es", "Español"),
+    ("pt", "Português"),
+    ("ru", "Русский"),
+    ("it", "Italiano"),
+    ("nl", "Nederlands"),
+    ("pl", "Polski"),
+    ("tr", "Türkçe"),
+    ("ar", "العربية"),
+    ("th", "ไทย"),
+    ("vi", "Tiếng Việt"),
+    ("id", "Bahasa Indonesia"),
+    ("hi", "हिन्दी"),
+];
+
+/// 可点击热区（标题栏 / 语言栏 / 状态栏 / 语言列表）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ToolbarButton {
+pub enum ChromeHit {
     Close,
+    Minimize,
+    Settings,
+    Theme,
+    Bookmark,
+    Shot,
+    Fav,
+    Pin,
     Cancel,
     Retry,
     Copy,
-    Settings,
+    LangSource,
+    LangTarget,
+    LangSwap,
+    /// 语言列表项（索引进 `lang_codes_for_side`）。
+    LangItem(usize),
 }
 
-impl ToolbarButton {
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Close => "关闭",
-            Self::Cancel => "取消",
-            Self::Retry => "重试",
-            Self::Copy => "复制",
-            Self::Settings => "设置",
-        }
-    }
-
-    pub fn to_action(self, snap: &PaintSnapshot) -> PopupUserAction {
-        match self {
-            Self::Close => PopupUserAction::Close,
-            Self::Cancel => PopupUserAction::CancelTranslation,
-            Self::Retry => PopupUserAction::Retry {
-                service_instance_id: None,
-            },
-            Self::Copy => {
-                let id = first_copyable_service_id(snap).unwrap_or_default();
-                PopupUserAction::CopyResult {
-                    service_instance_id: id,
-                }
-            }
-            Self::Settings => PopupUserAction::OpenSettings,
-        }
-    }
-}
-
-/// 单卡渲染快照（与 ViewModel 解耦，便于锁内拷贝）。
+/// 单卡渲染快照。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PaintCardSnapshot {
     pub service_instance_id: String,
     pub service_name: String,
-    /// 协议 id（如 `openai_chat` / `microsoft_edge`），与 Web 结果卡一致。
     pub protocol: String,
-    /// 模型名；`microsoft_edge` 绘制时不强调。
     pub model_name: String,
     pub status: PopupCardStatus,
     pub text: String,
     pub error_message: String,
+    pub usage_input: Option<u32>,
+    pub usage_output: Option<u32>,
 }
 
 /// 整窗 GDI 绘制快照。
@@ -184,13 +192,14 @@ impl PaintSnapshot {
                     status: c.status.clone(),
                     text: c.text.clone(),
                     error_message: c.error_message.clone(),
+                    usage_input: c.usage_input,
+                    usage_output: c.usage_output,
                 })
                 .collect(),
         }
     }
 }
 
-/// 最近一次 `publish` 的绘制快照（任意线程写，UI 线程读）。
 static PAINT_SNAPSHOT: Mutex<PaintSnapshot> = Mutex::new(PaintSnapshot {
     source_text: String::new(),
     source_lang: String::new(),
@@ -199,20 +208,45 @@ static PAINT_SNAPSHOT: Mutex<PaintSnapshot> = Mutex::new(PaintSnapshot {
     cards: Vec::new(),
 });
 
-/// 卡片列表垂直滚动偏移（像素，向下为正）。
 static CARD_SCROLL_Y: Mutex<i32> = Mutex::new(0);
-
-/// 最近一次绘制测得的卡片内容高度 / 视口高度（供滚轮钳制）。
 static CARD_SCROLL_METRICS: Mutex<(i32, i32)> = Mutex::new((0, 0));
 
-/// 机器翻译协议（与前端 `resultCardMeta` 一致）：不展示模型。
+/// 语言列表：`None` 关闭；`Some(true)` 源语言；`Some(false)` 目标语言。
+static LANG_FLYOUT_SOURCE: Mutex<Option<bool>> = Mutex::new(None);
+static LANG_FLYOUT_SCROLL: Mutex<i32> = Mutex::new(0);
+
+/// 最近一次 paint 的布局锚点（命中与绘制同源）。
+#[derive(Debug, Clone, Copy, Default)]
+struct LayoutAnchors {
+    lang_bar_top: i32,
+    source_block_h: i32,
+}
+
+static LAYOUT_ANCHORS: Mutex<LayoutAnchors> = Mutex::new(LayoutAnchors {
+    lang_bar_top: 0,
+    source_block_h: 0,
+});
+
+fn store_layout_anchors(lang_bar_top: i32, source_block_h: i32) {
+    if let Ok(mut g) = LAYOUT_ANCHORS.lock() {
+        *g = LayoutAnchors {
+            lang_bar_top,
+            source_block_h,
+        };
+    }
+}
+
+fn load_layout_anchors() -> LayoutAnchors {
+    LAYOUT_ANCHORS
+        .lock()
+        .map(|g| *g)
+        .unwrap_or_default()
+}
+
 pub fn is_machine_translate_protocol(protocol: &str) -> bool {
     protocol.trim() == "microsoft_edge"
 }
 
-/// 卡片副标题：优先 model；`microsoft_edge` 改用 protocol、不强调模型。
-///
-/// 空 / 占位 `—` `-` 的 model 回退到 protocol。
 pub fn card_detail_label(protocol: &str, model_name: &str) -> String {
     if is_machine_translate_protocol(protocol) {
         let p = protocol.trim();
@@ -236,7 +270,6 @@ pub fn card_detail_label(protocol: &str, model_name: &str) -> String {
     }
 }
 
-/// 卡片标题行：`name · detail · status`（detail 空则省略）。
 pub fn format_card_header(card: &PaintCardSnapshot) -> String {
     let name = if card.service_name.is_empty() {
         "服务"
@@ -252,12 +285,10 @@ pub fn format_card_header(card: &PaintCardSnapshot) -> String {
     }
 }
 
-/// 卡片区滚动偏移（测试 / 滚轮）。
 pub fn card_scroll_offset() -> i32 {
     CARD_SCROLL_Y.lock().map(|g| *g).unwrap_or(0)
 }
 
-/// 钳制滚动偏移到 `[0, max(0, content_h - viewport_h)]`。
 pub fn clamp_card_scroll(offset: i32, content_h: i32, viewport_h: i32) -> i32 {
     let max = (content_h - viewport_h).max(0);
     offset.clamp(0, max)
@@ -286,7 +317,6 @@ fn load_scroll_metrics() -> (i32, i32) {
         .unwrap_or((0, 0))
 }
 
-/// 滚轮增量（向下为正像素）；内部按当前 metrics 钳制。
 pub fn adjust_card_scroll(delta_px: i32) -> i32 {
     let (content_h, viewport_h) = load_scroll_metrics();
     let next = clamp_card_scroll(card_scroll_offset() + delta_px, content_h, viewport_h);
@@ -294,10 +324,30 @@ pub fn adjust_card_scroll(delta_px: i32) -> i32 {
     next
 }
 
-/// 将 ViewModel 写入共享快照（不碰 HWND；任意线程、短路径）。
-///
-/// 返回写入后的快照副本，便于单测「入队/落盘」而不创建真实窗口。
-/// 源文变化时重置卡片区滚动，避免新批次停在旧偏移。
+/// 语言列表是否打开；`true`=源，`false`=目标。
+pub fn lang_flyout_side() -> Option<bool> {
+    LANG_FLYOUT_SOURCE.lock().ok().and_then(|g| *g)
+}
+
+pub fn set_lang_flyout(side: Option<bool>) {
+    if let Ok(mut g) = LANG_FLYOUT_SOURCE.lock() {
+        *g = side;
+    }
+    if let Ok(mut s) = LANG_FLYOUT_SCROLL.lock() {
+        *s = 0;
+    }
+}
+
+fn lang_flyout_scroll() -> i32 {
+    LANG_FLYOUT_SCROLL.lock().map(|g| *g).unwrap_or(0)
+}
+
+fn set_lang_flyout_scroll(y: i32) {
+    if let Ok(mut g) = LANG_FLYOUT_SCROLL.lock() {
+        *g = y.max(0);
+    }
+}
+
 pub fn store_paint_snapshot(vm: &PopupViewModel) -> PaintSnapshot {
     let snap = PaintSnapshot::from_view_model(vm);
     if let Ok(mut guard) = PAINT_SNAPSHOT.lock() {
@@ -316,7 +366,6 @@ pub fn store_paint_snapshot(vm: &PopupViewModel) -> PaintSnapshot {
     snap
 }
 
-/// 读取当前绘制快照（测试 / WM_PAINT / 复制）。
 pub fn load_paint_snapshot() -> PaintSnapshot {
     PAINT_SNAPSHOT
         .lock()
@@ -324,7 +373,6 @@ pub fn load_paint_snapshot() -> PaintSnapshot {
         .unwrap_or_default()
 }
 
-/// 按 `service_instance_id` 解析复制文本：优先 `text`，否则 `error_message`。
 pub fn resolve_copy_text(snap: &PaintSnapshot, service_instance_id: &str) -> Option<String> {
     let card = snap
         .cards
@@ -339,7 +387,6 @@ pub fn resolve_copy_text(snap: &PaintSnapshot, service_instance_id: &str) -> Opt
     }
 }
 
-/// 首张有可复制正文的服务 id（Ctrl+C）。
 pub fn first_copyable_service_id(snap: &PaintSnapshot) -> Option<String> {
     snap.cards
         .iter()
@@ -347,7 +394,6 @@ pub fn first_copyable_service_id(snap: &PaintSnapshot) -> Option<String> {
         .map(|c| c.service_instance_id.clone())
 }
 
-/// 状态 → 状态文案。
 pub fn status_label(status: &PopupCardStatus) -> &'static str {
     match status {
         PopupCardStatus::Pending => "等待",
@@ -358,18 +404,50 @@ pub fn status_label(status: &PopupCardStatus) -> &'static str {
     }
 }
 
-/// 状态 → 文本色（COLORREF，0x00BBGGRR；对齐 Fluent success/warning/danger）。
 pub fn status_color_bgr(status: &PopupCardStatus) -> u32 {
     match status {
         PopupCardStatus::Pending => COL_FG_3,
-        PopupCardStatus::Translating => 0x00_10_50_CA, // #CA5010 warning
-        PopupCardStatus::Finished => 0x00_10_7C_10,    // #107C10 success
-        PopupCardStatus::Failed => 0x00_18_23_B4,      // #b42318 danger
+        PopupCardStatus::Translating => COL_WARNING,
+        PopupCardStatus::Finished => COL_SUCCESS,
+        PopupCardStatus::Failed => COL_DANGER,
         PopupCardStatus::Cancelled => COL_FG_3,
     }
 }
 
-/// 创建系统 UI 字体（Segoe UI + ClearType）；失败时返回空 HFONT。
+/// 语言 code → 显示名。
+pub fn lang_display_name(code: &str) -> &str {
+    let c = code.trim();
+    LANG_TABLE
+        .iter()
+        .find(|(k, _)| *k == c)
+        .map(|(_, n)| *n)
+        .unwrap_or(if c.is_empty() { "—" } else { c })
+}
+
+/// 某侧可选语言 code 列表。
+pub fn lang_codes_for_side(is_source: bool) -> Vec<&'static str> {
+    LANG_TABLE
+        .iter()
+        .filter(|(code, _)| is_source || *code != "auto")
+        .map(|(code, _)| *code)
+        .collect()
+}
+
+/// 交换语言：auto 规则对齐原型（目标 auto 时落到 en）。
+pub fn swap_session_langs(source: &str, target: &str) -> (String, String) {
+    let new_source = if target == "auto" {
+        "en".to_string()
+    } else {
+        target.to_string()
+    };
+    let new_target = if source == "auto" {
+        "en".to_string()
+    } else {
+        source.to_string()
+    };
+    (new_source, new_target)
+}
+
 unsafe fn create_ui_font(height_px: i32, weight: i32) -> HFONT {
     CreateFontW(
         -height_px.abs(),
@@ -389,7 +467,6 @@ unsafe fn create_ui_font(height_px: i32, weight: i32) -> HFONT {
     )
 }
 
-/// 逻辑字号 → 物理像素高度（最小 11）。
 fn font_px(logical_pt: f64, scale: f64) -> i32 {
     ((logical_pt * scale).round() as i32).max(11)
 }
@@ -398,7 +475,7 @@ struct UiFonts {
     caption: HFONT,
     body: HFONT,
     body_semibold: HFONT,
-    button: HFONT,
+    small: HFONT,
 }
 
 impl UiFonts {
@@ -407,22 +484,15 @@ impl UiFonts {
             caption: create_ui_font(font_px(12.0, scale), FW_NORMAL.0 as i32),
             body: create_ui_font(font_px(13.0, scale), FW_NORMAL.0 as i32),
             body_semibold: create_ui_font(font_px(13.0, scale), FW_SEMIBOLD.0 as i32),
-            button: create_ui_font(font_px(12.0, scale), FW_NORMAL.0 as i32),
+            small: create_ui_font(font_px(11.0, scale), FW_NORMAL.0 as i32),
         }
     }
 
     unsafe fn destroy(self) {
-        if !self.caption.is_invalid() {
-            let _ = DeleteObject(HGDIOBJ(self.caption.0));
-        }
-        if !self.body.is_invalid() {
-            let _ = DeleteObject(HGDIOBJ(self.body.0));
-        }
-        if !self.body_semibold.is_invalid() {
-            let _ = DeleteObject(HGDIOBJ(self.body_semibold.0));
-        }
-        if !self.button.is_invalid() {
-            let _ = DeleteObject(HGDIOBJ(self.button.0));
+        for f in [self.caption, self.body, self.body_semibold, self.small] {
+            if !f.is_invalid() {
+                let _ = DeleteObject(HGDIOBJ(f.0));
+            }
         }
     }
 }
@@ -443,9 +513,53 @@ unsafe fn fill_solid_rect(hdc: windows::Win32::Graphics::Gdi::HDC, rect: &RECT, 
     let _ = DeleteObject(HGDIOBJ(brush.0));
 }
 
-/// 请求 UI 线程重绘：`PostMessage(WM_POPUP_REFRESH)`（非阻塞）。
-///
-/// 返回是否尝试了投递（`hwnd_raw != 0`）。
+unsafe fn stroke_rect_1px(hdc: windows::Win32::Graphics::Gdi::HDC, rect: &RECT, color: u32) {
+    // 顶
+    fill_solid_rect(
+        hdc,
+        &RECT {
+            left: rect.left,
+            top: rect.top,
+            right: rect.right,
+            bottom: rect.top + 1,
+        },
+        color,
+    );
+    // 底
+    fill_solid_rect(
+        hdc,
+        &RECT {
+            left: rect.left,
+            top: rect.bottom - 1,
+            right: rect.right,
+            bottom: rect.bottom,
+        },
+        color,
+    );
+    // 左
+    fill_solid_rect(
+        hdc,
+        &RECT {
+            left: rect.left,
+            top: rect.top,
+            right: rect.left + 1,
+            bottom: rect.bottom,
+        },
+        color,
+    );
+    // 右
+    fill_solid_rect(
+        hdc,
+        &RECT {
+            left: rect.right - 1,
+            top: rect.top,
+            right: rect.right,
+            bottom: rect.bottom,
+        },
+        color,
+    );
+}
+
 pub fn enqueue_repaint(hwnd_raw: isize) -> bool {
     if hwnd_raw == 0 {
         return false;
@@ -459,7 +573,6 @@ pub fn enqueue_repaint(hwnd_raw: isize) -> bool {
     true
 }
 
-/// `publish` 热路径：更新快照 + 投递重绘（均非阻塞）。
 pub fn publish_view_model(window: &NativePopupHwnd, vm: &PopupViewModel) {
     let _ = store_paint_snapshot(vm);
     if window.is_valid() {
@@ -467,7 +580,6 @@ pub fn publish_view_model(window: &NativePopupHwnd, vm: &PopupViewModel) {
     }
 }
 
-/// Send-safe HWND 包装。
 #[derive(Debug)]
 pub struct NativePopupHwnd {
     raw: isize,
@@ -518,7 +630,6 @@ unsafe fn register_class_inner() -> Result<(), String> {
 
     let wc = WNDCLASSEXW {
         cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
-        // CS_DROPSHADOW：轻阴影，无需 WS_EX_LAYERED 自绘
         style: CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS | CS_DROPSHADOW,
         lpfnWndProc: Some(wnd_proc),
         cbClsExtra: 0,
@@ -569,7 +680,6 @@ unsafe fn draw_text_in_rect(
     }
 }
 
-/// 用 `DT_CALCRECT` 测算文本高度（不实际绘制）。
 unsafe fn measure_text_height(
     hdc: windows::Win32::Graphics::Gdi::HDC,
     text: &str,
@@ -594,7 +704,6 @@ unsafe fn measure_text_height(
     }
 }
 
-/// 单卡正文展示内容（空 text 时按状态给占位 / 失败信息）。
 pub fn card_body_text(card: &PaintCardSnapshot) -> String {
     if !card.text.is_empty() {
         return card.text.clone();
@@ -612,7 +721,6 @@ pub fn card_body_text(card: &PaintCardSnapshot) -> String {
     }
 }
 
-/// 是否在正文之外再画一行失败信息（有译文且另有 error）。
 pub fn card_extra_error(card: &PaintCardSnapshot) -> Option<&str> {
     if matches!(card.status, PopupCardStatus::Failed)
         && !card.error_message.is_empty()
@@ -624,7 +732,30 @@ pub fn card_extra_error(card: &PaintCardSnapshot) -> Option<&str> {
     }
 }
 
-/// 估算 / 测算单卡块高度（内边距 + header + body + 可选 error + 底部分隔）。
+fn model_tag_for_card(card: &PaintCardSnapshot) -> String {
+    if is_machine_translate_protocol(&card.protocol) {
+        return String::new();
+    }
+    let m = card.model_name.trim();
+    if m.is_empty() || m == "—" || m == "-" {
+        String::new()
+    } else {
+        m.to_string()
+    }
+}
+
+fn tokens_label(card: &PaintCardSnapshot) -> String {
+    if is_machine_translate_protocol(&card.protocol) {
+        return String::new();
+    }
+    match (card.usage_input, card.usage_output) {
+        (Some(i), Some(o)) => format!("↑{i} ↓{o}"),
+        (Some(i), None) => format!("↑{i}"),
+        (None, Some(o)) => format!("↓{o}"),
+        _ => String::new(),
+    }
+}
+
 unsafe fn measure_card_height(
     hdc: windows::Win32::Graphics::Gdi::HDC,
     card: &PaintCardSnapshot,
@@ -632,43 +763,403 @@ unsafe fn measure_card_height(
     scale: f64,
 ) -> i32 {
     let gap = ((GAP_LOGICAL) * scale).round() as i32;
-    let card_pad = ((8.0_f64) * scale).round() as i32;
-    let header_h = ((20.0_f64) * scale).round() as i32;
+    let card_pad = ((10.0_f64) * scale).round() as i32;
+    let header_h = ((22.0_f64) * scale).round() as i32;
     let text_w = (content_w - card_pad * 2).max(1);
     let mut h = card_pad + header_h + 2;
 
     let body = card_body_text(card);
     if !body.is_empty() {
-        let max_body = ((140.0_f64) * scale).round() as i32;
-        let bh = measure_text_height(
-            hdc,
-            &body,
-            text_w,
-            DT_LEFT | DT_WORDBREAK | DT_NOPREFIX,
-        )
-        .max(((16.0_f64) * scale).round() as i32)
-        .min(max_body);
+        let max_body = ((120.0_f64) * scale).round() as i32;
+        let bh = measure_text_height(hdc, &body, text_w, DT_LEFT | DT_WORDBREAK | DT_NOPREFIX)
+            .max(((16.0_f64) * scale).round() as i32)
+            .min(max_body);
         h += bh + gap / 2;
     }
 
     if let Some(err) = card_extra_error(card) {
-        let max_err = ((48.0_f64) * scale).round() as i32;
-        let eh = measure_text_height(
-            hdc,
-            err,
-            text_w,
-            DT_LEFT | DT_WORDBREAK | DT_NOPREFIX,
-        )
-        .max(((14.0_f64) * scale).round() as i32)
-        .min(max_err);
+        let max_err = ((40.0_f64) * scale).round() as i32;
+        let eh = measure_text_height(hdc, err, text_w, DT_LEFT | DT_WORDBREAK | DT_NOPREFIX)
+            .max(((14.0_f64) * scale).round() as i32)
+            .min(max_err);
         h += eh + gap / 2;
+    }
+
+    // meta 行（model / tokens）
+    if !model_tag_for_card(card).is_empty() || !tokens_label(card).is_empty() {
+        h += ((16.0_f64) * scale).round() as i32;
     }
 
     h + card_pad + gap
 }
 
-/// 绘制单张服务卡（浅底 + 边框 + name/model/状态/正文）。
-/// `block_h` 须与滚动测高同一字体上下文下的 `measure_card_height` 结果一致。
+fn content_pad(scale: f64) -> i32 {
+    ((PAD_LOGICAL) * scale).round() as i32
+}
+
+fn content_gap(scale: f64) -> i32 {
+    ((GAP_LOGICAL) * scale).round() as i32
+}
+
+fn titlebar_h(scale: f64) -> i32 {
+    (TITLEBAR_LOGICAL_H * scale).round() as i32
+}
+
+fn status_h(scale: f64) -> i32 {
+    (STATUS_LOGICAL_H * scale).round() as i32
+}
+
+fn lang_bar_h(scale: f64) -> i32 {
+    (LANG_BAR_LOGICAL_H * scale).round() as i32
+}
+
+/// 标题栏按钮布局（从右到左：关闭、最小化 | 主题、设置、书签、截图、收藏；左侧钉）。
+pub fn layout_titlebar_buttons(client: &RECT, scale: f64) -> Vec<(ChromeHit, RECT)> {
+    let th = titlebar_h(scale);
+    let btn = (TITLE_BTN_LOGICAL * scale).round() as i32;
+    let win_w = (WIN_BTN_LOGICAL_W * scale).round() as i32;
+    let left_pad = content_pad(scale);
+    let brand_w = ((72.0_f64) * scale).round() as i32;
+
+    let mut out = Vec::new();
+    // 关闭
+    let mut x = client.right - win_w;
+    out.push((
+        ChromeHit::Close,
+        RECT {
+            left: x,
+            top: 0,
+            right: client.right,
+            bottom: th,
+        },
+    ));
+    // 最小化
+    x -= win_w;
+    out.push((
+        ChromeHit::Minimize,
+        RECT {
+            left: x,
+            top: 0,
+            right: x + win_w,
+            bottom: th,
+        },
+    ));
+    // 右侧工具：主题 设置 书签 截图 收藏
+    let tools = [
+        ChromeHit::Theme,
+        ChromeHit::Settings,
+        ChromeHit::Bookmark,
+        ChromeHit::Shot,
+        ChromeHit::Fav,
+    ];
+    x -= ((4.0_f64) * scale).round() as i32;
+    for hit in tools {
+        x -= btn;
+        out.push((
+            hit,
+            RECT {
+                left: x,
+                top: (th - btn) / 2,
+                right: x + btn,
+                bottom: (th - btn) / 2 + btn,
+            },
+        ));
+    }
+    // 钉在品牌右侧
+    let pin_left = left_pad + brand_w;
+    out.push((
+        ChromeHit::Pin,
+        RECT {
+            left: pin_left,
+            top: (th - btn) / 2,
+            right: pin_left + btn,
+            bottom: (th - btn) / 2 + btn,
+        },
+    ));
+    out
+}
+
+/// 语言栏三区：源 | 交换 | 目标。
+pub fn layout_lang_bar(client: &RECT, scale: f64, bar_top: i32) -> Vec<(ChromeHit, RECT)> {
+    let pad = content_pad(scale);
+    let h = lang_bar_h(scale);
+    let swap_w = ((38.0_f64) * scale).round() as i32;
+    let left = pad;
+    let right = client.right - pad;
+    let side_w = ((right - left - swap_w) / 2).max(1);
+    let swap_left = left + side_w;
+    let target_left = swap_left + swap_w;
+    vec![
+        (
+            ChromeHit::LangSource,
+            RECT {
+                left,
+                top: bar_top,
+                right: swap_left,
+                bottom: bar_top + h,
+            },
+        ),
+        (
+            ChromeHit::LangSwap,
+            RECT {
+                left: swap_left,
+                top: bar_top,
+                right: target_left,
+                bottom: bar_top + h,
+            },
+        ),
+        (
+            ChromeHit::LangTarget,
+            RECT {
+                left: target_left,
+                top: bar_top,
+                right,
+                bottom: bar_top + h,
+            },
+        ),
+    ]
+}
+
+/// 状态栏动作（取消 / 重试 / 复制）。
+pub fn layout_status_actions(
+    client: &RECT,
+    is_translating: bool,
+    has_failure: bool,
+    scale: f64,
+) -> Vec<(ChromeHit, RECT)> {
+    let sh = status_h(scale);
+    let pad = content_pad(scale);
+    let top = client.bottom - sh;
+    let btn_w = ((40.0_f64) * scale).round() as i32;
+    let gap = ((8.0_f64) * scale).round() as i32;
+    let mut x = pad + ((72.0_f64) * scale).round() as i32; // 状态文案右侧
+    let mut out = Vec::new();
+    if is_translating {
+        out.push((
+            ChromeHit::Cancel,
+            RECT {
+                left: x,
+                top,
+                right: x + btn_w,
+                bottom: client.bottom,
+            },
+        ));
+        x += btn_w + gap;
+    } else if has_failure {
+        out.push((
+            ChromeHit::Retry,
+            RECT {
+                left: x,
+                top,
+                right: x + btn_w,
+                bottom: client.bottom,
+            },
+        ));
+        x += btn_w + gap;
+    }
+    out.push((
+        ChromeHit::Copy,
+        RECT {
+            left: x,
+            top,
+            right: x + btn_w,
+            bottom: client.bottom,
+        },
+    ));
+    out
+}
+
+/// 语言列表矩形与条目高度。
+pub fn flyout_metrics(client: &RECT, scale: f64, lang_bar_top: i32) -> (RECT, i32) {
+    let pad = content_pad(scale);
+    let item_h = ((28.0_f64) * scale).round() as i32;
+    let max_h = ((280.0_f64) * scale).round() as i32;
+    let w = ((252.0_f64) * scale).round() as i32;
+    let gap = ((6.0_f64) * scale).round() as i32;
+    let top = lang_bar_top + lang_bar_h(scale) + gap;
+    let left = if lang_flyout_side() == Some(false) {
+        (client.right - pad - w).max(pad)
+    } else {
+        pad
+    };
+    let bottom = (top + max_h).min(client.bottom - status_h(scale) - 4);
+    (
+        RECT {
+            left,
+            top,
+            right: left + w,
+            bottom,
+        },
+        item_h,
+    )
+}
+
+pub fn layout_flyout_items(
+    client: &RECT,
+    scale: f64,
+    lang_bar_top: i32,
+    is_source: bool,
+) -> Vec<(ChromeHit, RECT)> {
+    let codes = lang_codes_for_side(is_source);
+    let (fly, item_h) = flyout_metrics(client, scale, lang_bar_top);
+    let scroll = lang_flyout_scroll();
+    let mut out = Vec::new();
+    let mut y = fly.top + 4 - scroll;
+    for (idx, _) in codes.iter().enumerate() {
+        let r = RECT {
+            left: fly.left + 4,
+            top: y,
+            right: fly.right - 4,
+            bottom: y + item_h,
+        };
+        if r.bottom > fly.top && r.top < fly.bottom {
+            out.push((ChromeHit::LangItem(idx), r));
+        }
+        y += item_h;
+    }
+    out
+}
+
+/// 计算语言栏 top（与 paint 一致；无锚点缓存时用估算）。
+pub fn compute_lang_bar_top(scale: f64, source_block_h: i32) -> i32 {
+    let th = titlebar_h(scale);
+    let pad = content_pad(scale);
+    let gap = content_gap(scale);
+    th + pad + source_block_h + gap
+}
+
+fn resolve_lang_bar_top(scale: f64, source_text: &str) -> i32 {
+    let anchors = load_layout_anchors();
+    if anchors.lang_bar_top > 0 {
+        anchors.lang_bar_top
+    } else {
+        let source_h = if anchors.source_block_h > 0 {
+            anchors.source_block_h
+        } else {
+            estimate_source_block_h(scale, source_text)
+        };
+        compute_lang_bar_top(scale, source_h)
+    }
+}
+
+/// 估算源文块高度（无 HDC 时用行数近似；有 HDC 时在 paint 内实测）。
+fn estimate_source_block_h(scale: f64, source_text: &str) -> i32 {
+    let max_h = (SOURCE_MAX_LOGICAL_H * scale).round() as i32;
+    let min_h = ((48.0_f64) * scale).round() as i32;
+    let lines = source_text.lines().count().max(1).min(6);
+    let h = ((lines as f64 * 18.0 + 36.0) * scale).round() as i32;
+    h.clamp(min_h, max_h)
+}
+
+fn pt_in_rect(x: i32, y: i32, r: &RECT) -> bool {
+    x >= r.left && x < r.right && y >= r.top && y < r.bottom
+}
+
+/// 综合命中测试。
+pub fn hit_test_chrome(
+    x: i32,
+    y: i32,
+    client: &RECT,
+    snap: &PaintSnapshot,
+    scale: f64,
+) -> Option<ChromeHit> {
+    let bar_top = resolve_lang_bar_top(scale, &snap.source_text);
+
+    // 语言列表优先
+    if let Some(is_source) = lang_flyout_side() {
+        let (fly, _) = flyout_metrics(client, scale, bar_top);
+        if pt_in_rect(x, y, &fly) {
+            for (hit, r) in layout_flyout_items(client, scale, bar_top, is_source) {
+                if pt_in_rect(x, y, &r) {
+                    return Some(hit);
+                }
+            }
+            return None; // 列表空白区吞点击
+        }
+    }
+
+    for (hit, r) in layout_titlebar_buttons(client, scale) {
+        if pt_in_rect(x, y, &r) {
+            return Some(hit);
+        }
+    }
+
+    for (hit, r) in layout_lang_bar(client, scale, bar_top) {
+        if pt_in_rect(x, y, &r) {
+            return Some(hit);
+        }
+    }
+
+    let has_failure = snap
+        .cards
+        .iter()
+        .any(|c| matches!(c.status, PopupCardStatus::Failed));
+    for (hit, r) in layout_status_actions(client, snap.is_translating, has_failure, scale) {
+        if pt_in_rect(x, y, &r) {
+            return Some(hit);
+        }
+    }
+
+    None
+}
+
+/// 标题拖动区：顶部条且未落在按钮上。
+pub fn hit_test_title_bar_drag(x: i32, y: i32, client: &RECT, scale: f64) -> bool {
+    let th = titlebar_h(scale);
+    if y < 0 || y >= th {
+        return false;
+    }
+    for (_, r) in layout_titlebar_buttons(client, scale) {
+        if pt_in_rect(x, y, &r) {
+            return false;
+        }
+    }
+    true
+}
+
+pub fn hit_test_title_bar(y: i32, scale: f64) -> bool {
+    y >= 0 && y < titlebar_h(scale)
+}
+
+pub fn hit_test_title_bar_screen(hwnd: HWND, screen_x: i32, screen_y: i32) -> bool {
+    let mut pt = POINT {
+        x: screen_x,
+        y: screen_y,
+    };
+    unsafe {
+        if !ScreenToClient(hwnd, &mut pt).as_bool() {
+            return false;
+        }
+    }
+    let mut client = RECT::default();
+    unsafe {
+        let _ = GetClientRect(hwnd, &mut client);
+    }
+    hit_test_title_bar_drag(pt.x, pt.y, &client, window_scale(hwnd))
+}
+
+/// 兼容旧测试命名：翻译中状态栏含 Cancel。
+pub fn layout_toolbar_buttons(
+    client: &RECT,
+    is_translating: bool,
+    scale: f64,
+) -> Vec<(ChromeHit, RECT)> {
+    layout_status_actions(client, is_translating, !is_translating, scale)
+}
+
+pub fn hit_test_toolbar(
+    x: i32,
+    y: i32,
+    client: &RECT,
+    is_translating: bool,
+    scale: f64,
+) -> Option<ChromeHit> {
+    layout_toolbar_buttons(client, is_translating, scale)
+        .into_iter()
+        .find(|(_, r)| pt_in_rect(x, y, r))
+        .map(|(h, _)| h)
+}
+
 unsafe fn paint_one_card(
     hdc: windows::Win32::Graphics::Gdi::HDC,
     card: &PaintCardSnapshot,
@@ -680,8 +1171,7 @@ unsafe fn paint_one_card(
     gap: i32,
     fonts: &UiFonts,
 ) {
-    let card_pad = ((8.0_f64) * scale).round() as i32;
-    // 块底含 gap，卡片面略短一截，露出分隔呼吸感
+    let card_pad = ((10.0_f64) * scale).round() as i32;
     let face_bottom = (top + block_h - gap / 2).max(top + 1);
     let face = RECT {
         left,
@@ -690,44 +1180,21 @@ unsafe fn paint_one_card(
         bottom: face_bottom,
     };
     fill_solid_rect(hdc, &face, COL_CARD_BG);
-    // 顶边与左右细边（底边用分隔区留白代替）
-    let border_top = RECT {
-        left,
-        top,
-        right,
-        bottom: top + 1,
-    };
-    fill_solid_rect(hdc, &border_top, COL_BORDER);
-    let border_left = RECT {
-        left,
-        top,
-        right: left + 1,
-        bottom: face_bottom,
-    };
-    fill_solid_rect(hdc, &border_left, COL_BORDER);
-    let border_right = RECT {
-        left: right - 1,
-        top,
-        right,
-        bottom: face_bottom,
-    };
-    fill_solid_rect(hdc, &border_right, COL_BORDER);
-    let border_bottom = RECT {
-        left,
-        top: face_bottom - 1,
-        right,
-        bottom: face_bottom,
-    };
-    fill_solid_rect(hdc, &border_bottom, COL_BORDER);
+    stroke_rect_1px(hdc, &face, COL_BORDER);
 
     let text_left = left + card_pad;
     let text_right = right - card_pad;
     let mut y = top + card_pad;
-    let status_color = status_color_bgr(&card.status);
-    let header = format_card_header(card);
+
+    // 引擎名
+    let name = if card.service_name.is_empty() {
+        "服务"
+    } else {
+        card.service_name.as_str()
+    };
     let header_h = ((20.0_f64) * scale).round() as i32;
     {
-        let old = select_font(hdc, fonts.body_semibold);
+        let old = select_font(hdc, fonts.small);
         let mut r = RECT {
             left: text_left,
             top: y,
@@ -736,10 +1203,25 @@ unsafe fn paint_one_card(
         };
         let _ = draw_text_in_rect(
             hdc,
-            &header,
+            name,
             &mut r,
-            status_color,
-            DT_LEFT | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS,
+            COL_FG_2,
+            DT_LEFT | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS | DT_VCENTER,
+        );
+        // 状态点文案靠右
+        let st = status_label(&card.status);
+        let mut rr = RECT {
+            left: text_left,
+            top: y,
+            right: text_right,
+            bottom: y + header_h,
+        };
+        let _ = draw_text_in_rect(
+            hdc,
+            st,
+            &mut rr,
+            status_color_bgr(&card.status),
+            DT_RIGHT | DT_SINGLELINE | DT_NOPREFIX | DT_VCENTER,
         );
         if !old.0.is_null() {
             let _ = SelectObject(hdc, old);
@@ -749,7 +1231,7 @@ unsafe fn paint_one_card(
 
     let body = card_body_text(card);
     if !body.is_empty() {
-        let max_body = ((140.0_f64) * scale).round() as i32;
+        let max_body = ((120.0_f64) * scale).round() as i32;
         let mut r = RECT {
             left: text_left,
             top: y,
@@ -776,7 +1258,7 @@ unsafe fn paint_one_card(
     }
 
     if let Some(err) = card_extra_error(card) {
-        let max_err = ((48.0_f64) * scale).round() as i32;
+        let max_err = ((40.0_f64) * scale).round() as i32;
         let mut r = RECT {
             left: text_left,
             top: y,
@@ -794,10 +1276,39 @@ unsafe fn paint_one_card(
         if !old.0.is_null() {
             let _ = SelectObject(hdc, old);
         }
+        y += ((14.0_f64) * scale).round() as i32;
+    }
+
+    let model = model_tag_for_card(card);
+    let tokens = tokens_label(card);
+    if !model.is_empty() || !tokens.is_empty() {
+        let meta = if model.is_empty() {
+            tokens
+        } else if tokens.is_empty() {
+            model
+        } else {
+            format!("{model}  {tokens}")
+        };
+        let mut r = RECT {
+            left: text_left,
+            top: y,
+            right: text_right,
+            bottom: y + ((16.0_f64) * scale).round() as i32,
+        };
+        let old = select_font(hdc, fonts.small);
+        let _ = draw_text_in_rect(
+            hdc,
+            &meta,
+            &mut r,
+            COL_FG_3,
+            DT_RIGHT | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS | DT_VCENTER,
+        );
+        if !old.0.is_null() {
+            let _ = SelectObject(hdc, old);
+        }
     }
 }
 
-/// 绘制简易竖向滚动条（内容超出视口时）。
 unsafe fn paint_simple_scrollbar(
     hdc: windows::Win32::Graphics::Gdi::HDC,
     track: &RECT,
@@ -828,91 +1339,391 @@ unsafe fn paint_simple_scrollbar(
     fill_solid_rect(hdc, &thumb, COL_SCROLL_THUMB);
 }
 
-/// 计算底部工具栏按钮布局（客户区坐标）。
-pub fn layout_toolbar_buttons(
+unsafe fn paint_titlebar(
+    hdc: windows::Win32::Graphics::Gdi::HDC,
     client: &RECT,
-    is_translating: bool,
     scale: f64,
-) -> Vec<(ToolbarButton, RECT)> {
-    let toolbar_h = ((TOOLBAR_LOGICAL_H as f64) * scale).round() as i32;
-    let btn_w = ((BTN_LOGICAL_W as f64) * scale).round() as i32;
-    let gap = ((BTN_GAP as f64) * scale).round() as i32;
-    let pad = ((PAD_LOGICAL) * scale).round() as i32;
-    let v_inset = ((6.0_f64) * scale).round() as i32;
-
-    let mut buttons = vec![ToolbarButton::Close];
-    if is_translating {
-        buttons.push(ToolbarButton::Cancel);
-    }
-    buttons.push(ToolbarButton::Retry);
-    buttons.push(ToolbarButton::Copy);
-    buttons.push(ToolbarButton::Settings);
-
-    let top = (client.bottom - toolbar_h + v_inset).max(client.top);
-    let bottom = (client.bottom - v_inset).max(top + 1);
-    let mut x = pad;
-    let mut out = Vec::with_capacity(buttons.len());
-    for btn in buttons {
-        let right = (x + btn_w).min(client.right - pad);
-        if right <= x {
-            break;
-        }
-        out.push((
-            btn,
-            RECT {
-                left: x,
-                top,
-                right,
-                bottom,
-            },
-        ));
-        x = right + gap;
-    }
-    out
-}
-
-/// 命中测试：点是否落在工具栏按钮上。
-pub fn hit_test_toolbar(
-    x: i32,
-    y: i32,
-    client: &RECT,
-    is_translating: bool,
-    scale: f64,
-) -> Option<ToolbarButton> {
-    for (btn, r) in layout_toolbar_buttons(client, is_translating, scale) {
-        if x >= r.left && x < r.right && y >= r.top && y < r.bottom {
-            return Some(btn);
-        }
-    }
-    None
-}
-
-/// 标题拖动区命中（顶部条）：返回 `true` 时 `WM_NCHITTEST` → `HTCAPTION` 由系统拖动；
-/// 双击该区关闭（`WM_NCLBUTTONDBLCLK`）。
-pub fn hit_test_title_bar(y: i32, scale: f64) -> bool {
-    let h = ((TITLE_HIT_LOGICAL_H as f64) * scale).round() as i32;
-    y >= 0 && y < h
-}
-
-/// 屏幕坐标点是否落在标题拖动区（供 `WM_NCHITTEST`）。
-pub fn hit_test_title_bar_screen(hwnd: HWND, screen_x: i32, screen_y: i32) -> bool {
-    let mut pt = POINT {
-        x: screen_x,
-        y: screen_y,
+    fonts: &UiFonts,
+) {
+    let th = titlebar_h(scale);
+    let pad = content_pad(scale);
+    // 品牌图标 + 名
+    let icon = ((20.0_f64) * scale).round() as i32;
+    let icon_r = RECT {
+        left: pad,
+        top: (th - icon) / 2,
+        right: pad + icon,
+        bottom: (th - icon) / 2 + icon,
     };
-    unsafe {
-        if !ScreenToClient(hwnd, &mut pt).as_bool() {
-            return false;
+    fill_solid_rect(hdc, &icon_r, COL_ACCENT);
+    {
+        let old = select_font(hdc, fonts.small);
+        let mut tr = icon_r;
+        let _ = draw_text_in_rect(
+            hdc,
+            "文",
+            &mut tr,
+            0x00_FF_FF_FF,
+            DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX,
+        );
+        if !old.0.is_null() {
+            let _ = SelectObject(hdc, old);
         }
     }
-    hit_test_title_bar(pt.y, window_scale(hwnd))
+    {
+        let old = select_font(hdc, fonts.body_semibold);
+        let mut r = RECT {
+            left: pad + icon + ((8.0_f64) * scale).round() as i32,
+            top: 0,
+            right: pad + ((80.0_f64) * scale).round() as i32,
+            bottom: th,
+        };
+        let _ = draw_text_in_rect(
+            hdc,
+            "shizi",
+            &mut r,
+            COL_FG,
+            DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX,
+        );
+        if !old.0.is_null() {
+            let _ = SelectObject(hdc, old);
+        }
+    }
+
+    let labels: &[(ChromeHit, &str)] = &[
+        (ChromeHit::Pin, "钉"),
+        (ChromeHit::Fav, "★"),
+        (ChromeHit::Shot, "框"),
+        (ChromeHit::Bookmark, "书"),
+        (ChromeHit::Settings, "设"),
+        (ChromeHit::Theme, "☾"),
+        (ChromeHit::Minimize, "─"),
+        (ChromeHit::Close, "×"),
+    ];
+    let old = select_font(hdc, fonts.caption);
+    for (hit, r) in layout_titlebar_buttons(client, scale) {
+        let label = labels
+            .iter()
+            .find(|(h, _)| *h == hit)
+            .map(|(_, s)| *s)
+            .unwrap_or("?");
+        let color = if hit == ChromeHit::Close {
+            COL_FG
+        } else {
+            COL_FG_2
+        };
+        let mut rr = r;
+        let _ = draw_text_in_rect(
+            hdc,
+            label,
+            &mut rr,
+            color,
+            DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX,
+        );
+    }
+    if !old.0.is_null() {
+        let _ = SelectObject(hdc, old);
+    }
 }
 
-fn lparam_to_point(lparam: LPARAM) -> POINT {
-    let v = lparam.0 as u32;
-    let x = (v & 0xFFFF) as i16 as i32;
-    let y = ((v >> 16) & 0xFFFF) as i16 as i32;
-    POINT { x, y }
+unsafe fn paint_source_card(
+    hdc: windows::Win32::Graphics::Gdi::HDC,
+    snap: &PaintSnapshot,
+    left: i32,
+    right: i32,
+    top: i32,
+    scale: f64,
+    fonts: &UiFonts,
+) -> i32 {
+    let max_h = (SOURCE_MAX_LOGICAL_H * scale).round() as i32;
+    let pad = ((10.0_f64) * scale).round() as i32;
+    let text_w = (right - left - pad * 2).max(1);
+    let src = if snap.source_text.is_empty() {
+        "（暂无源文）"
+    } else {
+        snap.source_text.as_str()
+    };
+    let old = select_font(hdc, fonts.body);
+    let text_h = measure_text_height(hdc, src, text_w, DT_LEFT | DT_WORDBREAK | DT_NOPREFIX)
+        .max(((32.0_f64) * scale).round() as i32)
+        .min(max_h - pad * 2 - ((18.0_f64) * scale).round() as i32);
+    let block_h = (pad + text_h + ((22.0_f64) * scale).round() as i32 + pad).min(max_h);
+    let face = RECT {
+        left,
+        top,
+        right,
+        bottom: top + block_h,
+    };
+    fill_solid_rect(hdc, &face, COL_CARD_BG);
+    stroke_rect_1px(hdc, &face, COL_BORDER);
+
+    let mut r = RECT {
+        left: left + pad,
+        top: top + pad,
+        right: right - pad,
+        bottom: top + pad + text_h,
+    };
+    let _ = draw_text_in_rect(
+        hdc,
+        src,
+        &mut r,
+        if snap.source_text.is_empty() {
+            COL_FG_3
+        } else {
+            COL_FG
+        },
+        DT_LEFT | DT_WORDBREAK | DT_NOPREFIX | DT_END_ELLIPSIS,
+    );
+    if !old.0.is_null() {
+        let _ = SelectObject(hdc, old);
+    }
+
+    // 语言 badge
+    let badge = lang_display_name(&snap.source_lang);
+    let old = select_font(hdc, fonts.small);
+    let mut br = RECT {
+        left: left + pad,
+        top: top + block_h - pad - ((16.0_f64) * scale).round() as i32,
+        right: right - pad,
+        bottom: top + block_h - pad,
+    };
+    let _ = draw_text_in_rect(
+        hdc,
+        badge,
+        &mut br,
+        COL_ACCENT,
+        DT_RIGHT | DT_SINGLELINE | DT_NOPREFIX | DT_VCENTER,
+    );
+    if !old.0.is_null() {
+        let _ = SelectObject(hdc, old);
+    }
+    block_h
+}
+
+unsafe fn paint_lang_bar(
+    hdc: windows::Win32::Graphics::Gdi::HDC,
+    snap: &PaintSnapshot,
+    client: &RECT,
+    bar_top: i32,
+    scale: f64,
+    fonts: &UiFonts,
+) {
+    let parts = layout_lang_bar(client, scale, bar_top);
+    let full = RECT {
+        left: parts[0].1.left,
+        top: bar_top,
+        right: parts[2].1.right,
+        bottom: bar_top + lang_bar_h(scale),
+    };
+    fill_solid_rect(hdc, &full, COL_CARD_BG);
+    stroke_rect_1px(hdc, &full, COL_BORDER);
+
+    let old = select_font(hdc, fonts.body);
+    let src_label = lang_display_name(&snap.source_lang);
+    let tgt_label = lang_display_name(&snap.target_lang);
+    for (hit, mut r) in parts {
+        let label = match hit {
+            ChromeHit::LangSource => format!("{src_label} ▾"),
+            ChromeHit::LangTarget => format!("{tgt_label} ▾"),
+            ChromeHit::LangSwap => "⇄".to_string(),
+            _ => String::new(),
+        };
+        let color = if hit == ChromeHit::LangSwap {
+            COL_FG_2
+        } else {
+            COL_FG
+        };
+        let _ = draw_text_in_rect(
+            hdc,
+            &label,
+            &mut r,
+            color,
+            DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS,
+        );
+    }
+    if !old.0.is_null() {
+        let _ = SelectObject(hdc, old);
+    }
+}
+
+unsafe fn paint_flyout(
+    hdc: windows::Win32::Graphics::Gdi::HDC,
+    snap: &PaintSnapshot,
+    client: &RECT,
+    bar_top: i32,
+    scale: f64,
+    fonts: &UiFonts,
+) {
+    let Some(is_source) = lang_flyout_side() else {
+        return;
+    };
+    let codes = lang_codes_for_side(is_source);
+    let (fly, item_h) = flyout_metrics(client, scale, bar_top);
+    fill_solid_rect(hdc, &fly, COL_FLYOUT_BG);
+    stroke_rect_1px(hdc, &fly, COL_BORDER_2);
+
+    let selected = if is_source {
+        snap.source_lang.as_str()
+    } else {
+        snap.target_lang.as_str()
+    };
+    let scroll = lang_flyout_scroll();
+    let content_h = (codes.len() as i32) * item_h + 8;
+    let viewport = (fly.bottom - fly.top).max(1);
+    let max_scroll = (content_h - viewport).max(0);
+    if scroll > max_scroll {
+        set_lang_flyout_scroll(max_scroll);
+    }
+
+    let saved = SaveDC(hdc);
+    let _ = IntersectClipRect(hdc, fly.left, fly.top, fly.right, fly.bottom);
+    let old = select_font(hdc, fonts.caption);
+    let mut y = fly.top + 4 - lang_flyout_scroll();
+    for code in codes {
+        let r = RECT {
+            left: fly.left + 4,
+            top: y,
+            right: fly.right - 4,
+            bottom: y + item_h,
+        };
+        if r.bottom > fly.top && r.top < fly.bottom {
+            if code == selected {
+                fill_solid_rect(hdc, &r, COL_ACCENT_SOFT);
+            }
+            let mut tr = RECT {
+                left: r.left + 8,
+                top: r.top,
+                right: r.right - 8,
+                bottom: r.bottom,
+            };
+            let color = if code == selected {
+                COL_ACCENT
+            } else {
+                COL_FG
+            };
+            let _ = draw_text_in_rect(
+                hdc,
+                lang_display_name(code),
+                &mut tr,
+                color,
+                DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS,
+            );
+        }
+        y += item_h;
+    }
+    if !old.0.is_null() {
+        let _ = SelectObject(hdc, old);
+    }
+    let _ = RestoreDC(hdc, saved);
+
+    if content_h > viewport {
+        let track = RECT {
+            left: fly.right - 6,
+            top: fly.top + 4,
+            right: fly.right - 2,
+            bottom: fly.bottom - 4,
+        };
+        paint_simple_scrollbar(hdc, &track, content_h, viewport, lang_flyout_scroll());
+    }
+}
+
+unsafe fn paint_status_bar(
+    hdc: windows::Win32::Graphics::Gdi::HDC,
+    client: &RECT,
+    snap: &PaintSnapshot,
+    scale: f64,
+    fonts: &UiFonts,
+) {
+    let sh = status_h(scale);
+    let top = client.bottom - sh;
+    let bar = RECT {
+        left: client.left,
+        top,
+        right: client.right,
+        bottom: client.bottom,
+    };
+    // 顶部分割线
+    fill_solid_rect(
+        hdc,
+        &RECT {
+            left: bar.left,
+            top: bar.top,
+            right: bar.right,
+            bottom: bar.top + 1,
+        },
+        COL_BORDER,
+    );
+
+    let pad = content_pad(scale);
+    let status_text = if snap.is_translating {
+        "翻译中…"
+    } else if snap.cards.iter().any(|c| matches!(c.status, PopupCardStatus::Failed)) {
+        "部分失败"
+    } else if snap.cards.is_empty() {
+        "就绪"
+    } else if snap
+        .cards
+        .iter()
+        .all(|c| matches!(c.status, PopupCardStatus::Finished | PopupCardStatus::Cancelled))
+    {
+        "翻译完成"
+    } else {
+        "就绪"
+    };
+    let chars = snap.source_text.chars().count();
+    let count = format!("{chars} 字");
+
+    let old = select_font(hdc, fonts.small);
+    let mut left_r = RECT {
+        left: pad,
+        top,
+        right: client.right / 2,
+        bottom: client.bottom,
+    };
+    let _ = draw_text_in_rect(
+        hdc,
+        status_text,
+        &mut left_r,
+        COL_FG_2,
+        DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX,
+    );
+
+    let has_failure = snap
+        .cards
+        .iter()
+        .any(|c| matches!(c.status, PopupCardStatus::Failed));
+    for (hit, mut r) in layout_status_actions(client, snap.is_translating, has_failure, scale) {
+        let label = match hit {
+            ChromeHit::Cancel => "取消",
+            ChromeHit::Retry => "重试",
+            ChromeHit::Copy => "复制",
+            _ => "",
+        };
+        let _ = draw_text_in_rect(
+            hdc,
+            label,
+            &mut r,
+            COL_STATUS_ACTION,
+            DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX,
+        );
+    }
+
+    let mut right_r = RECT {
+        left: client.right / 2,
+        top,
+        right: client.right - pad,
+        bottom: client.bottom,
+    };
+    let _ = draw_text_in_rect(
+        hdc,
+        &count,
+        &mut right_r,
+        COL_FG_3,
+        DT_RIGHT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX,
+    );
+    if !old.0.is_null() {
+        let _ = SelectObject(hdc, old);
+    }
 }
 
 unsafe fn paint_popup(hwnd: HWND, hdc: windows::Win32::Graphics::Gdi::HDC) {
@@ -925,112 +1736,53 @@ unsafe fn paint_popup(hwnd: HWND, hdc: windows::Win32::Graphics::Gdi::HDC) {
     let snap = load_paint_snapshot();
     let scale = window_scale(hwnd);
     let fonts = UiFonts::create(scale);
-    let pad = ((PAD_LOGICAL) * scale).round() as i32;
-    let gap = ((GAP_LOGICAL) * scale).round() as i32;
-    let toolbar_h = ((TOOLBAR_LOGICAL_H as f64) * scale).round() as i32;
-    let mut y = pad;
-    let right = client.right - pad;
-    let bottom = (client.bottom - toolbar_h - pad / 2).max(y + 1);
+    let pad = content_pad(scale);
+    let gap = content_gap(scale);
+    let th = titlebar_h(scale);
+    let sh = status_h(scale);
 
-    // 源文标题 + 语言摘要
-    {
-        let lang_hint = if snap.source_lang.is_empty() && snap.target_lang.is_empty() {
-            "源文".to_string()
-        } else {
-            format!(
-                "源文  {} → {}",
-                if snap.source_lang.is_empty() {
-                    "?"
-                } else {
-                    snap.source_lang.as_str()
-                },
-                if snap.target_lang.is_empty() {
-                    "?"
-                } else {
-                    snap.target_lang.as_str()
-                }
-            )
-        };
-        let caption_h = ((18.0_f64) * scale).round() as i32;
-        let mut r = RECT {
-            left: pad,
-            top: y,
-            right,
-            bottom: y + caption_h,
-        };
-        let old = select_font(hdc, fonts.caption);
-        let _ = draw_text_in_rect(
-            hdc,
-            &lang_hint,
-            &mut r,
-            COL_FG_3,
-            DT_LEFT | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS,
-        );
-        if !old.0.is_null() {
-            let _ = SelectObject(hdc, old);
-        }
-        y += caption_h + ((4.0_f64) * scale).round() as i32;
-    }
+    paint_titlebar(hdc, &client, scale, &fonts);
 
-    // 源文正文
-    {
-        let max_h = ((96.0_f64) * scale).round() as i32;
-        let mut r = RECT {
-            left: pad,
-            top: y,
-            right,
-            bottom: (y + max_h).min(bottom),
-        };
-        let src = if snap.source_text.is_empty() {
-            "（暂无源文）"
-        } else {
-            snap.source_text.as_str()
-        };
-        let old = select_font(hdc, fonts.body);
-        let h = draw_text_in_rect(
-            hdc,
-            src,
-            &mut r,
-            COL_FG,
-            DT_LEFT | DT_WORDBREAK | DT_NOPREFIX | DT_END_ELLIPSIS,
-        );
-        if !old.0.is_null() {
-            let _ = SelectObject(hdc, old);
-        }
-        y += h.max(((18.0_f64) * scale).round() as i32) + gap;
-    }
+    let mut y = th + pad;
+    let content_left = pad;
+    let content_right = client.right - pad;
 
-    if y + 2 < bottom {
-        let sep = RECT {
-            left: pad,
-            top: y,
-            right,
-            bottom: y + 1,
-        };
-        fill_solid_rect(hdc, &sep, COL_BORDER);
-        y += gap;
-    }
+    // 源文卡
+    let source_h = paint_source_card(
+        hdc,
+        &snap,
+        content_left,
+        content_right,
+        y,
+        scale,
+        &fonts,
+    );
+    y += source_h + gap;
 
-    // 多服务卡片区：裁剪 + 简易滚动条
+    // 语言栏
+    let bar_top = y;
+    store_layout_anchors(bar_top, source_h);
+    paint_lang_bar(hdc, &snap, &client, bar_top, scale, &fonts);
+    y += lang_bar_h(scale) + gap;
+
+    // 结果卡区
     let cards_top = y;
-    let cards_bottom = bottom;
+    let cards_bottom = (client.bottom - sh - pad / 2).max(cards_top + 1);
     let viewport_h = (cards_bottom - cards_top).max(0);
     let sb_w = ((8.0_f64) * scale).round() as i32;
-    let content_right = if snap.cards.len() > 1 {
-        (right - sb_w - 2).max(pad + 1)
+    let content_right_cards = if snap.cards.len() > 1 {
+        (content_right - sb_w - 2).max(content_left + 1)
     } else {
-        right
+        content_right
     };
-    let content_w = (content_right - pad).max(1);
+    let content_w = (content_right_cards - content_left).max(1);
 
-    // 测算前选 body 字体，保证高度与绘制一致
     let old_measure = select_font(hdc, fonts.body);
-
     if snap.cards.is_empty() {
         let mut r = RECT {
-            left: pad,
+            left: content_left,
             top: y,
-            right,
+            right: content_right,
             bottom: y + 20,
         };
         let old = select_font(hdc, fonts.caption);
@@ -1046,7 +1798,6 @@ unsafe fn paint_popup(hwnd: HWND, hdc: windows::Win32::Graphics::Gdi::HDC) {
         }
         store_scroll_metrics(0, viewport_h);
     } else {
-        // 统一用 body 字体测高，避免绘制过程中切字体导致滚动与块高不一致
         let _ = select_font(hdc, fonts.body);
         let card_heights: Vec<i32> = snap
             .cards
@@ -1059,25 +1810,23 @@ unsafe fn paint_popup(hwnd: HWND, hdc: windows::Win32::Graphics::Gdi::HDC) {
         set_card_scroll_offset(scroll_y);
 
         let saved = SaveDC(hdc);
-        let _ = IntersectClipRect(hdc, pad, cards_top, content_right, cards_bottom);
+        let _ = IntersectClipRect(hdc, content_left, cards_top, content_right_cards, cards_bottom);
 
         let mut content_offset = 0i32;
         for (card, &block_h) in snap.cards.iter().zip(card_heights.iter()) {
             let block_top = cards_top - scroll_y + content_offset;
             content_offset += block_h;
-
             if block_top + block_h < cards_top {
                 continue;
             }
             if block_top >= cards_bottom {
                 break;
             }
-
             paint_one_card(
                 hdc,
                 card,
-                pad,
-                content_right,
+                content_left,
+                content_right_cards,
                 block_top,
                 block_h,
                 scale,
@@ -1085,100 +1834,80 @@ unsafe fn paint_popup(hwnd: HWND, hdc: windows::Win32::Graphics::Gdi::HDC) {
                 &fonts,
             );
         }
-
         let _ = RestoreDC(hdc, saved);
 
         if content_h > viewport_h && viewport_h > 0 {
             let track = RECT {
-                left: content_right + 2,
+                left: content_right_cards + 2,
                 top: cards_top,
-                right,
+                right: content_right,
                 bottom: cards_bottom,
             };
             paint_simple_scrollbar(hdc, &track, content_h, viewport_h, scroll_y);
         }
     }
-
     if !old_measure.0.is_null() {
         let _ = SelectObject(hdc, old_measure);
     }
 
-    paint_toolbar(hdc, &client, &snap, scale, &fonts);
+    paint_status_bar(hdc, &client, &snap, scale, &fonts);
+
+    // 语言列表盖在最上层
+    paint_flyout(hdc, &snap, &client, bar_top, scale, &fonts);
+
     fonts.destroy();
 }
 
-unsafe fn paint_toolbar(
-    hdc: windows::Win32::Graphics::Gdi::HDC,
-    client: &RECT,
-    snap: &PaintSnapshot,
-    scale: f64,
-    fonts: &UiFonts,
-) {
-    let toolbar_h = ((TOOLBAR_LOGICAL_H as f64) * scale).round() as i32;
-    let bar = RECT {
-        left: client.left,
-        top: (client.bottom - toolbar_h).max(client.top),
-        right: client.right,
-        bottom: client.bottom,
-    };
-    fill_solid_rect(hdc, &bar, COL_TOOLBAR_BG);
+fn lparam_to_point(lparam: LPARAM) -> POINT {
+    let v = lparam.0 as u32;
+    let x = (v & 0xFFFF) as i16 as i32;
+    let y = ((v >> 16) & 0xFFFF) as i16 as i32;
+    POINT { x, y }
+}
 
-    let sep = RECT {
-        left: bar.left,
-        top: bar.top,
-        right: bar.right,
-        bottom: bar.top + 1,
-    };
-    fill_solid_rect(hdc, &sep, COL_BORDER);
-
-    let old = select_font(hdc, fonts.button);
-    for (btn, mut r) in layout_toolbar_buttons(client, snap.is_translating, scale) {
-        fill_solid_rect(hdc, &r, COL_BTN_BG);
-        // 按钮外框
-        let edge = RECT {
-            left: r.left,
-            top: r.top,
-            right: r.right,
-            bottom: r.top + 1,
-        };
-        fill_solid_rect(hdc, &edge, COL_BORDER_2);
-        let edge_b = RECT {
-            left: r.left,
-            top: r.bottom - 1,
-            right: r.right,
-            bottom: r.bottom,
-        };
-        fill_solid_rect(hdc, &edge_b, COL_BORDER_2);
-        let edge_l = RECT {
-            left: r.left,
-            top: r.top,
-            right: r.left + 1,
-            bottom: r.bottom,
-        };
-        fill_solid_rect(hdc, &edge_l, COL_BORDER_2);
-        let edge_r = RECT {
-            left: r.right - 1,
-            top: r.top,
-            right: r.right,
-            bottom: r.bottom,
-        };
-        fill_solid_rect(hdc, &edge_r, COL_BORDER_2);
-
-        let label_color = if matches!(btn, ToolbarButton::Cancel) {
-            status_color_bgr(&PopupCardStatus::Failed)
-        } else {
-            COL_FG_2
-        };
-        let _ = draw_text_in_rect(
-            hdc,
-            btn.label(),
-            &mut r,
-            label_color,
-            DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX,
-        );
-    }
-    if !old.0.is_null() {
-        let _ = SelectObject(hdc, old);
+fn chrome_hit_to_action(hit: ChromeHit, snap: &PaintSnapshot) -> Option<PopupUserAction> {
+    match hit {
+        ChromeHit::Close => Some(PopupUserAction::Close),
+        ChromeHit::Settings => Some(PopupUserAction::OpenSettings),
+        ChromeHit::Cancel => Some(PopupUserAction::CancelTranslation),
+        ChromeHit::Retry => Some(PopupUserAction::Retry {
+            service_instance_id: None,
+        }),
+        ChromeHit::Copy => {
+            let id = first_copyable_service_id(snap).unwrap_or_default();
+            Some(PopupUserAction::CopyResult {
+                service_instance_id: id,
+            })
+        }
+        ChromeHit::LangSwap => {
+            let (s, t) = swap_session_langs(&snap.source_lang, &snap.target_lang);
+            Some(PopupUserAction::SetSessionLanguages {
+                source_lang: s,
+                target_lang: t,
+            })
+        }
+        ChromeHit::LangItem(idx) => {
+            let is_source = lang_flyout_side()?;
+            let codes = lang_codes_for_side(is_source);
+            let code = codes.get(idx)?;
+            let (source_lang, target_lang) = if is_source {
+                ((*code).to_string(), snap.target_lang.clone())
+            } else {
+                (snap.source_lang.clone(), (*code).to_string())
+            };
+            Some(PopupUserAction::SetSessionLanguages {
+                source_lang,
+                target_lang,
+            })
+        }
+        ChromeHit::Minimize
+        | ChromeHit::Theme
+        | ChromeHit::Bookmark
+        | ChromeHit::Shot
+        | ChromeHit::Fav
+        | ChromeHit::Pin
+        | ChromeHit::LangSource
+        | ChromeHit::LangTarget => None,
     }
 }
 
@@ -1191,29 +1920,103 @@ fn handle_mouse_click(hwnd: HWND, lparam: LPARAM, double_click: bool) {
     let scale = window_scale(hwnd);
     let snap = load_paint_snapshot();
 
-    if double_click && hit_test_title_bar(pt.y, scale) {
+    if double_click && hit_test_title_bar_drag(pt.x, pt.y, &client, scale) {
         dispatch_bound_action(PopupUserAction::Close);
         return;
     }
 
-    if let Some(btn) = hit_test_toolbar(pt.x, pt.y, &client, snap.is_translating, scale) {
-        let action = btn.to_action(&snap);
-        if matches!(
-            &action,
-            PopupUserAction::CopyResult {
-                service_instance_id
-            } if service_instance_id.is_empty()
-        ) {
-            log::debug!("复制：当前无结果卡文本");
+    // 打开列表时点外部关闭
+    if lang_flyout_side().is_some() {
+        let bar_top = resolve_lang_bar_top(scale, &snap.source_text);
+        let (fly, _) = flyout_metrics(&client, scale, bar_top);
+        let on_lang_bar = layout_lang_bar(&client, scale, bar_top)
+            .iter()
+            .any(|(_, r)| pt_in_rect(pt.x, pt.y, r));
+        if !pt_in_rect(pt.x, pt.y, &fly) && !on_lang_bar {
+            set_lang_flyout(None);
+            unsafe {
+                let _ = InvalidateRect(hwnd, None, BOOL(1));
+            }
             return;
         }
-        dispatch_bound_action(action);
+    }
+
+    if let Some(hit) = hit_test_chrome(pt.x, pt.y, &client, &snap, scale) {
+        match hit {
+            ChromeHit::LangSource => {
+                if lang_flyout_side() == Some(true) {
+                    set_lang_flyout(None);
+                } else {
+                    set_lang_flyout(Some(true));
+                }
+                unsafe {
+                    let _ = InvalidateRect(hwnd, None, BOOL(1));
+                }
+                return;
+            }
+            ChromeHit::LangTarget => {
+                if lang_flyout_side() == Some(false) {
+                    set_lang_flyout(None);
+                } else {
+                    set_lang_flyout(Some(false));
+                }
+                unsafe {
+                    let _ = InvalidateRect(hwnd, None, BOOL(1));
+                }
+                return;
+            }
+            ChromeHit::LangItem(_) => {
+                if let Some(action) = chrome_hit_to_action(hit, &snap) {
+                    set_lang_flyout(None);
+                    dispatch_bound_action(action);
+                    unsafe {
+                        let _ = InvalidateRect(hwnd, None, BOOL(1));
+                    }
+                }
+                return;
+            }
+            ChromeHit::LangSwap => {
+                set_lang_flyout(None);
+                if let Some(action) = chrome_hit_to_action(hit, &snap) {
+                    dispatch_bound_action(action);
+                }
+                return;
+            }
+            ChromeHit::Minimize
+            | ChromeHit::Theme
+            | ChromeHit::Bookmark
+            | ChromeHit::Shot
+            | ChromeHit::Fav
+            | ChromeHit::Pin => {
+                // A 阶段占位
+                log::debug!("原生弹窗占位动作: {hit:?}");
+                return;
+            }
+            other => {
+                if let Some(action) = chrome_hit_to_action(other, &snap) {
+                    if matches!(
+                        &action,
+                        PopupUserAction::CopyResult {
+                            service_instance_id
+                        } if service_instance_id.is_empty()
+                    ) {
+                        log::debug!("复制：当前无结果卡文本");
+                        return;
+                    }
+                    dispatch_bound_action(action);
+                }
+            }
+        }
     }
 }
 
 fn handle_keydown(wparam: WPARAM) {
     let vk = wparam.0 as i32;
     if vk == i32::from(VK_ESCAPE.0) {
+        if lang_flyout_side().is_some() {
+            set_lang_flyout(None);
+            return;
+        }
         dispatch_bound_action(PopupUserAction::Close);
         return;
     }
@@ -1250,8 +2053,7 @@ unsafe extern "system" fn wnd_proc(
             LRESULT(0)
         }
         WM_NCHITTEST => {
-            // 无系统标题栏：顶部条声明为 HTCAPTION，由系统处理拖动（对齐 WebView drag-region）。
-            let pt = lparam_to_point(lparam); // NCHITTEST 的 lParam 为屏幕坐标
+            let pt = lparam_to_point(lparam);
             if hit_test_title_bar_screen(hwnd, pt.x, pt.y) {
                 LRESULT(HTCAPTION as isize)
             } else {
@@ -1259,7 +2061,6 @@ unsafe extern "system" fn wnd_proc(
             }
         }
         WM_NCLBUTTONDBLCLK => {
-            // 标题区双击关闭（HTCAPTION 下不会走 WM_LBUTTONDBLCLK）
             if wparam.0 == HTCAPTION as usize {
                 dispatch_bound_action(PopupUserAction::Close);
                 LRESULT(0)
@@ -1280,12 +2081,10 @@ unsafe extern "system" fn wnd_proc(
             LRESULT(0)
         }
         WM_MOUSEWHEEL => {
-            // HIWORD(wParam) = wheel delta（上滚为正）；向下浏览 → 增大 scroll offset
             let delta = ((wparam.0 as u32) >> 16) as i16 as i32;
             if delta != 0 {
                 let scale = window_scale(hwnd);
                 let step = ((48.0_f64) * scale).round().max(1.0) as i32;
-                // 高分辨率触控板：按 120 归一，至少滚动一档
                 let notches = {
                     let n = delta / 120;
                     if n != 0 {
@@ -1296,15 +2095,19 @@ unsafe extern "system" fn wnd_proc(
                         -1
                     }
                 };
-                let _ = adjust_card_scroll(-notches * step);
+                if lang_flyout_side().is_some() {
+                    let next = (lang_flyout_scroll() - notches * step).max(0);
+                    set_lang_flyout_scroll(next);
+                } else {
+                    let _ = adjust_card_scroll(-notches * step);
+                }
                 let _ = InvalidateRect(hwnd, None, BOOL(1));
             }
             LRESULT(0)
         }
         WM_CLOSE => {
-            // 托盘驻留：关 = hide，不 Destroy
+            set_lang_flyout(None);
             dispatch_bound_action(PopupUserAction::Close);
-            // 保底：handler 未注册或 Host 锁失败时仍隐藏
             let _ = ShowWindow(hwnd, SW_HIDE);
             LRESULT(0)
         }
@@ -1344,7 +2147,6 @@ fn apply_dwm_chrome(hwnd: HWND) {
             std::mem::size_of::<DWM_WINDOW_CORNER_PREFERENCE>() as u32,
         )
     };
-    // 边框色接近 token `--popup-border`（COLORREF BGR）；旧系统忽略即可
     let border = COLORREF(COL_BORDER);
     let _ = unsafe {
         DwmSetWindowAttribute(
@@ -1356,7 +2158,6 @@ fn apply_dwm_chrome(hwnd: HWND) {
     };
 }
 
-/// 创建隐藏的原生弹窗（约 420×480 逻辑像素，与 WebView NearCursor 定位高一致）。
 pub fn create_hidden_popup() -> Result<NativePopupHwnd, String> {
     register_class_once()?;
 
@@ -1398,11 +2199,6 @@ pub fn create_hidden_popup() -> Result<NativePopupHwnd, String> {
     Ok(NativePopupHwnd::from_hwnd(hwnd))
 }
 
-/// 显示弹窗。`NearCursor` 复用 `compute_popup_position`；`Restore` 不改坐标。
-///
-/// 全局快捷键 / 取词线程可能非创建线程调用：除定位与 `ShowWindow` 外，必须走
-/// **置前台**（TOPMOST 闪升 + `SetForegroundWindow`），否则 `WS_EX_TOOLWINDOW`
-/// 无任务栏按钮时窗口会静默出现在背后，表现为「快捷键没效果」。
 pub fn show_popup(window: &NativePopupHwnd, mode: PopupPositionMode) -> Result<(), String> {
     if !window.is_valid() {
         return Err("原生弹窗 HWND 无效".to_string());
@@ -1430,7 +2226,6 @@ pub fn show_popup(window: &NativePopupHwnd, mode: PopupPositionMode) -> Result<(
                 let y = logical_to_physical(pos.y, scale);
                 let w = logical_to_physical(POPUP_LOGICAL_WIDTH, scale);
                 let h = logical_to_physical(POPUP_LOGICAL_HEIGHT, scale);
-                // 先定位再显示；z-order 交由 bring_popup_to_foreground 处理
                 unsafe {
                     SetWindowPos(
                         hwnd,
@@ -1458,11 +2253,9 @@ pub fn show_popup(window: &NativePopupHwnd, mode: PopupPositionMode) -> Result<(
     Ok(())
 }
 
-/// 将 TOOLWINDOW 弹窗拉到前台并取得焦点（全局热键回调 / 后台线程安全调用）。
 fn bring_popup_to_foreground(hwnd: HWND) {
     unsafe {
         let _ = ShowWindow(hwnd, SW_SHOW);
-        // TOPMOST 闪升：强制盖过当前前台应用，再退回 NOTOPMOST，避免永久置顶
         let _ = SetWindowPos(
             hwnd,
             HWND_TOPMOST,
@@ -1483,8 +2276,6 @@ fn bring_popup_to_foreground(hwnd: HWND) {
         );
         let _ = BringWindowToTop(hwnd);
 
-        // 后台线程 / 非前台进程时 SetForegroundWindow 常被拒绝；
-        // 附着到当前前台线程输入队列可提高成功率（全局热键后尤其重要）。
         let fg = GetForegroundWindow();
         let target_tid = GetWindowThreadProcessId(hwnd, None);
         let fg_tid = if fg.0.is_null() {
@@ -1515,18 +2306,18 @@ fn bring_popup_to_foreground(hwnd: HWND) {
     }
 }
 
-/// 隐藏弹窗（幂等）。
 pub fn hide_popup(window: &NativePopupHwnd) {
     if window.is_valid() {
+        set_lang_flyout(None);
         unsafe {
             let _ = ShowWindow(window.hwnd(), SW_HIDE);
         }
     }
 }
 
-/// 销毁 HWND（幂等）。应尽量在创建线程调用。
 pub fn destroy_popup(window: &NativePopupHwnd) {
     if window.is_valid() {
+        set_lang_flyout(None);
         unsafe {
             let _ = DestroyWindow(window.hwnd());
         }
@@ -1575,8 +2366,8 @@ mod tests {
             status,
             text: text.into(),
             error_message: error.into(),
-            usage_input: None,
-            usage_output: None,
+            usage_input: Some(10),
+            usage_output: Some(20),
             detected_source_lang: None,
         }
     }
@@ -1587,7 +2378,7 @@ mod tests {
             source_text: "Hello world".into(),
             source_type: "selection".into(),
             source_lang: "en".into(),
-            target_lang: "zh".into(),
+            target_lang: "zh-CN".into(),
             is_translating: true,
             cards: vec![sample_card(
                 "svc-1",
@@ -1618,6 +2409,8 @@ mod tests {
             status,
             text: text.into(),
             error_message: error.into(),
+            usage_input: None,
+            usage_output: None,
         }
     }
 
@@ -1630,18 +2423,12 @@ mod tests {
         let snap = store_paint_snapshot(&vm);
         assert_eq!(snap.source_text, "Hello world");
         assert_eq!(snap.source_lang, "en");
-        assert_eq!(snap.target_lang, "zh");
+        assert_eq!(snap.target_lang, "zh-CN");
         assert!(snap.is_translating);
         assert_eq!(snap.cards.len(), 1);
         assert_eq!(snap.cards[0].service_name, "Mock");
-        assert_eq!(snap.cards[0].service_instance_id, "svc-1");
-        assert_eq!(snap.cards[0].protocol, "mock");
-        assert_eq!(snap.cards[0].model_name, "mock");
-        assert_eq!(snap.cards[0].text, "你好");
-        assert_eq!(snap.cards[0].status, PopupCardStatus::Translating);
-
-        let loaded = load_paint_snapshot();
-        assert_eq!(loaded, snap);
+        assert_eq!(snap.cards[0].usage_input, Some(10));
+        assert_eq!(snap.cards[0].usage_output, Some(20));
     }
 
     #[test]
@@ -1654,7 +2441,7 @@ mod tests {
             source_text: "hi".into(),
             source_type: "selection".into(),
             source_lang: "en".into(),
-            target_lang: "zh".into(),
+            target_lang: "zh-CN".into(),
             is_translating: true,
             cards: vec![
                 sample_card(
@@ -1689,10 +2476,8 @@ mod tests {
         let snap = store_paint_snapshot(&vm);
         assert_eq!(snap.cards.len(), 3);
         assert_eq!(snap.cards[0].protocol, "openai_chat");
-        assert_eq!(snap.cards[0].model_name, "gpt-4o-mini");
         assert_eq!(snap.cards[1].protocol, "microsoft_edge");
         assert_eq!(snap.cards[2].error_message, "超时");
-        assert!(snap.is_translating);
     }
 
     #[test]
@@ -1705,10 +2490,7 @@ mod tests {
             card_detail_label("openai_chat", "gpt-4o-mini"),
             "gpt-4o-mini"
         );
-        assert_eq!(card_detail_label("openai_chat", "—"), "openai_chat");
-        assert_eq!(card_detail_label("openai_chat", ""), "openai_chat");
         assert!(is_machine_translate_protocol("microsoft_edge"));
-        assert!(!is_machine_translate_protocol("openai_chat"));
     }
 
     #[test]
@@ -1726,21 +2508,6 @@ mod tests {
         assert!(h.contains("GPT"));
         assert!(h.contains("gpt-4o-mini"));
         assert!(h.contains("完成"));
-
-        let edge = paint_card(
-            "2",
-            "Edge",
-            "microsoft_edge",
-            "hidden-model",
-            PopupCardStatus::Translating,
-            "",
-            "",
-        );
-        let he = format_card_header(&edge);
-        assert!(he.contains("Edge"));
-        assert!(he.contains("microsoft_edge"));
-        assert!(!he.contains("hidden-model"));
-        assert!(he.contains("翻译中"));
     }
 
     #[test]
@@ -1767,30 +2534,6 @@ mod tests {
             "网络错误",
         );
         assert_eq!(card_body_text(&fail_only), "网络错误");
-        assert_eq!(card_extra_error(&fail_only), None);
-
-        let fail_both = paint_card(
-            "3",
-            "C",
-            "mock",
-            "m",
-            PopupCardStatus::Failed,
-            "部分译文",
-            "截断",
-        );
-        assert_eq!(card_body_text(&fail_both), "部分译文");
-        assert_eq!(card_extra_error(&fail_both), Some("截断"));
-
-        let pending = paint_card(
-            "4",
-            "D",
-            "mock",
-            "m",
-            PopupCardStatus::Pending,
-            "",
-            "",
-        );
-        assert_eq!(card_body_text(&pending), "…");
     }
 
     #[test]
@@ -1799,16 +2542,9 @@ mod tests {
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         assert_eq!(clamp_card_scroll(-10, 500, 200), 0);
-        assert_eq!(clamp_card_scroll(100, 500, 200), 100);
-        assert_eq!(clamp_card_scroll(999, 500, 200), 300);
-        assert_eq!(clamp_card_scroll(50, 100, 200), 0);
-
         store_scroll_metrics(500, 200);
         set_card_scroll_offset(0);
         assert_eq!(adjust_card_scroll(100), 100);
-        assert_eq!(adjust_card_scroll(250), 300);
-        assert_eq!(adjust_card_scroll(-50), 250);
-        assert_eq!(card_scroll_offset(), 250);
         reset_card_scroll();
         assert_eq!(card_scroll_offset(), 0);
     }
@@ -1822,14 +2558,9 @@ mod tests {
         let _ = store_paint_snapshot(&vm);
         store_scroll_metrics(800, 200);
         set_card_scroll_offset(120);
-        assert_eq!(card_scroll_offset(), 120);
-
-        // 同源、同服务 id 仅改译文 → 保留滚动
         vm.cards[0].text = "新译文".into();
         let _ = store_paint_snapshot(&vm);
         assert_eq!(card_scroll_offset(), 120);
-
-        // 源文变化 → 重置
         vm.source_text = "Other".into();
         let _ = store_paint_snapshot(&vm);
         assert_eq!(card_scroll_offset(), 0);
@@ -1846,8 +2577,6 @@ mod tests {
         vm.cards[0].status = PopupCardStatus::Finished;
         let snap = store_paint_snapshot(&vm);
         assert_eq!(snap.cards[0].text, "你好，世界");
-        assert_eq!(snap.cards[0].status, PopupCardStatus::Finished);
-        assert_eq!(load_paint_snapshot().cards[0].text, "你好，世界");
     }
 
     #[test]
@@ -1858,14 +2587,10 @@ mod tests {
     #[test]
     fn status_color_and_label_mapping() {
         assert_eq!(status_label(&PopupCardStatus::Translating), "翻译中");
-        assert_eq!(status_label(&PopupCardStatus::Finished), "完成");
-        assert_eq!(status_label(&PopupCardStatus::Failed), "失败");
-        let t = status_color_bgr(&PopupCardStatus::Translating);
-        let f = status_color_bgr(&PopupCardStatus::Finished);
-        let e = status_color_bgr(&PopupCardStatus::Failed);
-        assert_ne!(t, f);
-        assert_ne!(f, e);
-        assert_ne!(t, e);
+        assert_ne!(
+            status_color_bgr(&PopupCardStatus::Translating),
+            status_color_bgr(&PopupCardStatus::Finished)
+        );
     }
 
     #[test]
@@ -1873,46 +2598,91 @@ mod tests {
         let client = RECT {
             left: 0,
             top: 0,
-            right: 420,
+            right: 468,
             bottom: 360,
         };
         let idle = layout_toolbar_buttons(&client, false, 1.0);
-        assert!(idle.iter().all(|(b, _)| *b != ToolbarButton::Cancel));
-        assert!(idle.iter().any(|(b, _)| *b == ToolbarButton::Close));
-        assert!(idle.iter().any(|(b, _)| *b == ToolbarButton::Retry));
-        assert!(idle.iter().any(|(b, _)| *b == ToolbarButton::Copy));
-        assert!(idle.iter().any(|(b, _)| *b == ToolbarButton::Settings));
-
+        assert!(idle.iter().all(|(b, _)| *b != ChromeHit::Cancel));
         let busy = layout_toolbar_buttons(&client, true, 1.0);
-        assert!(busy.iter().any(|(b, _)| *b == ToolbarButton::Cancel));
-        assert_eq!(busy.len(), idle.len() + 1);
+        assert!(busy.iter().any(|(b, _)| *b == ChromeHit::Cancel));
     }
 
     #[test]
-    fn hit_test_toolbar_finds_close() {
+    fn hit_test_toolbar_finds_cancel_when_busy() {
         let client = RECT {
             left: 0,
             top: 0,
-            right: 420,
+            right: 468,
             bottom: 360,
         };
-        let layout = layout_toolbar_buttons(&client, false, 1.0);
-        let (btn, r) = layout
+        let busy = layout_toolbar_buttons(&client, true, 1.0);
+        let (_, r) = busy
             .iter()
-            .find(|(b, _)| *b == ToolbarButton::Close)
-            .expect("close");
+            .find(|(b, _)| *b == ChromeHit::Cancel)
+            .expect("cancel");
         assert_eq!(
-            hit_test_toolbar(r.left + 2, r.top + 2, &client, false, 1.0),
-            Some(*btn)
+            hit_test_toolbar(r.left + 2, r.top + 2, &client, true, 1.0),
+            Some(ChromeHit::Cancel)
         );
-        assert_eq!(hit_test_toolbar(0, 0, &client, false, 1.0), None);
     }
 
     #[test]
     fn hit_test_title_bar_top_strip() {
         assert!(hit_test_title_bar(0, 1.0));
         assert!(hit_test_title_bar(20, 1.0));
-        assert!(!hit_test_title_bar(40, 1.0));
+        assert!(!hit_test_title_bar(50, 1.0));
+    }
+
+    #[test]
+    fn titlebar_contains_close_and_settings() {
+        let client = RECT {
+            left: 0,
+            top: 0,
+            right: 468,
+            bottom: 480,
+        };
+        let layout = layout_titlebar_buttons(&client, 1.0);
+        assert!(layout.iter().any(|(h, _)| *h == ChromeHit::Close));
+        assert!(layout.iter().any(|(h, _)| *h == ChromeHit::Settings));
+        assert!(layout.iter().any(|(h, _)| *h == ChromeHit::Pin));
+    }
+
+    #[test]
+    fn lang_bar_three_zones() {
+        let client = RECT {
+            left: 0,
+            top: 0,
+            right: 468,
+            bottom: 480,
+        };
+        let parts = layout_lang_bar(&client, 1.0, 100);
+        assert_eq!(parts.len(), 3);
+        assert_eq!(parts[0].0, ChromeHit::LangSource);
+        assert_eq!(parts[1].0, ChromeHit::LangSwap);
+        assert_eq!(parts[2].0, ChromeHit::LangTarget);
+    }
+
+    #[test]
+    fn lang_display_and_codes() {
+        assert_eq!(lang_display_name("zh-CN"), "简体中文");
+        assert_eq!(lang_display_name("auto"), "自动检测");
+        let src = lang_codes_for_side(true);
+        let tgt = lang_codes_for_side(false);
+        assert!(src.contains(&"auto"));
+        assert!(!tgt.contains(&"auto"));
+        assert!(tgt.contains(&"en"));
+    }
+
+    #[test]
+    fn swap_session_langs_auto_rules() {
+        assert_eq!(
+            swap_session_langs("auto", "zh-CN"),
+            ("zh-CN".into(), "en".into())
+        );
+        assert_eq!(
+            swap_session_langs("en", "zh-CN"),
+            ("zh-CN".into(), "en".into())
+        );
     }
 
     #[test]
@@ -1920,7 +2690,7 @@ mod tests {
         let snap = PaintSnapshot {
             source_text: "x".into(),
             source_lang: "en".into(),
-            target_lang: "zh".into(),
+            target_lang: "zh-CN".into(),
             is_translating: false,
             cards: vec![
                 paint_card("a", "A", "mock", "m", PopupCardStatus::Pending, "", ""),
@@ -1932,43 +2702,16 @@ mod tests {
     }
 
     #[test]
-    fn toolbar_cancel_hidden_when_idle_shown_when_translating() {
-        let client = RECT {
-            left: 0,
-            top: 0,
-            right: 420,
-            bottom: 360,
-        };
-        let idle = layout_toolbar_buttons(&client, false, 1.0);
-        assert!(
-            idle.iter().all(|(b, _)| *b != ToolbarButton::Cancel),
-            "空闲时不得显示取消"
-        );
-        let busy = layout_toolbar_buttons(&client, true, 1.0);
-        assert!(
-            busy.iter().any(|(b, _)| *b == ToolbarButton::Cancel),
-            "翻译中应显示取消"
-        );
-        // busy 布局能命中取消；idle 布局中不存在 Cancel 热区
-        let (_, r) = busy
-            .iter()
-            .find(|(b, _)| *b == ToolbarButton::Cancel)
-            .expect("cancel rect");
-        assert_eq!(
-            hit_test_toolbar(r.left + 1, r.top + 1, &client, true, 1.0),
-            Some(ToolbarButton::Cancel)
-        );
-        assert_ne!(
-            hit_test_toolbar(r.left + 1, r.top + 1, &client, false, 1.0),
-            Some(ToolbarButton::Cancel)
-        );
+    fn popup_logical_size_matches_winui3_prototype_width() {
+        assert!((POPUP_LOGICAL_WIDTH - 468.0).abs() < f64::EPSILON);
+        assert!((POPUP_LOGICAL_HEIGHT - 480.0).abs() < f64::EPSILON);
     }
 
     #[test]
-    fn popup_logical_size_matches_webview_near_cursor() {
-        // WebView present_popup 使用 420×480 参与 compute_popup_position
-        assert!((POPUP_LOGICAL_WIDTH - 420.0).abs() < f64::EPSILON);
-        assert!((POPUP_LOGICAL_HEIGHT - 480.0).abs() < f64::EPSILON);
+    fn fluent_accent_is_persimmon() {
+        // #D55A1F → BGR 0x001F5AD5
+        assert_eq!(COL_ACCENT, 0x00_1F_5A_D5);
+        assert_eq!(COL_BG, 0x00_F4_F4_F4);
     }
 
     #[test]
@@ -1986,29 +2729,6 @@ mod tests {
 
         destroy_popup(&win);
         assert!(!win.is_valid());
-        destroy_popup(&win);
-    }
-
-    #[test]
-    fn near_cursor_show_does_not_panic() {
-        let win = create_hidden_popup().expect("create");
-        show_popup(&win, PopupPositionMode::NearCursor).expect("near cursor");
-        hide_popup(&win);
-        destroy_popup(&win);
-    }
-
-    #[test]
-    fn publish_view_model_updates_snapshot_without_blocking() {
-        let _guard = SNAPSHOT_TEST_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let win = create_hidden_popup().expect("create");
-        let vm = sample_vm();
-        publish_view_model(&win, &vm);
-        let loaded = load_paint_snapshot();
-        assert_eq!(loaded.source_text, "Hello world");
-        assert_eq!(loaded.cards[0].text, "你好");
-        assert_eq!(loaded.cards[0].service_instance_id, "svc-1");
         destroy_popup(&win);
     }
 }

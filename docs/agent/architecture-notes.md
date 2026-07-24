@@ -19,7 +19,7 @@
 | `PopupBackend` | trait：`ensure_created` / `show` / `hide` / `destroy` / `publish`（`app/popup_backend/trait_api.rs`） |
 | `PopupHost` | 进程级调度：持有 `Box<dyn PopupBackend>` + `PopupViewModel`；可选 `degraded_from_winui` |
 | `WebviewPopupBackend` | 包装现网 `popup_window`；`publish` no-op（前端仍收 `translation:event`） |
-| `WinuiPopupBackend` | **路径 B：Win32 表面**（`WS_POPUP` + `WS_EX_TOOLWINDOW` + DWM 圆角）；配置枚举值仍为 `winui`；**未依赖 WinAppSDK / XAML Runtime** |
+| `WinuiPopupBackend` | **路径 B：Win32 表面**（`WS_POPUP` + `WS_EX_TOOLWINDOW` + DWM 圆角）；配置枚举值仍为 `winui`；**未依赖 WinAppSDK / XAML Runtime**；GDI 自绘对齐 Open Design WinUI3 原型（标题栏 / 源文卡 / 语言栏含列表 / 结果卡 / 状态栏，宽 468，Fluent 浅色 token；见 `docs/superpowers/specs/2026-07-24-winui-popup-fluent-align-design.md`） |
 | feature | `popup-winui`（`Cargo.toml` default 含此项）；`--no-default-features` 仅 WebView |
 
 业务主路径（划词 / 截图译 / 托盘打开）一律经 `popup_backend::with_host` → `PopupHost`，禁止绕过。

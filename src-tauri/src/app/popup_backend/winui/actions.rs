@@ -143,6 +143,8 @@ mod tests {
                     status: PopupCardStatus::Finished,
                     text: String::new(),
                     error_message: String::new(),
+                    usage_input: None,
+                    usage_output: None,
                 },
                 PaintCardSnapshot {
                     service_instance_id: "b".into(),
@@ -152,6 +154,8 @@ mod tests {
                     status: PopupCardStatus::Finished,
                     text: "你好".into(),
                     error_message: String::new(),
+                    usage_input: None,
+                    usage_output: None,
                 },
             ],
         }
@@ -186,6 +190,8 @@ mod tests {
                 status: PopupCardStatus::Failed,
                 text: String::new(),
                 error_message: "超时".into(),
+                usage_input: None,
+                usage_output: None,
             }],
         };
         assert_eq!(resolve_copy_text(&snap, "e").as_deref(), Some("超时"));
