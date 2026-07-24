@@ -1,5 +1,10 @@
 # Windows 翻译弹窗双后端（WebView | WinUI 3）设计
 
+> **实现修订（2026-07-24）：** 配置 `popupUiBackend=winui` 的实现已从历史 **路径 B（Win32 + GDI）** 升级为 **路径 R（`windows-reactor` 真 WinUI 3）**。  
+> 契约、`PopupBackend` / `PopupHost`、配置枚举 `webview`|`winui`、失败降级 WebView 仍以本 spec 为准；**原生表面细节**以  
+> [`2026-07-24-winui-reactor-popup-design.md`](./2026-07-24-winui-reactor-popup-design.md) 与  
+> [`docs/agent/architecture-notes.md`](../../agent/architecture-notes.md) 为准。
+
 ## 背景
 
 Shizi 是 Windows 优先的大模型翻译工具（Tauri 2 + Vue/WebView2）。翻译弹窗是最高频界面，当前以 WebView 实现，并配合 `windowPrecreate` 与关窗 hide 做常驻，以换取热唤速度。
@@ -253,8 +258,8 @@ WebView 路径可继续走现有 Tauri 事件 + Vue；由适配层完成 ViewMod
    - **命令**：`cd src-tauri && cargo test resolve_popup_backend`（及 host 相关测）。
 
 3. [x] WinUI 初始化失败时回退 webview，翻译主路径仍可用。  
-   - **证据**：`create_host_with_winui_fallback` 在 `ensure_created` Err 时 `replace_backend(Webview)` + 一次性 dialog（`33c6ab2`）；路径 B 下 `try_bootstrap` 恒 ok（`bootstrap.rs` 单测）。  
-   - **待本机手动**：人为破坏原生窗创建后应见 dialog 并仍可划词译（路径 B 正常不触发）。
+   - **证据**：`create_host_with_winui_fallback` 在 `ensure_created` Err 时 `replace_backend(Webview)` + 一次性 dialog；路径 R 下 `try_bootstrap` / `ensure_process_bootstrap` 映射 Runtime 成败（`bootstrap.rs` / reactor host 单测）。  
+   - **待本机手动**：卸载/破坏 Runtime 后应见 dialog 并仍可划词译（路径 R 正常不触发）。
 
 4. [x] 设置 / OCR 关闭仍销毁 WebView；弹窗关仍 hide 常驻。  
    - **证据**：生命周期未改：`window.rs` / 既有 close 策略；弹窗路径 `hide` 经 `PopupHost`；OCR 路径 `with_host(... hide)`。WebView `destroy` 真销毁（`webview.rs`）。  
@@ -265,8 +270,8 @@ WebView 路径可继续走现有 Tauri 事件 + Vue；由适配层完成 ViewMod
    - **待本机手动**：webview 与 winui 各测一轮划词（Alt+D）、截图译（Alt+S）、托盘打开。
 
 6. [x] Windows CI 能构建带 WinUI 特性的安装产物；无 .NET 运行时依赖。  
-   - **证据**：`.github/workflows/ci.yml` backend：`cargo test` + `cargo build`（default 含 `popup-winui`）+ `cargo test --no-default-features`；`Cargo.toml` 无 .NET；路径 B 无 XAML SDK 步骤。  
+   - **证据**：`.github/workflows/ci.yml` backend：`cargo test` + `cargo build`（default 含 `popup-winui` 路径 R）+ `cargo test --no-default-features`；framework-dependent 下 CI 主验证编译；`Cargo.toml` 无 .NET；Runtime 安装说明见 spike。  
    - **命令（本机）**：`cd src-tauri && cargo test && cargo build`。
 
 7. [x] 文档（架构说明 / 开发依赖）已同步。  
-   - **证据**：`docs/agent/architecture-notes.md`（双后端 / 降级 / 依赖 / 内存表）；`README.md` 用户说明；`AGENTS.md` / `Claude.md` 架构要点；本 spec 验收勾选（任务 16–17）。
+   - **证据**：`docs/agent/architecture-notes.md`（路径 R / S1 / 降级 / Runtime）；`README.md` 开发小节；`AGENTS.md` / `Claude.md` 架构要点；路径 R 交叉引用见文首与 `2026-07-24-winui-reactor-popup-design.md`。

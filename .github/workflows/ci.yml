@@ -31,7 +31,19 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-      # default features 含 popup-winui（路径 B：Win32 表面，无 XAML / WinAppSDK 构建依赖）
+      # default features 含 popup-winui = 路径 R（windows-reactor 真 WinUI 3）。
+      # 部署为 framework-dependent：CI 主要验证编译与单测；交互式 GUI / Runtime 冒烟在本地。
+      # Windows App Runtime 版本对齐 spike 2.3.1，见 docs/agent/spike-2026-07-24-winui-reactor-tauri.md
+      # 与 learn.microsoft.com/windows/apps/windows-app-sdk/downloads
+      - name: Note Windows App Runtime (framework-dependent)
+        shell: pwsh
+        run: |
+          Write-Host @"
+          popup-winui 路径 R 依赖 Windows App Runtime（framework-dependent，对齐 2.3.1）。
+          CI 不强制静默安装 Runtime：cargo test/build 验证链接与逻辑单测；
+          bootstrap 失败路径由 create_host_with_winui_fallback 降级 WebView 覆盖。
+          本机 GUI 验收与 Runtime 安装说明见 spike 文档。
+          "@
       - run: cargo test
         working-directory: src-tauri
       - run: cargo build

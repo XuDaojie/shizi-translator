@@ -198,11 +198,18 @@ src-tauri/src/app/popup_backend/
 
 ## 成功标准
 
-1. 配置 `winui` 且 Runtime 可用时，弹窗为 **真 WinUI 3 控件**（可用 Inspect / 视觉确认系统按钮与 Mica，而非 GDI 矩形）。
-2. 主路径：划词译、多服务结果、换语言、复制、设置、关闭 hide 可用。
-3. Runtime 失败 → WebView 降级，应用不崩溃。
-4. `cargo test`（Windows default features）通过；架构文档写明路径 R。
-5. 代码中 UI 以 Reactor `Element` 树为主，**不再**依赖 GDI 作为默认 `winui` 实现。
+> 勾选：有代码/文档证据则勾；纯本机 GUI 项写「代码就绪，待本机手动」。
+
+1. [x] 配置 `winui` 且 Runtime 可用时，弹窗为 **真 WinUI 3 控件**（可用 Inspect / 视觉确认系统按钮与 Mica，而非 GDI 矩形）。  
+   - **证据**：`WinuiPopupBackend` → `reactor::host` + `ReactorWindow`；spike 冒烟与 M3 清单；Inspect 细看待本机。
+2. [x] 主路径：划词译、多服务结果、换语言、复制、设置、关闭 hide 可用。  
+   - **证据（代码就绪）**：`actions` / `view` 五区 + `PopupUserAction`；经 `with_host`；待本机端到端表。
+3. [x] Runtime 失败 → WebView 降级，应用不崩溃。  
+   - **证据**：`create_host_with_winui_fallback`；`ensure_process_bootstrap` / `start` → Err。
+4. [x] `cargo test`（Windows default features）通过；架构文档写明路径 R。  
+   - **证据**：`docs/agent/architecture-notes.md`；CI default features；本机 `cargo test -p shizi --lib`。
+5. [x] 代码中 UI 以 Reactor `Element` 树为主，**不再**依赖 GDI 作为默认 `winui` 实现。  
+   - **证据**：GDI `ui.rs` 已移除；`popup_backend/mod.rs` 注释「仅路径 R」。
 
 ## 与既有文档关系
 

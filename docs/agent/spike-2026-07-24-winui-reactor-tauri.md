@@ -37,7 +37,7 @@
 | hide/show | `FindWindowW(title)` + `ShowWindow(SW_HIDE/SW_SHOW)`；**不** `WindowHandle::close` |
 | 哨兵 / last-window-exit | 主 `App` 窗为哨兵（标题 `Shizi Reactor Sentinel`，立即 hide）；reactor 在最后一扇**已注册**窗 `Closed` 时 `process::exit(0)`，故哨兵永不 Close |
 | 标题栏 X | 会销毁弹窗 HWND；下次 `Show` 在 UI 线程 `ReactorWindow` 重建（**不**重跑 bootstrap） |
-| 应用侧 backend | **仍为路径 B GDI**（本任务不切换 `WinuiPopupBackend`） |
+| 应用侧 backend | M0 时仍为路径 B GDI；**任务 6+ 已切换为路径 R**（`WinuiPopupBackend` → reactor host） |
 
 ## API 形状（已实现）
 
@@ -95,7 +95,7 @@ pub fn ensure_process_bootstrap() -> Result<(), String>;
 | 3 | SetLabel/publish 后文本可见更新 | **PASS（代码路径+冒烟）** | `AsyncSetState`；冒烟调用 `publish_label` 两次后进程稳定（视觉需人工扫一眼） |
 | 4 | hide → show 稳定，不重建 Runtime | **PASS** | 冒烟两次 show/hide；bootstrap OnceLock 进程一次 |
 | 5 | 关闭弹窗（hide）**不**退出托盘进程 | **PASS** | 冒烟 hide 后断言继续执行；哨兵防 `process::exit` |
-| 6 | 打开设置 WebView 后再 show 弹窗无死锁 | **需人工本机验收** | 默认启动路径仍 GDI，未接线 ReactorHost 到托盘主路径；任务 3+ 接线后必测 |
+| 6 | 打开设置 WebView 后再 show 弹窗无死锁 | **需人工本机验收** | 任务 6+ 已接线路径 R 主路径；设置 WebView + 再 show 须本机再验 |
 | 7 | Runtime 缺失或 bootstrap 失败时返回 Err | **PASS（代码路径）** | `start()` / `try_bootstrap` 映射 Err；无 Runtime 机需再验 |
 | 8 | 写死共存模型 S1/S2 + 精确 git rev | **PASS** | **S1** + rev `884c9bbc1bd0a2315f00e0f04e34f6b1714653b9` |
 
@@ -149,3 +149,4 @@ cargo test -p shizi --features popup-winui --lib m0_reactor_host_smoke -- --noca
 | 2026-07-24 | M0 绿：候选 rev 编译 + 探测测试通过 |
 | 2026-07-24 | 任务 2：S1 STA host + 哨兵 + 否决门 **Go**；锁定 rev；try_bootstrap 改路径 R |
 | 2026-07-24 | 任务 10：窗 468×520 + Mica；标题「柿子翻译」；柿子橙 accent；结果区滚动确认 |
+| 2026-07-24 | 任务 12：架构/README/AGENTS/CI 写明路径 R + Runtime；M0 结论表已确认 |

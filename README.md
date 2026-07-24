@@ -208,7 +208,11 @@
 - Node.js（用于前端与 `@tauri-apps/cli`）
 - Rust stable（edition 2021）
 - Windows + WebView2 Runtime
-- 原生弹窗（feature `popup-winui`，默认开启）走 Win32 路径，构建**无需** WinAppSDK / .NET；可用 `cargo test --no-default-features` 仅测 WebView 逻辑
+- **Windows App Runtime**（[下载页](https://learn.microsoft.com/windows/apps/windows-app-sdk/downloads)；framework-dependent，对齐 spike **2.3.1**）：仅在使用原生翻译弹窗时需要。详见 [`docs/agent/spike-2026-07-24-winui-reactor-tauri.md`](docs/agent/spike-2026-07-24-winui-reactor-tauri.md)
+- 翻译弹窗 UI 后端（配置 `popupUiBackend`，**重启生效**）：
+  - `webview`（默认）— 现有 WebView 弹窗
+  - `winui` — **路径 R**：`windows-reactor` 真 WinUI 3（feature `popup-winui` 默认开；**非** GDI）。失败时同进程降级 WebView
+- 无 .NET。纯逻辑单测可用 `cargo test --no-default-features`（仅 WebView 路径）
 
 ### 常用命令
 

@@ -10,7 +10,10 @@
 
 ## 弹窗双后端（WebView | 原生 winui）
 
-规格：`docs/superpowers/specs/2026-07-24-winui-popup-backend-design.md`；计划：`docs/superpowers/plans/2026-07-24-winui-popup-backend.md`。
+规格（总）：`docs/superpowers/specs/2026-07-24-winui-popup-backend-design.md`（契约/配置；**实现面已升级为路径 R**）。  
+规格（路径 R）：`docs/superpowers/specs/2026-07-24-winui-reactor-popup-design.md`。  
+计划：`docs/superpowers/plans/2026-07-24-winui-reactor-popup.md`。  
+Spike / 共存结论：`docs/agent/spike-2026-07-24-winui-reactor-tauri.md`。
 
 ### 契约与目录
 
@@ -19,14 +22,18 @@
 | `PopupBackend` | trait：`ensure_created` / `show` / `hide` / `destroy` / `publish`（`app/popup_backend/trait_api.rs`） |
 | `PopupHost` | 进程级调度：持有 `Box<dyn PopupBackend>` + `PopupViewModel`；可选 `degraded_from_winui` |
 | `WebviewPopupBackend` | 包装现网 `popup_window`；`publish` no-op（前端仍收 `translation:event`） |
-| `WinuiPopupBackend` | **路径 B：Win32 表面**（`WS_POPUP` + `WS_EX_TOOLWINDOW` + DWM 圆角）；配置枚举值仍为 `winui`；**未依赖 WinAppSDK / XAML Runtime**；GDI 自绘对齐 Open Design WinUI3 原型（标题栏 / 源文卡 / 语言栏含列表 / 结果卡 / 状态栏，宽 468，Fluent 浅色 token；见 `docs/superpowers/specs/2026-07-24-winui-popup-fluent-align-design.md`） |
-| feature | `popup-winui`（`Cargo.toml` default 含此项）；`--no-default-features` 仅 WebView |
+| `WinuiPopupBackend` | **路径 R：`windows-reactor` 真 WinUI 3**（配置枚举值仍为 `winui`）；声明式 Rust 控件树，**非** GDI 自绘、**非** 独立 XAML 文件；五区对齐 Open Design `#popup-winui3`（标题栏 / 源文 / 语言栏 / 结果卡 / 状态栏，宽约 468） |
+| 共存模型 | **S1**：同进程 + 专用 STA 线程 `shizi-reactor-ui`；主 `App` 哨兵窗防 last-window-exit；弹窗 `ReactorWindow` 仅 hide/show，不 Close 哨兵 |
+| feature | `popup-winui`（`Cargo.toml` default 含此项）= 启用路径 R；`--no-default-features` 仅 WebView |
 
 业务主路径（划词 / 截图译 / 托盘打开）一律经 `popup_backend::with_host` → `PopupHost`，禁止绕过。
+
+> **历史说明：** 早期曾用路径 B（Win32 + GDI）占位 `winui` 配置；路径 R 落地后 GDI 已移除。旧 fluent-align / 路径 B plan 仅作演进对照。
 
 ### 配置与切换
 
 - 字段：`AppConfig.popup_ui_backend`（JSON camelCase：`popupUiBackend`），取值 `"webview" | "winui"`，**默认 `webview`**；未知值 `normalized` 回退 webview。
+- `winui` = 路径 R（真 WinUI 3 / reactor），**不是** GDI。
 - 设置页（**仅 Windows**）「翻译弹窗 UI」：改配置后需**重启**生效（v1 无热切换）。
 - 非 Windows：`resolve_popup_backend_kind` 恒为 `Webview`；配置可读写不崩溃。
 
@@ -39,14 +46,14 @@ lib setup
   → manage(Mutex<PopupHost>)
 ```
 
-- 仅当配置 `winui` **且** feature + Windows 时创建 `WinuiPopupBackend`。
-- `ensure_created` 失败：同进程 `replace_backend(Webview)` + 一次性系统 dialog（路径 B 成功时不弹；dialog 文案仍可引导 Runtime 页，兼容未来路径 A）。
+- 仅当配置 `winui` **且** feature + Windows 时创建 `WinuiPopupBackend`（路径 R）。
+- `ensure_created` 失败（含 Windows App Runtime 缺失 / bootstrap 失败 / STA host 启动失败）：同进程 `create_host_with_winui_fallback` → `replace_backend(Webview)` + 一次性系统 dialog（引导 Runtime 下载页）；路径 R 成功时不弹。
 - `windowPrecreate.*.popup` 经 `host.ensure_created` 作用于**当前** backend。
 
 ### 生命周期（与 backend 无关）
 
 - 弹窗关 = **hide** 常驻；设置 / OCR 关 = **销毁** WebView；托盘退出才结束进程。
-- 原生路径关闭语义同样 hide，不销毁 HWND（destroy 仅切换/退出路径）。
+- 路径 R：关闭语义同样 hide；哨兵窗永不 Close；`destroy` 仅切换/退出路径（清 HWND 缓存、保留 STA）。
 
 ### 开发依赖（本机 / CI）
 
@@ -55,9 +62,12 @@ lib setup
 | Windows 10 / 11（x64） | 产品与原生弹窗目标平台 |
 | Node.js + Rust stable + WebView2 | Tauri 主栈；设置 / OCR / WebView 弹窗 |
 | `popup-winui` feature | 默认开启；CI `cargo test` / `cargo build` 带 default features |
-| **不强制** Windows App Runtime / WinAppSDK / .NET | 路径 B 为纯 Win32 + 现有 `windows` crate；无需 XAML SDK 安装步骤 |
+| **Windows App Runtime**（framework-dependent） | 路径 R 真 WinUI 3 运行时；`build.rs` 经 `windows-reactor-setup::as_framework_dependent()` 暂存 Bootstrap；对齐 **2.3.1**（见 spike） |
+| 无 .NET | 纯 Rust + reactor；不引入 C#/XAML 工程 |
 
-本机加速纯逻辑测：`cd src-tauri && cargo test --no-default-features`。
+- 开发本机：安装 [Windows App Runtime](https://learn.microsoft.com/windows/apps/windows-app-sdk/downloads)（与 spike 版本一致）；`popupUiBackend=winui` 时才需要。
+- CI：framework-dependent 下 **主要验证编译与单测**；交互式 GUI / Runtime 冒烟以本机 spike 清单为准。
+- 本机加速纯逻辑测：`cd src-tauri && cargo test --no-default-features`。
 
 ### 弹窗 backend 内存对照
 
@@ -68,7 +78,7 @@ lib setup
 | 日期 | 版本 / commit | backend | WS (MB) | Private (MB) | 备注 |
 |------|---------------|---------|---------|--------------|------|
 | — | — | webview | 待本机实测 | 待本机实测 | 预建 hide 稳态 |
-| — | — | winui（路径 B） | 待本机实测 | 待本机实测 | 预建 hide 稳态 |
+| — | — | winui（路径 R） | 待本机实测 | 待本机实测 | 预建 hide 稳态；需 Runtime |
 
 采集命令（两 backend 各启动一轮，静置后再采）：
 

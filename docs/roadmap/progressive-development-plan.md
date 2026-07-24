@@ -247,53 +247,55 @@ Vision Framework
 
 将性能敏感的**翻译弹窗**在 Windows 上做成可选原生后端（配置 popupUiBackend：webview | winui），设置 / OCR / overlay 仍为 WebView。业务仍在 Rust 核心。
 
-> **实现状态（2026-07）：** 已按设计 spec 落地 **PopupBackend 双后端**（非历史草案中的 Slint 全量替换）。原生表面锁定 **路径 B：Win32**（配置枚举仍为 winui，不依赖 XAML / 不强制 WinAppSDK）。详见：
-> - docs/superpowers/specs/2026-07-24-winui-popup-backend-design.md
-> - docs/superpowers/plans/2026-07-24-winui-popup-backend.md
-> - docs/agent/architecture-notes.md（弹窗双后端 / 内存对照）
+> **实现状态（2026-07）：** 已按设计 spec 落地 **PopupBackend 双后端**（非历史草案中的 Slint 全量替换）。原生表面为 **路径 R：`windows-reactor` 真 WinUI 3**（配置枚举仍为 `winui`；framework-dependent Windows App Runtime；GDI 路径 B 已退役）。详见：
+> - docs/superpowers/specs/2026-07-24-winui-popup-backend-design.md（契约；实现面见路径 R 交叉引用）
+> - docs/superpowers/specs/2026-07-24-winui-reactor-popup-design.md
+> - docs/superpowers/plans/2026-07-24-winui-reactor-popup.md
+> - docs/agent/architecture-notes.md（弹窗双后端 / S1 / Runtime / 内存对照）
+> - docs/agent/spike-2026-07-24-winui-reactor-tauri.md
 
-`	ext
+```
 TranslationService / LlmProvider / 配置系统不变
 Web 设置页 / OCR / overlay 不变
-仅翻译弹窗经 PopupBackend 可切换 WebView | 原生
-`
+仅翻译弹窗经 PopupBackend 可切换 WebView | 原生（路径 R）
+```
 
 已实现 / 目标对齐：
 
 - [x] PopupBackend + PopupHost + PopupViewModel 共用管道
 - [x] popupUiBackend 配置；Windows 设置页切换；**重启生效**
-- [x] 原生路径 B（Win32 壳 + DWM 圆角）；feature popup-winui 默认开
+- [x] 原生路径 R（windows-reactor 真 WinUI 3；S1 STA + 哨兵）；feature popup-winui 默认开
 - [x] 初始化失败降级 webview；非 Windows 强制 webview
 - [x] 划词 / 截图 / 托盘主路径经 with_host；多服务卡与用户动作（代码就绪，待本机对照测）
 - [ ] 内存常驻对照数值（表格骨架已写入 architecture-notes，待本机实测）
 
 ### 核心交付物（当前）
 
-`	ext
+```
 src-tauri/src/app/popup_backend/
   trait_api.rs / host.rs / view_model.rs / webview.rs
-  winui/  （路径 B：backend + ui + actions + bootstrap）
+  winui/  （路径 R：backend + reactor/* + actions + bootstrap）
 AppConfig.popup_ui_backend  + 设置页 GeneralPanel
-`
+```
 
 ### 技术要点（现状）
 
-- 关弹窗 = hide 常驻；设置/OCR 关 = 销毁；无 .NET。
-- 热路径：nsure 预建 → show(NearCursor|Restore) → publish 快照（WebView 仍 emit 	ranslation:event）。
-- CI：Windows cargo test / cargo build 带 default features（含 popup-winui），另有 --no-default-features 矩阵。
+- 关弹窗 = hide 常驻；设置/OCR 关 = 销毁；无 .NET；路径 R 需 Windows App Runtime。
+- 热路径：ensure 预建 → show(NearCursor|Restore) → publish 快照（WebView 仍 emit translation:event）。
+- CI：Windows cargo test / cargo build 带 default features（含 popup-winui 路径 R），另有 --no-default-features 矩阵；framework-dependent 下 CI 主验证编译。
 
 ### 历史草案说明
 
-下文曾规划 **Slint** 作为原生弹窗栈；编码阶段已改为 **WinUI 取向 + 路径 B Win32**（见上述 spec）。下列任务列表保留作演进对照，**不以 Slint 为实现目标**：
+下文曾规划 **Slint** 作为原生弹窗栈，后改为 **WinUI 取向 + 路径 B Win32/GDI**，再升级为 **路径 R windows-reactor**。下列任务列表保留作演进对照，**不以 Slint / GDI 为实现目标**：
 
-`	ext
+```
 （历史）任务 1–7：Slint popup / TranslationPopupPort 切换 —— 已由 PopupBackend 方案替代
 （当前）收尾：本机双 backend 主路径手测、内存表填数、按需视觉/无焦点打磨
-`
+```
 
 ### 验收标准
 
-- [x] 切换 backend 后翻译事件仍可流式显示（代码经 ViewModel / 	ranslation:event；待本机对照）。
+- [x] 切换 backend 后翻译事件仍可流式显示（代码经 ViewModel / translation:event；待本机对照）。
 - [x] 里程碑 1 的 TranslationService / LlmProvider 不需要重写。
 - [x] 设置页仍使用 WebView，不受影响。
 - [x] Web 翻译窗作为 fallback / 默认 backend 保留。
