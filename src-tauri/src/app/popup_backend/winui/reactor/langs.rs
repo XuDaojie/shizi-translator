@@ -82,6 +82,13 @@ mod tests {
     }
 
     #[test]
+    fn swap_exchanges_concrete_langs() {
+        let (s, t) = swap_session_langs("en", "zh-CN");
+        assert_eq!(s, "zh-CN");
+        assert_eq!(t, "en");
+    }
+
+    #[test]
     fn lang_display_zh_cn() {
         assert_eq!(lang_display_name("zh-CN"), "简体中文");
     }

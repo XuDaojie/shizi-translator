@@ -1,4 +1,4 @@
-//! 路径 R 弹窗 UI：标题栏 + 源文 + 单卡正文 + 复制 + 状态栏。
+//! 路径 R 弹窗 UI：标题栏 + 源文 + 语言栏 + 单卡正文 + 复制 + 状态栏。
 //!
 //! 状态由 host 的 `use_async_state` 驱动；本模块只渲染。
 //! 动作经本模块静态 handler 分发（由 `actions::install_action_handler` 注册为
@@ -9,8 +9,11 @@
 
 use std::sync::Mutex;
 
-use windows_reactor::{button, caption, hstack, text_block, vstack, Element, ElementExt};
+use windows_reactor::{
+    button, caption, hstack, text_block, vstack, ComboBox, Element, ElementExt,
+};
 
+use super::langs::{lang_codes_for_side, lang_display_name, swap_session_langs};
 use crate::app::popup_backend::types::{
     PopupCardStatus, PopupCardVm, PopupUserAction, PopupViewModel,
 };
@@ -95,7 +98,73 @@ fn status_bar(vm: &PopupViewModel) -> Element {
     .into()
 }
 
-/// 渲染翻译弹窗（标题栏 + 源文 + 首卡 + 状态栏；多卡见任务 9）。
+/// 源 / 目标语言 ComboBox：`lang_codes_for_side` 列表；选中后
+/// `SetSessionLanguages`（目标侧无 auto）。
+fn lang_combo(is_source: bool, current: &str, peer_lang: String) -> ComboBox {
+    let codes = lang_codes_for_side(is_source);
+    let labels: Vec<String> = codes
+        .iter()
+        .map(|c| lang_display_name(c).to_string())
+        .collect();
+    let selected = codes
+        .iter()
+        .position(|c| *c == current)
+        .map(|i| i as i32)
+        .unwrap_or(-1);
+    let current_owned = current.to_string();
+
+    ComboBox::new(labels)
+        .selected_index(selected)
+        .on_selection_changed(move |idx| {
+            if idx < 0 {
+                return;
+            }
+            let Some(code) = codes.get(idx as usize) else {
+                return;
+            };
+            // 与当前一致则忽略（避免 set selected / 重渲时重复重译）
+            if *code == current_owned.as_str() {
+                return;
+            }
+            let (source_lang, target_lang) = if is_source {
+                ((*code).to_string(), peer_lang.clone())
+            } else {
+                (peer_lang.clone(), (*code).to_string())
+            };
+            dispatch_user_action(PopupUserAction::SetSessionLanguages {
+                source_lang,
+                target_lang,
+            });
+        })
+        .min_width(140.0)
+}
+
+/// 语言栏：源语言 ComboBox + ⇄ 交换 + 目标语言 ComboBox。
+fn language_bar(vm: &PopupViewModel) -> Element {
+    let source_lang = vm.source_lang.clone();
+    let target_lang = vm.target_lang.clone();
+
+    let src_combo = lang_combo(true, &source_lang, target_lang.clone());
+    let tgt_combo = lang_combo(false, &target_lang, source_lang.clone());
+
+    let swap_src = source_lang;
+    let swap_tgt = target_lang;
+    hstack((
+        src_combo,
+        button("⇄").on_click(move || {
+            let (s, t) = swap_session_langs(&swap_src, &swap_tgt);
+            dispatch_user_action(PopupUserAction::SetSessionLanguages {
+                source_lang: s,
+                target_lang: t,
+            });
+        }),
+        tgt_combo,
+    ))
+    .spacing(8.0)
+    .into()
+}
+
+/// 渲染翻译弹窗（标题栏 + 源文 + 语言栏 + 首卡 + 状态栏；多卡见任务 9）。
 pub fn render_popup(vm: &PopupViewModel) -> Element {
     let source = if vm.source_text.is_empty() {
         String::from("（无源文）")
@@ -126,6 +195,7 @@ pub fn render_popup(vm: &PopupViewModel) -> Element {
         title_bar(),
         // 源文：只读展示 + 可选中复制（selectable text_block）
         text_block(source).font_size(16.0).wrap().selectable(),
+        language_bar(vm),
         text_block(service_line).font_size(12.0),
         text_block(body).font_size(14.0).wrap().selectable(),
         button("复制").on_click(move || {
