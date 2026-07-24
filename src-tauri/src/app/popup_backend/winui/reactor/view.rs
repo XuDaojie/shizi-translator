@@ -1,4 +1,4 @@
-//! 路径 R 弹窗 UI：标题栏 + 源文 + 语言栏 + 单卡正文 + 复制 + 状态栏。
+//! 路径 R 弹窗 UI：标题栏 + 源文 + 语言栏 + 多服务结果卡 + 取消/重试 + 状态栏。
 //!
 //! 状态由 host 的 `use_async_state` 驱动；本模块只渲染。
 //! 动作经本模块静态 handler 分发（由 `actions::install_action_handler` 注册为
@@ -10,10 +10,11 @@
 use std::sync::Mutex;
 
 use windows_reactor::{
-    button, caption, hstack, text_block, vstack, ComboBox, Element, ElementExt,
+    button, caption, hstack, scroll_viewer, text_block, vstack, ComboBox, Element, ElementExt,
 };
 
 use super::langs::{lang_codes_for_side, lang_display_name, swap_session_langs};
+use super::meta::{display_model_name, should_show_tokens};
 use crate::app::popup_backend::types::{
     PopupCardStatus, PopupCardVm, PopupUserAction, PopupViewModel,
 };
@@ -90,12 +91,99 @@ fn title_bar() -> Element {
 fn status_bar(vm: &PopupViewModel) -> Element {
     let status = footer_status_label(vm.is_translating, &vm.source_text);
     let count = source_char_count(&vm.source_text);
+    // 翻译中 → 取消；否则 → 重试（整批，service_instance_id: None）
+    let action_btn = if vm.is_translating {
+        button("取消").on_click(|| {
+            dispatch_user_action(PopupUserAction::CancelTranslation);
+        })
+    } else {
+        button("重试").on_click(|| {
+            dispatch_user_action(PopupUserAction::Retry {
+                service_instance_id: None,
+            });
+        })
+    };
     hstack((
         caption(status.to_string()),
         caption(format!("{count} 字")),
+        action_btn,
     ))
     .spacing(8.0)
     .into()
+}
+
+fn card_status_label(status: &PopupCardStatus) -> &'static str {
+    match status {
+        PopupCardStatus::Pending => "等待中",
+        PopupCardStatus::Translating => "翻译中",
+        PopupCardStatus::Finished => "",
+        PopupCardStatus::Failed => "失败",
+        PopupCardStatus::Cancelled => "已取消",
+    }
+}
+
+fn card_tokens_label(card: &PopupCardVm) -> String {
+    let has_usage = card.usage_input.is_some() || card.usage_output.is_some();
+    if !should_show_tokens(&card.protocol, has_usage) {
+        return String::new();
+    }
+    match (card.usage_input, card.usage_output) {
+        (Some(i), Some(o)) => format!("↑{i} ↓{o}"),
+        (Some(i), None) => format!("↑{i}"),
+        (None, Some(o)) => format!("↓{o}"),
+        _ => String::new(),
+    }
+}
+
+/// 单服务结果卡：服务名、状态、正文/错误、model、tokens、复制。
+fn result_card(card: &PopupCardVm) -> Element {
+    let status_label = card_status_label(&card.status);
+    let model = display_model_name(&card.protocol, &card.model_name);
+    let tokens = card_tokens_label(card);
+    let body = card_body_text(card);
+    let sid = card.service_instance_id.clone();
+    let name = if card.service_name.is_empty() {
+        "服务".to_string()
+    } else {
+        card.service_name.clone()
+    };
+
+    vstack((
+        hstack((
+            text_block(name).font_size(13.0).semibold(),
+            caption(status_label.to_string()),
+        ))
+        .spacing(8.0),
+        text_block(body).font_size(14.0).wrap().selectable(),
+        hstack((
+            caption(model),
+            caption(tokens),
+            button("复制").on_click(move || {
+                if sid.is_empty() {
+                    log::debug!("复制：无服务实例 id，忽略");
+                    return;
+                }
+                dispatch_user_action(PopupUserAction::CopyResult {
+                    service_instance_id: sid.clone(),
+                });
+            }),
+        ))
+        .spacing(8.0),
+    ))
+    .spacing(6.0)
+    .into()
+}
+
+/// 多服务结果列表（保序）；`scroll_viewer` 包裹结果区。
+fn results_list(vm: &PopupViewModel) -> Element {
+    let cards: Vec<Element> = if vm.cards.is_empty() {
+        vec![text_block("（等待结果）").font_size(14.0).into()]
+    } else {
+        vm.cards.iter().map(result_card).collect()
+    };
+    scroll_viewer(vstack(cards).spacing(10.0))
+        .max_height(360.0)
+        .into()
 }
 
 /// 源 / 目标语言 ComboBox：`lang_codes_for_side` 列表；选中后
@@ -164,7 +252,7 @@ fn language_bar(vm: &PopupViewModel) -> Element {
     .into()
 }
 
-/// 渲染翻译弹窗（标题栏 + 源文 + 语言栏 + 首卡 + 状态栏；多卡见任务 9）。
+/// 渲染翻译弹窗（标题栏 + 源文 + 语言栏 + 多服务结果卡 + 取消/重试 + 状态栏）。
 pub fn render_popup(vm: &PopupViewModel) -> Element {
     let source = if vm.source_text.is_empty() {
         String::from("（无源文）")
@@ -172,41 +260,12 @@ pub fn render_popup(vm: &PopupViewModel) -> Element {
         vm.source_text.clone()
     };
 
-    let card = vm.cards.first();
-    let body = card
-        .map(card_body_text)
-        .unwrap_or_else(|| String::from("（等待结果）"));
-    let service_line = card
-        .map(|c| {
-            if c.service_name.is_empty() {
-                c.model_name.clone()
-            } else if c.model_name.is_empty() {
-                c.service_name.clone()
-            } else {
-                format!("{} · {}", c.service_name, c.model_name)
-            }
-        })
-        .unwrap_or_default();
-    let sid = card
-        .map(|c| c.service_instance_id.clone())
-        .unwrap_or_default();
-
     vstack((
         title_bar(),
         // 源文：只读展示 + 可选中复制（selectable text_block）
         text_block(source).font_size(16.0).wrap().selectable(),
         language_bar(vm),
-        text_block(service_line).font_size(12.0),
-        text_block(body).font_size(14.0).wrap().selectable(),
-        button("复制").on_click(move || {
-            if sid.is_empty() {
-                log::debug!("复制：无服务实例 id，忽略");
-                return;
-            }
-            dispatch_user_action(PopupUserAction::CopyResult {
-                service_instance_id: sid.clone(),
-            });
-        }),
+        results_list(vm),
         status_bar(vm),
     ))
     .spacing(12.0)
@@ -294,6 +353,47 @@ mod tests {
             ..Default::default()
         };
         let _el = render_popup(&vm);
+    }
+
+    #[test]
+    fn view_render_popup_multi_cards_returns_element() {
+        let mut c1 = card(PopupCardStatus::Finished, "one", "");
+        c1.service_instance_id = "s1".into();
+        c1.service_name = "A".into();
+        c1.usage_input = Some(10);
+        c1.usage_output = Some(20);
+        let mut c2 = card(PopupCardStatus::Failed, "", "timeout");
+        c2.service_instance_id = "s2".into();
+        c2.service_name = "B".into();
+        c2.protocol = "microsoft_edge".into();
+        let mut c3 = card(PopupCardStatus::Translating, "", "");
+        c3.service_instance_id = "s3".into();
+        c3.service_name = "C".into();
+        let vm = PopupViewModel {
+            source_text: "hello".into(),
+            is_translating: true,
+            cards: vec![c1, c2, c3],
+            source_lang: "en".into(),
+            target_lang: "zh-CN".into(),
+            ..Default::default()
+        };
+        let _el = render_popup(&vm);
+    }
+
+    #[test]
+    fn view_card_status_and_tokens_helpers() {
+        assert_eq!(card_status_label(&PopupCardStatus::Pending), "等待中");
+        assert_eq!(card_status_label(&PopupCardStatus::Finished), "");
+        let mut llm = card(PopupCardStatus::Finished, "ok", "");
+        llm.usage_input = Some(1);
+        llm.usage_output = Some(2);
+        assert_eq!(card_tokens_label(&llm), "↑1 ↓2");
+        let mut mt = card(PopupCardStatus::Finished, "ok", "");
+        mt.protocol = "microsoft_edge".into();
+        mt.usage_input = Some(1);
+        assert_eq!(card_tokens_label(&mt), "");
+        assert_eq!(display_model_name("openai_chat", "gpt-4o"), "gpt-4o");
+        assert_eq!(display_model_name("microsoft_edge", "x"), "");
     }
 
     #[test]
