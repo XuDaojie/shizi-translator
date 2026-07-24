@@ -39,7 +39,15 @@ pub fn emit_translation_event(
     app: &tauri::AppHandle,
     event: TranslationEvent,
 ) -> Result<(), tauri::Error> {
-    app.emit(TRANSLATION_EVENT, event)
+    // 1) 始终 emit 给 WebView 弹窗
+    app.emit(TRANSLATION_EVENT, &event)?;
+    // 2) 始终 push 到 Bridge hub（无 sink 则 no-op）。
+    //    不用 session.active==WinUi 门控：任务 4 stub 会在 desired=winui 时回退 active=webview，
+    //    若按 active 门控则宿主注册 sink 后仍收不到翻译流。sink 仅由 WinUI host 注册。
+    if let Ok(payload) = serde_json::to_value(&event) {
+        crate::app::popup_bridge::push::global().push_json("translation_event", payload);
+    }
+    Ok(())
 }
 
 /// 唤起翻译弹窗（show + 光标定位）。触发翻译前调用，修正旧版依赖窗口已可见的缺陷。

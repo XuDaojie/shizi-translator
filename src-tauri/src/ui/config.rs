@@ -91,6 +91,11 @@ pub fn save_app_config(
     app.emit("app-config:changed", &saved_config)
         .map_err(|error| ShortcutBindingError::global(format!("无法广播配置变更: {error}")))?;
 
+    // Bridge 双投：payload 脱敏（清 apiKey），无 sink 时 no-op
+    let redacted =
+        crate::app::popup_bridge::dispatch::redact_config_for_bridge(saved_config.clone());
+    crate::app::popup_bridge::push::global().push_json("app_config_changed", redacted);
+
     Ok(saved_config)
 }
 

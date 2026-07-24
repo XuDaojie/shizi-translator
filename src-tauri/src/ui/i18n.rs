@@ -168,6 +168,15 @@ pub(crate) fn apply_interface_language_locked(
             },
         )
         .map_err(|error| format!("界面语言已更新，但无法广播语言变更: {error}"))?;
+
+        // Bridge 双投（无 sink 时 no-op）
+        crate::app::popup_bridge::push::global().push_json(
+            "interface_language_changed",
+            serde_json::json!({
+                "locale": snapshot.locale,
+                "revision": snapshot.revision,
+            }),
+        );
     }
     Ok(snapshot)
 }

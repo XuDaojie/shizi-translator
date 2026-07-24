@@ -79,6 +79,23 @@ pub fn ensure_for_config(app: &AppHandle, config: &AppConfig) -> Result<(), Stri
     }
 }
 
+/// 成功 show 后推送 `show_context`（无 sink 时 no-op）。
+/// pending 仅有 take 无 peek：`sourceText` 置空，宿主 cold-start 可调 `take_pending_source_text`。
+fn push_show_context(mode: PopupPositionMode) {
+    let position_mode = match mode {
+        PopupPositionMode::NearCursor => "nearCursor",
+        PopupPositionMode::Restore => "restore",
+    };
+    crate::app::popup_bridge::push::global().push_json(
+        "show_context",
+        serde_json::json!({
+            "sourceText": "",
+            "sourceBadge": "selectedText",
+            "positionMode": position_mode,
+        }),
+    );
+}
+
 /// 按 config 同步 session；show 前 hide 非 active 后端；active 为 winui 时 stub 回退。
 pub fn show_for_config(
     app: &AppHandle,
@@ -98,9 +115,14 @@ pub fn show_for_config(
         }
     }
 
-    match active {
+    let result = match active {
         PopupUiKind::Webview | PopupUiKind::WinUi => webview_ui().show(app, mode),
+    };
+
+    if result.is_ok() {
+        push_show_context(mode);
     }
+    result
 }
 
 /// 与 `show_for_config` 相同的 session/backend 路由，但 webview 分支用阻塞 show（冷路径/已 spawn 的线程内）。
@@ -121,11 +143,15 @@ pub fn show_blocking_for_config(
         }
     }
 
-    match active {
+    let result = match active {
         PopupUiKind::Webview | PopupUiKind::WinUi => {
             crate::app::popup_window::show_popup_blocking(app, config, mode)
         }
+    };
+    if result.is_ok() {
+        push_show_context(mode);
     }
+    result
 }
 
 /// 隐藏当前（及未来其它）弹窗后端；可同时 hide 两边保证互斥。
