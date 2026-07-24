@@ -32,9 +32,9 @@ impl PopupHost {
         self.backend.ensure_created()
     }
 
-    /// 先 ensure_created，再 show。
+    /// 仅转发 `backend.show`；不在热路径同步 `ensure_created`。
+    /// 预建仍走独立的 [`Self::ensure_created`]（启动路径）。
     pub fn show(&mut self, mode: PopupPositionMode) -> Result<(), String> {
-        self.backend.ensure_created()?;
         self.backend.show(mode)
     }
 
@@ -154,7 +154,8 @@ mod tests {
     }
 
     #[test]
-    fn host_show_ensures_created_first() {
+    fn host_show_does_not_ensure_created() {
+        // WebView 热路径禁止 Host 同步 ensure 建窗；预建用 ensure_created。
         let log = Arc::new(Mutex::new(Vec::new()));
         let mut host = PopupHost::from_backend(Box::new(MockBackend {
             log: log.clone(),
@@ -163,10 +164,10 @@ mod tests {
         }));
         host.show(PopupPositionMode::NearCursor).unwrap();
         assert!(host.is_visible());
-        assert!(host.is_alive());
+        // show 本身不 ensure，Mock 的 alive 保持 false
+        assert!(!host.is_alive());
         let ops = log.lock().unwrap().clone();
-        // show 路径应先 ensure 再 show
-        assert_eq!(ops, vec!["ensure", "show"]);
+        assert_eq!(ops, vec!["show"]);
     }
 
     #[test]

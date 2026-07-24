@@ -42,8 +42,11 @@ impl PopupBackend for WebviewPopupBackend {
 
     fn destroy(&mut self) {
         if let Some(w) = self.app.get_webview_window(POPUP_LABEL) {
-            // close 后可再次 ensure/build；与 destroy 相比更符合现网「可重建」语义。
-            let _ = w.close();
+            // 弹窗挂了 close→hide，`close()` 只会隐藏；须用 destroy 真销毁，
+            // 之后 is_alive 为 false，ensure 可再重建。
+            if let Err(e) = w.destroy() {
+                log::warn!("销毁翻译弹窗失败: {e}");
+            }
         }
     }
 
