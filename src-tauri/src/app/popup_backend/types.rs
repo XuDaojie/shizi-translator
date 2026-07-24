@@ -1,10 +1,13 @@
 //! 弹窗后端 ViewModel / 卡片 / 用户动作类型。
 //! 纯数据结构，供 WinUI 与 WebView 宿主共用。
 
+/// 翻译弹窗唤起时的定位策略。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PopupPositionMode {
+    /// 跟随光标并钳制到工作区（划词 / 截图译 / 快捷键触发）。
     #[default]
     NearCursor,
+    /// 不改坐标：保留上一次位置；首次创建依赖 builder `center`。
     Restore,
 }
 

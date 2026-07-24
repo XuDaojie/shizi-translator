@@ -106,15 +106,8 @@ pub fn hide_popup(app: &tauri::AppHandle) {
     }
 }
 
-/// 翻译弹窗唤起时的定位策略。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum PopupPositionMode {
-    /// 跟随光标并钳制到工作区（划词 / 截图译 / 快捷键触发）。
-    #[default]
-    NearCursor,
-    /// 不改坐标：保留上一次位置；首次创建依赖 builder `center`。
-    Restore,
-}
+/// 翻译弹窗唤起时的定位策略（定义在 `popup_backend::types`，此处 re-export 保持兼容）。
+pub use crate::app::popup_backend::types::PopupPositionMode;
 
 fn present_popup(window: &WebviewWindow, mode: PopupPositionMode) {
     if mode == PopupPositionMode::NearCursor {
