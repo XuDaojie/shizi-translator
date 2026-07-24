@@ -10,6 +10,11 @@ license = "GPL-3.0-only"
 name = "shizi_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+# WinUI 弹窗后端（任务 6 再考虑 default；本任务仅声明以消除 cfg 警告）
+[features]
+default = []
+popup-winui = []
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
