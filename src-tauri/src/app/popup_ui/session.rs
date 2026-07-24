@@ -20,6 +20,11 @@ impl PopupUiSession {
         }
     }
 
+    /// 从配置同步 desired，不清除会话回退标志（ensure/show 路径用）。
+    pub fn sync_desired(&mut self, kind: PopupUiKind) {
+        self.desired = kind;
+    }
+
     pub fn desired(&self) -> PopupUiKind {
         self.desired
     }
@@ -60,5 +65,20 @@ mod tests {
         s.fallback_to_webview_for_session();
         assert_eq!(s.desired(), PopupUiKind::WinUi);
         assert_eq!(s.active(), PopupUiKind::Webview);
+    }
+
+    #[test]
+    fn sync_desired_preserves_session_fallback() {
+        let mut s = PopupUiSession::new();
+        s.set_desired(PopupUiKind::WinUi);
+        s.fallback_to_webview_for_session();
+        assert_eq!(s.active(), PopupUiKind::Webview);
+        // ensure/show 路径：仅同步 desired，不清除回退
+        s.sync_desired(PopupUiKind::WinUi);
+        assert_eq!(s.desired(), PopupUiKind::WinUi);
+        assert_eq!(s.active(), PopupUiKind::Webview);
+        // 用户再次选择 winui（set_desired）才允许重试
+        s.set_desired(PopupUiKind::WinUi);
+        assert_eq!(s.active(), PopupUiKind::WinUi);
     }
 }

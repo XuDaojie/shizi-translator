@@ -37,9 +37,10 @@ fn with_session<R>(app: &AppHandle, f: impl FnOnce(&mut PopupUiSession) -> R) ->
     Ok(f(&mut guard))
 }
 
-fn set_desired_from_config(app: &AppHandle, config: &AppConfig) -> Result<(), String> {
+/// ensure/show 路径：同步 desired，**不**清除会话回退。
+fn sync_desired_from_config(app: &AppHandle, config: &AppConfig) -> Result<(), String> {
     let kind = PopupUiKind::resolve_from_config(&config.popup_ui);
-    with_session(app, |session| session.set_desired(kind))
+    with_session(app, |session| session.sync_desired(kind))
 }
 
 fn active_kind(app: &AppHandle) -> PopupUiKind {
@@ -57,9 +58,9 @@ fn resolve_active_with_winui_stub(app: &AppHandle) -> Result<PopupUiKind, String
     Ok(active)
 }
 
-/// 按 config 更新 desired，并在 `window_precreate` 允许时 ensure 当前 active 后端。
+/// 按 config 同步 desired，并在 `window_precreate` 允许时 ensure 当前 active 后端。
 pub fn ensure_for_config(app: &AppHandle, config: &AppConfig) -> Result<(), String> {
-    set_desired_from_config(app, config)?;
+    sync_desired_from_config(app, config)?;
 
     let pair = config
         .window_precreate
@@ -78,13 +79,13 @@ pub fn ensure_for_config(app: &AppHandle, config: &AppConfig) -> Result<(), Stri
     }
 }
 
-/// 按 config 更新 session；show 前 hide 非 active 后端；active 为 winui 时 stub 回退。
+/// 按 config 同步 session；show 前 hide 非 active 后端；active 为 winui 时 stub 回退。
 pub fn show_for_config(
     app: &AppHandle,
     config: &AppConfig,
     mode: PopupPositionMode,
 ) -> Result<(), String> {
-    set_desired_from_config(app, config)?;
+    sync_desired_from_config(app, config)?;
 
     let active = resolve_active_with_winui_stub(app)?;
     // 互斥：hide 非 active。WinUI 尚未实现，仅保证 webview 在非 webview 时被 hide。
@@ -99,6 +100,31 @@ pub fn show_for_config(
 
     match active {
         PopupUiKind::Webview | PopupUiKind::WinUi => webview_ui().show(app, mode),
+    }
+}
+
+/// 与 `show_for_config` 相同的 session/backend 路由，但 webview 分支用阻塞 show（冷路径/已 spawn 的线程内）。
+pub fn show_blocking_for_config(
+    app: &AppHandle,
+    config: &AppConfig,
+    mode: PopupPositionMode,
+) -> Result<(), String> {
+    sync_desired_from_config(app, config)?;
+
+    let active = resolve_active_with_winui_stub(app)?;
+    match active {
+        PopupUiKind::Webview => {
+            // 未来：hide winui
+        }
+        PopupUiKind::WinUi => {
+            let _ = webview_ui().hide(app);
+        }
+    }
+
+    match active {
+        PopupUiKind::Webview | PopupUiKind::WinUi => {
+            crate::app::popup_window::show_popup_blocking(app, config, mode)
+        }
     }
 }
 

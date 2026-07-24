@@ -483,7 +483,7 @@ fn start_popup_translation(app_handle: tauri::AppHandle, input: TranslationInput
                 return;
             }
         };
-        if let Err(error) = crate::app::popup_window::show_popup_blocking(
+        if let Err(error) = crate::app::popup_ui::facade::show_blocking_for_config(
             &app,
             &config,
             crate::app::popup_window::PopupPositionMode::NearCursor,
