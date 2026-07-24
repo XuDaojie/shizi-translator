@@ -18,9 +18,10 @@
     </PackageReference>
   </ItemGroup>
 
-  <!-- 共享 State 纯逻辑源码，避免引用 WinUI WinExe -->
+  <!-- 共享纯逻辑源码，避免引用 WinUI WinExe -->
   <ItemGroup>
     <Compile Include="..\State\**\*.cs" Link="State\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\Data\**\*.cs" Link="Data\%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>
