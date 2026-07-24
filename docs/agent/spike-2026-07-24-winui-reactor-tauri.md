@@ -127,6 +127,20 @@ cargo test -p shizi --features popup-winui --lib m0_reactor_host_smoke -- --noca
 - lib 单测：431 passed, 2 ignored  
 - `m0_reactor_host_smoke`（`SHIZI_M0_SPIKE=1`）：**ok** —「hide/show 完成，进程仍存活」
 
+## M3 目视清单（任务 10：视觉抛光）
+
+| 项 | 期望 | 实现备注 |
+|----|------|----------|
+| 宽度 | ~468 | `host` `POPUP_LOGICAL_WIDTH` + `view` `POPUP_VIEW_WIDTH` = 468 |
+| 高度 | ~520（可调） | `inner_size(468, 520)`；定位同尺寸；结果区 `scroll_viewer` `max_height` 360 |
+| 背景 | Mica 或 Fluent 实底 fallback | `ReactorWindow::backdrop(Backdrop::Mica)`（API 可用） |
+| Accent | 柿子橙 `#D55A1F` 可见于主按钮/品牌 | 标题前景 + 取消/重试底色；系统 `.accent()` 跟 Windows 强调色故用 `Color::rgb` 资源色 |
+| 多卡 | 间距/分割清晰 | `results_list` 卡间距 10；卡内 6 |
+| 标题 | 产品名 | 窗标题 / 栏内均为「柿子翻译」 |
+| 非 GDI | Inspect 为 XAML 控件 | 路径 R `ReactorWindow` + WinUI 控件 |
+
+人工本机扫一眼：Mica 在浅/深色系统主题下是否透出桌面；accent 按钮在高对比主题下是否可读。
+
 ## 变更日志
 
 | 日期 | 变更 |
@@ -134,3 +148,4 @@ cargo test -p shizi --features popup-winui --lib m0_reactor_host_smoke -- --noca
 | 2026-07-24 | 创建骨架（任务 1 / M0 依赖接入） |
 | 2026-07-24 | M0 绿：候选 rev 编译 + 探测测试通过 |
 | 2026-07-24 | 任务 2：S1 STA host + 哨兵 + 否决门 **Go**；锁定 rev；try_bootstrap 改路径 R |
+| 2026-07-24 | 任务 10：窗 468×520 + Mica；标题「柿子翻译」；柿子橙 accent；结果区滚动确认 |

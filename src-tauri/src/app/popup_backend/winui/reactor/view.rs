@@ -10,7 +10,8 @@
 use std::sync::Mutex;
 
 use windows_reactor::{
-    button, caption, hstack, scroll_viewer, text_block, vstack, ComboBox, Element, ElementExt,
+    button, caption, hstack, scroll_viewer, text_block, vstack, Button, Color, ComboBox, Element,
+    ElementExt,
 };
 
 use super::langs::{lang_codes_for_side, lang_display_name, swap_session_langs};
@@ -21,6 +22,13 @@ use crate::app::popup_backend::types::{
 
 /// 与 GDI / 原型对齐的逻辑宽度。
 pub const POPUP_VIEW_WIDTH: f64 = 468.0;
+
+/// 结果区 `scroll_viewer` 最大高度（逻辑 px）；总窗高由 host `inner_size` 约 520。
+const RESULTS_SCROLL_MAX_HEIGHT: f64 = 360.0;
+
+/// 品牌 accent：柿子橙 `#D55A1F`（系统 `.accent()` 跟 Windows 强调色，此处用资源色保品牌）。
+const ACCENT_PERSIMMON: Color = Color::rgb(0xD5, 0x5A, 0x1F);
+const ACCENT_ON_PERSIMMON: Color = Color::rgb(0xFF, 0xFF, 0xFF);
 
 type UserActionHandler = fn(PopupUserAction);
 
@@ -58,9 +66,19 @@ fn source_char_count(source_text: &str) -> usize {
     source_text.chars().count()
 }
 
+/// 主操作按钮：柿子橙底 + 白字（品牌 accent，非系统 Accent 色）。
+fn accent_button(label: impl Into<String>) -> Button {
+    button(label)
+        .background(ACCENT_PERSIMMON)
+        .foreground(ACCENT_ON_PERSIMMON)
+}
+
 fn title_bar() -> Element {
     hstack((
-        text_block("柿子翻译").font_size(14.0).semibold(),
+        text_block("柿子翻译")
+            .font_size(14.0)
+            .semibold()
+            .foreground(ACCENT_PERSIMMON),
         button("钉").on_click(|| {
             log::debug!("Reactor 标题栏：钉（stub）");
         }),
@@ -93,11 +111,11 @@ fn status_bar(vm: &PopupViewModel) -> Element {
     let count = source_char_count(&vm.source_text);
     // 翻译中 → 取消；否则 → 重试（整批，service_instance_id: None）
     let action_btn = if vm.is_translating {
-        button("取消").on_click(|| {
+        accent_button("取消").on_click(|| {
             dispatch_user_action(PopupUserAction::CancelTranslation);
         })
     } else {
-        button("重试").on_click(|| {
+        accent_button("重试").on_click(|| {
             dispatch_user_action(PopupUserAction::Retry {
                 service_instance_id: None,
             });
@@ -174,7 +192,7 @@ fn result_card(card: &PopupCardVm) -> Element {
     .into()
 }
 
-/// 多服务结果列表（保序）；`scroll_viewer` 包裹结果区。
+/// 多服务结果列表（保序）；`scroll_viewer` 包裹结果区（总高可调，见 host inner_size）。
 fn results_list(vm: &PopupViewModel) -> Element {
     let cards: Vec<Element> = if vm.cards.is_empty() {
         vec![text_block("（等待结果）").font_size(14.0).into()]
@@ -182,7 +200,7 @@ fn results_list(vm: &PopupViewModel) -> Element {
         vm.cards.iter().map(result_card).collect()
     };
     scroll_viewer(vstack(cards).spacing(10.0))
-        .max_height(360.0)
+        .max_height(RESULTS_SCROLL_MAX_HEIGHT)
         .into()
 }
 
@@ -399,5 +417,12 @@ mod tests {
     #[test]
     fn view_popup_width_is_468() {
         assert!((POPUP_VIEW_WIDTH - 468.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn view_accent_is_persimmon_orange() {
+        assert_eq!(ACCENT_PERSIMMON, Color::rgb(0xD5, 0x5A, 0x1F));
+        assert_eq!(ACCENT_ON_PERSIMMON, Color::rgb(0xFF, 0xFF, 0xFF));
+        assert!((RESULTS_SCROLL_MAX_HEIGHT - 360.0).abs() < f64::EPSILON);
     }
 }

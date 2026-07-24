@@ -38,12 +38,12 @@ use super::view;
 
 /// 哨兵窗标题（主 App 窗；始终存活，默认隐藏）。
 pub const SENTINEL_TITLE: &str = "Shizi Reactor Sentinel";
-/// 弹窗标题（Inspect / FindWindow 回退用）。
-pub const POPUP_TITLE: &str = "Shizi Reactor Spike";
+/// 弹窗标题（Inspect / FindWindow 回退用；产品名）。
+pub const POPUP_TITLE: &str = "柿子翻译";
 
-/// 与 GDI / 原型对齐的逻辑尺寸（定位用）。
+/// 与 GDI / Open Design 原型对齐的逻辑尺寸（定位与 `inner_size`）。
 const POPUP_LOGICAL_WIDTH: f64 = 468.0;
-const POPUP_LOGICAL_HEIGHT: f64 = 320.0;
+const POPUP_LOGICAL_HEIGHT: f64 = 520.0;
 
 /// 进程级 bootstrap 结果缓存（成功或失败都只尝试一次）。
 static PROCESS_BOOTSTRAP: OnceLock<std::result::Result<(), String>> = OnceLock::new();
@@ -601,6 +601,13 @@ mod tests {
         if let (Err(e1), Err(e2)) = (&a, &b) {
             assert_eq!(e1, e2);
         }
+    }
+
+    #[test]
+    fn popup_window_metrics_and_title() {
+        assert_eq!(POPUP_TITLE, "柿子翻译");
+        assert!((POPUP_LOGICAL_WIDTH - 468.0).abs() < f64::EPSILON);
+        assert!((POPUP_LOGICAL_HEIGHT - 520.0).abs() < f64::EPSILON);
     }
 
     #[test]
