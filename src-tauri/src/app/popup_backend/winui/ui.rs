@@ -333,6 +333,8 @@ fn set_lang_flyout_scroll(y: i32) {
 }
 
 pub fn store_paint_snapshot(vm: &PopupViewModel) -> PaintSnapshot {
+    // 双写：GDI 绘制用 PAINT_SNAPSHOT；actions 复制只读 reactor 全局快照（SSOT）。
+    super::reactor::state::store_global(vm);
     let snap = PaintSnapshot::from_view_model(vm);
     if let Ok(mut guard) = PAINT_SNAPSHOT.lock() {
         let source_changed = guard.source_text != snap.source_text;

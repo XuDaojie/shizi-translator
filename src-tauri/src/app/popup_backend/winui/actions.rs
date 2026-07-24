@@ -16,8 +16,6 @@ use crate::app::window::request_show_settings_window;
 use crate::core::selection::write_clipboard_text;
 use crate::ui::web_popup::start_translation_from_input;
 
-use super::ui::{load_paint_snapshot, resolve_copy_text};
-
 static BOUND_APP: Mutex<Option<AppHandle>> = Mutex::new(None);
 
 /// 后端 ensure 时绑定。
@@ -110,60 +108,84 @@ pub fn retry_translation_sync(app: &AppHandle) -> Result<String, String> {
 }
 
 fn copy_card_text(service_instance_id: &str) -> Result<(), String> {
-    let snap = load_paint_snapshot();
-    let text = resolve_copy_text(&snap, service_instance_id)
+    let snap = super::reactor::state::global_snapshot();
+    let text = super::reactor::state::resolve_copy_text(&snap, service_instance_id)
         .ok_or_else(|| "没有可复制的译文".to_string())?;
     write_clipboard_text(&text).map_err(|e| e.to_string())
 }
 
 /// 注册 UI 动作分发（函数指针，`ui` 不反向依赖本模块类型以外的符号环）。
+///
+/// GDI 仍是默认产品路径：继续注册 `ui::set_action_handler`，复制只读
+/// `reactor::state` 全局快照（由 `store_paint_snapshot` 双写维护）。
 pub fn install_action_handler() {
     super::ui::set_action_handler(handle_user_action);
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::app::popup_backend::types::PopupCardStatus;
-    use crate::app::popup_backend::winui::ui::{
-        first_copyable_service_id, resolve_copy_text, PaintCardSnapshot, PaintSnapshot,
+    use crate::app::popup_backend::types::{PopupCardStatus, PopupCardVm, PopupViewModel};
+    use crate::app::popup_backend::winui::reactor::state::{
+        first_copyable_service_id, resolve_copy_text,
     };
 
-    fn sample_snap() -> PaintSnapshot {
-        PaintSnapshot {
+    fn card(
+        id: &str,
+        name: &str,
+        protocol: &str,
+        model: &str,
+        status: PopupCardStatus,
+        text: &str,
+        error: &str,
+    ) -> PopupCardVm {
+        PopupCardVm {
+            service_instance_id: id.into(),
+            service_name: name.into(),
+            service_type: "llm".into(),
+            protocol: protocol.into(),
+            model_name: model.into(),
+            status,
+            text: text.into(),
+            error_message: error.into(),
+            usage_input: None,
+            usage_output: None,
+            detected_source_lang: None,
+        }
+    }
+
+    fn sample_vm() -> PopupViewModel {
+        PopupViewModel {
             source_text: "hi".into(),
             source_lang: "en".into(),
             target_lang: "zh-CN".into(),
             is_translating: false,
             cards: vec![
-                PaintCardSnapshot {
-                    service_instance_id: "a".into(),
-                    service_name: "A".into(),
-                    protocol: "mock".into(),
-                    model_name: "m".into(),
-                    status: PopupCardStatus::Finished,
-                    text: String::new(),
-                    error_message: String::new(),
-                    usage_input: None,
-                    usage_output: None,
-                },
-                PaintCardSnapshot {
-                    service_instance_id: "b".into(),
-                    service_name: "B".into(),
-                    protocol: "openai_chat".into(),
-                    model_name: "gpt".into(),
-                    status: PopupCardStatus::Finished,
-                    text: "你好".into(),
-                    error_message: String::new(),
-                    usage_input: None,
-                    usage_output: None,
-                },
+                card(
+                    "a",
+                    "A",
+                    "mock",
+                    "m",
+                    PopupCardStatus::Finished,
+                    "",
+                    "",
+                ),
+                card(
+                    "b",
+                    "B",
+                    "openai_chat",
+                    "gpt",
+                    PopupCardStatus::Finished,
+                    "你好",
+                    "",
+                ),
             ],
+            ..Default::default()
         }
     }
 
     #[test]
     fn resolve_copy_prefers_card_text() {
-        let snap = sample_snap();
+        let snap = sample_vm();
         assert_eq!(resolve_copy_text(&snap, "b").as_deref(), Some("你好"));
         assert_eq!(resolve_copy_text(&snap, "a"), None);
         assert_eq!(resolve_copy_text(&snap, "missing"), None);
@@ -171,28 +193,25 @@ mod tests {
 
     #[test]
     fn first_copyable_skips_empty() {
-        let snap = sample_snap();
+        let snap = sample_vm();
         assert_eq!(first_copyable_service_id(&snap).as_deref(), Some("b"));
     }
 
     #[test]
     fn resolve_copy_falls_back_to_error_message() {
-        let snap = PaintSnapshot {
-            source_text: String::new(),
+        let snap = PopupViewModel {
             source_lang: "auto".into(),
             target_lang: "zh-CN".into(),
-            is_translating: false,
-            cards: vec![PaintCardSnapshot {
-                service_instance_id: "e".into(),
-                service_name: "E".into(),
-                protocol: "mock".into(),
-                model_name: "m".into(),
-                status: PopupCardStatus::Failed,
-                text: String::new(),
-                error_message: "超时".into(),
-                usage_input: None,
-                usage_output: None,
-            }],
+            cards: vec![card(
+                "e",
+                "E",
+                "mock",
+                "m",
+                PopupCardStatus::Failed,
+                "",
+                "超时",
+            )],
+            ..Default::default()
         };
         assert_eq!(resolve_copy_text(&snap, "e").as_deref(), Some("超时"));
     }
