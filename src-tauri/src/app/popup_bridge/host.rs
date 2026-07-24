@@ -148,10 +148,41 @@ fn dev_exe_candidates() -> Vec<PathBuf> {
 }
 
 pub fn is_running() -> bool {
-    let Ok(guard) = host_mutex().lock() else {
+    let Ok(mut guard) = host_mutex().lock() else {
         return false;
     };
-    guard.writer.is_some()
+    connection_alive(&mut guard)
+}
+
+/// writer 仍在且子进程未退出，才视为连接可用。
+fn connection_alive(guard: &mut HostInner) -> bool {
+    if guard.writer.is_none() {
+        return false;
+    }
+    if let Some(child) = guard.child.as_mut() {
+        match child.try_wait() {
+            Ok(None) => true,
+            Ok(Some(status)) => {
+                log::warn!("popup host: 子进程已退出 ({status})，连接作废");
+                false
+            }
+            Err(e) => {
+                log::warn!("popup host: try_wait 失败: {e}");
+                false
+            }
+        }
+    } else {
+        // 无 child 句柄时仅看 writer（测试/异常路径）
+        true
+    }
+}
+
+/// 废弃当前连接（kill 子进程、清 sink），允许下次 ensure 重建。
+fn reset_host() {
+    let Ok(mut guard) = host_mutex().lock() else {
+        return;
+    };
+    teardown_locked(&mut guard);
 }
 
 /// 启动子进程并完成 hello 握手（幂等）。
@@ -159,11 +190,16 @@ pub fn ensure_process(app: &AppHandle) -> Result<(), String> {
     set_app_handle(app.clone());
 
     {
-        let guard = host_mutex()
+        let mut guard = host_mutex()
             .lock()
             .map_err(|_| "popup host 锁损坏".to_string())?;
-        if guard.writer.is_some() {
+        if connection_alive(&mut guard) {
             return Ok(());
+        }
+        // 僵死连接（超时后 writer 仍在、子进程已挂等）：先拆掉再重建
+        if guard.writer.is_some() || guard.child.is_some() {
+            log::warn!("popup host: 检测到无效连接，重建子进程");
+            teardown_locked(&mut guard);
         }
     }
 
@@ -386,8 +422,12 @@ fn push_json_fire_and_forget(json: &str) -> Result<(), String> {
     let _gate = op_gate()
         .lock()
         .map_err(|_| "popup op gate 损坏".to_string())?;
-    write_msg(&msg)?;
-    // 排空对应 result（短等），失败不致命
+    if let Err(e) = write_msg(&msg) {
+        drop(_gate);
+        reset_host();
+        return Err(e);
+    }
+    // 排空对应 result（短等），失败不致命；超时也不拆连接以免翻译流中偶发卡顿误杀宿主
     let _ = wait_result("push_json", Duration::from_secs(3));
     Ok(())
 }
@@ -475,8 +515,22 @@ fn call_op(msg: IpcMessage) -> Result<(), String> {
     let _gate = op_gate()
         .lock()
         .map_err(|_| "popup op gate 损坏".to_string())?;
-    write_msg(&msg)?;
-    wait_result(&op, Duration::from_secs(10))
+    if let Err(e) = write_msg(&msg) {
+        // 写失败多半连接已坏；拆掉以便下次 ensure 重建
+        drop(_gate);
+        reset_host();
+        return Err(e);
+    }
+    match wait_result(&op, Duration::from_secs(10)) {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            // 超时/断开后若保留 writer，后续 ensure 会误判「已连接」→ 托盘/快捷键永久失效
+            log::warn!("popup host: op={op} 失败，重置宿主: {e}");
+            drop(_gate);
+            reset_host();
+            Err(e)
+        }
+    }
 }
 
 /// 写命令但不等待 result。用于 Bridge 回调里再调 set_size 等，避免与外层

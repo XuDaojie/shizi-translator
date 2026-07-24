@@ -23,7 +23,7 @@ use crate::{
     },
     ui::{
         ocr_popup::start_translation_from_ocr,
-        web_popup::{show_translation_error, show_translation_popup, start_translation_from_input},
+        web_popup::{show_translation_error, start_translation_from_input},
     },
 };
 
@@ -456,14 +456,30 @@ fn start_popup_translation(app_handle: tauri::AppHandle, input: TranslationInput
         return;
     }
 
-    // 热路径：窗已在，show + 立即开译（前端已 listen）。
-    if app_handle.get_webview_window("main").is_some() {
-        let config = state.config_store.get();
-        if let Ok(config) = &config {
-            if let Err(error) = show_translation_popup(&app_handle, config) {
-                show_translation_error(&app_handle, error);
-                return;
-            }
+    let config = match state.config_store.get() {
+        Ok(c) => c,
+        Err(e) => {
+            show_translation_error(&app_handle, e.to_string());
+            return;
+        }
+    };
+
+    // WinUI：不依赖 WebView `main` 是否存在（预创建的 main 会被 hide，不能当「热路径」判据）。
+    // WebView：main 已在则可直接 show；否则须独立线程首次 build（Windows 回调栈死锁）。
+    let prefer_winui = crate::app::popup_ui::PopupUiKind::resolve_from_config(&config.popup_ui)
+        == crate::app::popup_ui::PopupUiKind::WinUi;
+    let webview_ready = app_handle.get_webview_window("main").is_some();
+    let show_inline = prefer_winui || webview_ready;
+
+    if show_inline {
+        // 划词队列/剪贴板 async 均已离开托盘/快捷键同步回调栈，可阻塞 show。
+        if let Err(error) = crate::app::popup_ui::facade::show_blocking_for_config(
+            &app_handle,
+            &config,
+            crate::app::popup_window::PopupPositionMode::NearCursor,
+        ) {
+            show_translation_error(&app_handle, error);
+            return;
         }
         if let Err(error) = start_translation_from_input(input, app_handle.clone(), state.inner()) {
             show_translation_error(&app_handle, error);
@@ -471,8 +487,8 @@ fn start_popup_translation(app_handle: tauri::AppHandle, input: TranslationInput
         return;
     }
 
-    // 冷路径（自启后首次等）：独立线程建窗 → show → 开译。
-    // 前端 Vue listen 仍可能未就绪，事件可能丢失；pending 原文 + 前端冷启动补发兜底。
+    // WebView 冷路径：独立线程建窗 → show → 开译。
+    // 前端 Vue listen 仍可能未就绪；pending 原文 + 前端冷启动补发兜底。
     let app = app_handle.clone();
     std::thread::spawn(move || {
         let state = app.state::<AppState>();
