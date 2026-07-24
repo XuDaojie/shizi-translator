@@ -37,9 +37,11 @@ pub fn show_window(app: &tauri::AppHandle) {
         .try_state::<crate::app::state::AppState>()
         .and_then(|s| s.config_store.get().ok())
         .unwrap_or_else(crate::core::config::AppConfig::default);
-    if let Err(error) =
-        crate::app::popup_window::show_popup(app, &config, crate::app::popup_window::PopupPositionMode::Restore)
-    {
+    if let Err(error) = crate::app::popup_ui::facade::show_for_config(
+        app,
+        &config,
+        crate::app::popup_ui::PopupPositionMode::Restore,
+    ) {
         log::warn!("打开翻译弹窗失败: {error}");
     }
 }

@@ -1,6 +1,6 @@
 use crate::{
     app::{
-        popup_window,
+        popup_ui::facade as popup_ui_facade,
         state::{AppState, CapturePurpose},
     },
     core::{capture::CaptureError, ocr::OcrError, ocr_translation::OcrTranslationError},
@@ -26,7 +26,7 @@ pub async fn start_translation_from_ocr(app: tauri::AppHandle, state: AppState) 
     let _ = state.set_capture_purpose(CapturePurpose::Translate);
 
     // 截图前隐藏翻译弹窗，避免弹窗内容进帧（快捷键与按钮入口共用此路径）。
-    popup_window::hide_popup(&app);
+    let _ = popup_ui_facade::hide_active(&app);
     // 给 DWM 提交 hide 的时间，降低把弹窗残影打进下一帧的概率。
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 

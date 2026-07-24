@@ -3,6 +3,7 @@ use std::sync::{
     Arc, Mutex,
 };
 
+use crate::app::popup_ui::{PopupUiKind, PopupUiSession};
 use crate::app::shortcuts::ShortcutBindingError;
 use crate::core::capture::CapturedImage;
 use crate::core::config::ConfigStore;
@@ -60,6 +61,8 @@ pub struct AppState {
     // 进程级内存，不持久化；每次启动由前端 main 窗口重新采集写入。
     edge_translate_env: Arc<Mutex<Option<EdgeTranslateEnv>>>,
     interface_language_revision: Arc<AtomicU64>,
+    /// 弹窗 UI backend 会话选择（desired + 会话级 winui→webview 回退）。
+    pub popup_ui_session: Arc<Mutex<PopupUiSession>>,
 }
 
 impl AppState {
@@ -72,6 +75,11 @@ impl AppState {
             .get()
             .map(|c| c.target_lang)
             .unwrap_or_else(|_| "zh-CN".to_string());
+        let mut popup_ui_session = PopupUiSession::new();
+        if let Ok(config) = config_store.get() {
+            popup_ui_session
+                .set_desired(PopupUiKind::resolve_from_config(&config.popup_ui));
+        }
         Self {
             config_store,
             history_store,
@@ -90,6 +98,7 @@ impl AppState {
             session_target_lang: Arc::new(Mutex::new(default_target_lang)),
             edge_translate_env: Arc::new(Mutex::new(None)),
             interface_language_revision: Arc::new(AtomicU64::new(0)),
+            popup_ui_session: Arc::new(Mutex::new(popup_ui_session)),
         }
     }
 

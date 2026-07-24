@@ -89,14 +89,10 @@ pub fn ensure_popup_exists(app: &tauri::AppHandle) -> Result<WebviewWindow, Stri
 }
 
 /// 启动时按当前启动路径的 `windowPrecreate.*.popup` 决定是否预建。
+///
+/// 经 `popup_ui::facade` 路由（默认 webview 行为与改前一致；winui 本任务 stub 回退）。
 pub fn ensure_popup_window(app: &tauri::AppHandle, config: &AppConfig) -> Result<(), String> {
-    let pair = config
-        .window_precreate
-        .for_launch(crate::app::autostart::is_autostart_process());
-    if !pair.popup {
-        return Ok(());
-    }
-    ensure_popup_exists(app).map(|_| ())
+    crate::app::popup_ui::facade::ensure_for_config(app, config)
 }
 
 /// 隐藏翻译弹窗。截图前调用，避免把弹窗打进 DXGI 帧；幂等。

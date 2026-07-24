@@ -9,7 +9,10 @@ use tauri::Manager;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    app::{popup_window, state::AppState},
+    app::{
+        popup_ui::{facade as popup_ui_facade, PopupPositionMode},
+        state::AppState,
+    },
     core::{
         config::{AppConfig, ServiceInstanceConfig},
         history::{NewHistoryResult, NewHistorySession},
@@ -41,16 +44,16 @@ pub fn emit_translation_event(
 
 /// 唤起翻译弹窗（show + 光标定位）。触发翻译前调用，修正旧版依赖窗口已可见的缺陷。
 pub fn show_translation_popup(app: &tauri::AppHandle, config: &AppConfig) -> Result<(), String> {
-    show_translation_popup_with(app, config, popup_window::PopupPositionMode::NearCursor)
+    show_translation_popup_with(app, config, PopupPositionMode::NearCursor)
 }
 
 /// 唤起翻译弹窗，可指定定位策略（托盘打开用 Restore，避免跟鼠标到托盘角）。
 pub fn show_translation_popup_with(
     app: &tauri::AppHandle,
     config: &AppConfig,
-    mode: popup_window::PopupPositionMode,
+    mode: PopupPositionMode,
 ) -> Result<(), String> {
-    popup_window::show_popup(app, config, mode)
+    popup_ui_facade::show_for_config(app, config, mode)
 }
 
 pub fn start_translation_from_text(
