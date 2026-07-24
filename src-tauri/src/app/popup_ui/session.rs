@@ -40,6 +40,11 @@ impl PopupUiSession {
     pub fn fallback_to_webview_for_session(&mut self) {
         self.session_force_webview = true;
     }
+
+    /// 清除会话回退（WinUI ensure/show 成功后调用，允许 active 回到 desired）。
+    pub fn clear_session_fallback(&mut self) {
+        self.session_force_webview = false;
+    }
 }
 
 #[cfg(test)]
@@ -90,6 +95,17 @@ mod tests {
         assert_eq!(s.active(), PopupUiKind::Webview);
         // 用户再次选择 winui（set_desired）才允许重试
         s.set_desired(PopupUiKind::WinUi);
+        assert_eq!(s.active(), PopupUiKind::WinUi);
+    }
+
+    #[test]
+    fn clear_session_fallback_restores_active_to_desired() {
+        let mut s = PopupUiSession::new();
+        s.set_desired(PopupUiKind::WinUi);
+        s.fallback_to_webview_for_session();
+        assert_eq!(s.active(), PopupUiKind::Webview);
+        s.clear_session_fallback();
+        assert_eq!(s.desired(), PopupUiKind::WinUi);
         assert_eq!(s.active(), PopupUiKind::WinUi);
     }
 }

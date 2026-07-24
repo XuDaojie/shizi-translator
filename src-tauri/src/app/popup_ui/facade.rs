@@ -91,20 +91,28 @@ pub fn ensure_for_config(app: &AppHandle, config: &AppConfig) -> Result<(), Stri
     ensure_active(app)
 }
 
-/// ensure 当前 active；WinUI 失败则会话回退 webview 再 ensure（见 [`resolve_after_ensure`]）。
+/// ensure 按 **desired**（配置）尝试后端，而不是 `active`。
+///
+/// 重要：若按 `active` 路由，一旦 `session_force_webview` 被置位，整段进程永远走
+/// WebView，快捷键看起来「config 是 winui 却始终 WebView」。按 desired 每次重试
+/// WinUI；成功则清除回退标志，失败再临时回退 webview（仍不写 config）。
 fn ensure_active(app: &AppHandle) -> Result<(), String> {
-    let active = active_kind(app);
-    match active {
+    let desired = with_session(app, |session| session.desired())?;
+    match desired {
         PopupUiKind::Webview => webview_ui().ensure(app),
         PopupUiKind::WinUi => {
             #[cfg(windows)]
             {
                 match winui_ui().ensure(app) {
-                    Ok(()) => Ok(()),
+                    Ok(()) => {
+                        with_session(app, |session| session.clear_session_fallback())?;
+                        log::debug!("WinUI ensure 成功，已清除会话 webview 回退标志");
+                        Ok(())
+                    }
                     Err(e) => {
                         // 与 resolve_after_ensure(WinUi, false) == Webview 一致；不写 config。
                         log::warn!(
-                            "WinUI ensure 失败，本会话回退 webview（config.popupUi 仍为 winui）: {e}"
+                            "WinUI ensure 失败，本次回退 webview（config.popupUi 仍为 winui；下次仍会重试 WinUI）: {e}"
                         );
                         with_session(app, |session| {
                             session.fallback_to_webview_for_session();
@@ -180,12 +188,13 @@ pub fn show_for_config(
             {
                 match winui_ui().show(app, mode) {
                     Ok(()) => {
+                        with_session(app, |session| session.clear_session_fallback())?;
                         log::info!("WinUI show 成功 mode={mode:?}");
                         Ok(())
                     }
                     Err(e) => {
                         log::warn!(
-                            "WinUI show 失败，本会话回退 webview（config.popupUi 仍为 winui）: {e}"
+                            "WinUI show 失败，本次回退 webview（下次仍会重试 WinUI）: {e}"
                         );
                         with_session(app, |session| {
                             session.fallback_to_webview_for_session();
@@ -231,9 +240,15 @@ pub fn show_blocking_for_config(
             #[cfg(windows)]
             {
                 match winui_ui().show(app, mode) {
-                    Ok(()) => Ok(()),
+                    Ok(()) => {
+                        with_session(app, |session| session.clear_session_fallback())?;
+                        log::info!("WinUI show(blocking) 成功 mode={mode:?}");
+                        Ok(())
+                    }
                     Err(e) => {
-                        log::warn!("WinUI show(blocking) 失败，本会话回退 webview: {e}");
+                        log::warn!(
+                            "WinUI show(blocking) 失败，本次回退 webview（下次仍会重试 WinUI）: {e}"
+                        );
                         with_session(app, |session| {
                             session.fallback_to_webview_for_session();
                             debug_assert_eq!(
@@ -347,6 +362,19 @@ mod tests {
         );
         // 成功路径不调用 fallback
         assert_eq!(s.desired(), PopupUiKind::WinUi);
+        assert_eq!(s.active(), PopupUiKind::WinUi);
+    }
+
+    /// 按 desired 路由：失败回退后，clear + 再次成功应能回到 WinUi（模拟每次 ensure 重试）。
+    #[test]
+    fn desired_retry_after_fallback_can_return_to_winui() {
+        let mut s = PopupUiSession::new();
+        s.set_desired(PopupUiKind::WinUi);
+        s.fallback_to_webview_for_session();
+        assert_eq!(s.active(), PopupUiKind::Webview);
+        // 下次 ensure 仍读 desired=WinUi 尝试；成功则 clear
+        assert_eq!(s.desired(), PopupUiKind::WinUi);
+        s.clear_session_fallback();
         assert_eq!(s.active(), PopupUiKind::WinUi);
     }
 }
