@@ -1194,7 +1194,7 @@ git commit -m "feat(popup): 原生弹窗多服务卡片与翻译中状态"
 - 可选 `release.yml` / `nightly.yml`（仅当 build 缺 SDK 时）
 - `README.md`、`docs/agent/architecture-notes.md`
 
-- [ ] **步骤 1：CI**
+- [x] **步骤 1：CI**
 
 确认 `backend` job：
 
@@ -1205,20 +1205,20 @@ git commit -m "feat(popup): 原生弹窗多服务卡片与翻译中状态"
   working-directory: src-tauri
 ```
 
-若 WinAppSDK 头/库缺失导致 winui 编译失败：在 Windows job 增加安装步骤（例如 `winget` / 下载 Windows App SDK redistributable 或 build tools）。**优先**让路径 B 在无完整 XAML 工具链时仍能 `cargo test` 绿。
+路径 B 无 XAML SDK 依赖；CI 已加注释说明 default features 含 `popup-winui`，并可选矩阵 `cargo test --no-default-features`。
 
-- [ ] **步骤 2：文档**
+- [x] **步骤 2：文档**
 
 `architecture-notes.md` 增补：
 
 - `PopupBackend` / `popupUiBackend` / 重启切换 / 降级
-- 开发依赖：Windows 10/11、WebView2、Windows App Runtime（winui 路径）
-- 内存对照表（填实测）
+- 开发依赖：Windows 10/11、WebView2；路径 B **不强制** WinApp Runtime
+- 内存对照表（骨架 + 采集命令；实测待本机）
 
 `README.md`：用户可见说明「翻译弹窗可选原生 UI（Windows）」。
 
-- [ ] **步骤 3：内存实测**（本机，两 backend 各一轮）写入表格。
-- [ ] **步骤 4：Commit**
+- [x] **步骤 3：内存实测** — 表格骨架与 PowerShell 采集命令已写入 architecture-notes；数值 **待本机实测**（本任务环境无法起完整 app 稳态对比）。
+- [x] **步骤 4：Commit**
 
 ```bash
 git commit -m "docs(ci): 弹窗双后端 CI 说明与架构/内存文档"

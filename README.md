@@ -12,7 +12,7 @@
 
 **柿子翻译**（拼音 **Shizi**，简称 **柿子**）是一款开源的 Windows 桌面翻译软件，支持输入翻译、划词翻译与截图 OCR 翻译，可接入 OpenAI 兼容接口、Claude、Microsoft Edge 等翻译服务。
 
-灵感来自 macOS 平台的 [Bob](https://bobtranslate.com/)，基于 [Tauri 2](https://tauri.app/)、Rust 与 Vue 3 构建。
+灵感来自 macOS 平台的 [Bob](https://bobtranslate.com/)，基于 [Tauri 2](https://tauri.app/)、Rust 与 Vue 3 构建。在 Windows 上，**翻译弹窗可选原生 UI**（设置 → 通用 →「翻译弹窗 UI」：`WebView` / `WinUI` 原生；切换后需重启），设置页与 OCR 等低频界面仍为 WebView。
 
 > Shizi is an open-source Windows translator powered by LLMs and OCR — selection translate, screenshot OCR, and multi-service streaming results.
 
@@ -48,8 +48,9 @@
 ### 系统要求
 
 - Windows 10 / 11（x64）
-- [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)（Windows 11 通常已预装）
+- [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)（Windows 11 通常已预装；设置页 / OCR / 默认 WebView 弹窗依赖）
 - 截图 OCR 使用系统 Windows OCR 时，需安装对应语言的 OCR 语言包（中英混合场景尤其需要）
+- **可选原生翻译弹窗**：当前为 Win32 原生表面（配置值仍为 `winui`），**不强制**安装 Windows App SDK / WinApp Runtime；默认仍为 WebView 弹窗
 
 ## 快速开始
 
@@ -190,6 +191,7 @@
 - 取词翻译（悬停取词等）、快捷键分组 / profile 等尚未实现。
 - API Key 明文保存在 `config.json`（见上文安全说明）。
 - 用户语言包只能覆盖内置文案 key。
+- 翻译弹窗原生 UI（Windows）为实验/可选路径；切换 backend 需重启；非 Windows 仅 WebView。
 
 ### 截图 OCR
 
@@ -206,6 +208,7 @@
 - Node.js（用于前端与 `@tauri-apps/cli`）
 - Rust stable（edition 2021）
 - Windows + WebView2 Runtime
+- 原生弹窗（feature `popup-winui`，默认开启）走 Win32 路径，构建**无需** WinAppSDK / .NET；可用 `cargo test --no-default-features` 仅测 WebView 逻辑
 
 ### 常用命令
 

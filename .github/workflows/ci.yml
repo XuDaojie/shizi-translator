@@ -31,7 +31,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+      # default features 含 popup-winui（路径 B：Win32 表面，无 XAML / WinAppSDK 构建依赖）
       - run: cargo test
         working-directory: src-tauri
       - run: cargo build
+        working-directory: src-tauri
+      # 纯逻辑矩阵：关闭原生弹窗 feature，仅 WebView 路径
+      - run: cargo test --no-default-features
         working-directory: src-tauri

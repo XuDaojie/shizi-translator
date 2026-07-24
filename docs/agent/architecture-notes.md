@@ -5,10 +5,80 @@
 ## 分层与窗口
 
 - **核心层（Rust）**：翻译业务、配置、provider 抽象（LLM/MT 平级）、划词、OCR、历史、日志。
-- **UI 层**：① 翻译弹窗 `main` → `translate.html`（Vue，`src/popup/`）② 设置页 `settings` → `settings.html` ③ 截图 overlay（纯静态，永久不迁 Vue）。历史面板右侧复用 `SourceCardView` / `ResultCardView` / `LanguageToolbar`。
-- **约束**：核心逻辑不进前端；UI 模块互不耦合。
-- **弹窗后端 / WinUI 表面**：**采用路径 B：Win32 表面**（`app/popup_backend/winui/`：`WS_POPUP` + `WS_EX_TOOLWINDOW` + DWM 圆角；**未依赖 WinAppSDK / XAML Runtime**）。配置枚举值仍为 `winui`；feature `popup-winui`（Windows 默认启用）；契约 `PopupBackend` / `PopupHost`。翻译协议与配置持久化不进 UI 层。
-- **启动选用 backend（真切换）**：`lib` setup 读 `AppConfig.popup_ui_backend` → `resolve_popup_backend_kind(config, POPUP_WINUI_FEATURE, cfg!(windows))` → `create_host_with_winui_fallback`（`create_backend`：`Winui` → `WinuiPopupBackend`，`Webview` → `WebviewPopupBackend`）→ `manage(Mutex<PopupHost>)`。仅当配置为 `winui` 且 feature+Windows 时创建原生后端；`ensure_created` 失败则同进程降级 WebView 并一次性系统 dialog。设置页改 `popupUiBackend` 后需**重启**生效（无热切换）。`windowPrecreate.*.popup` 经 `host.ensure_created` 作用于**当前** backend。
+- **UI 层**：① 翻译弹窗（见下「弹窗双后端」）② 设置页 `settings` → `settings.html` ③ 截图 overlay（纯静态，永久不迁 Vue）。历史面板右侧复用 `SourceCardView` / `ResultCardView` / `LanguageToolbar`。
+- **约束**：核心逻辑不进前端 / 不进原生弹窗 UI 层；UI 模块互不耦合。设置 / OCR / overlay **始终** WebView。
+
+## 弹窗双后端（WebView | 原生 winui）
+
+规格：`docs/superpowers/specs/2026-07-24-winui-popup-backend-design.md`；计划：`docs/superpowers/plans/2026-07-24-winui-popup-backend.md`。
+
+### 契约与目录
+
+| 概念 | 说明 |
+|------|------|
+| `PopupBackend` | trait：`ensure_created` / `show` / `hide` / `destroy` / `publish`（`app/popup_backend/trait_api.rs`） |
+| `PopupHost` | 进程级调度：持有 `Box<dyn PopupBackend>` + `PopupViewModel`；可选 `degraded_from_winui` |
+| `WebviewPopupBackend` | 包装现网 `popup_window`；`publish` no-op（前端仍收 `translation:event`） |
+| `WinuiPopupBackend` | **路径 B：Win32 表面**（`WS_POPUP` + `WS_EX_TOOLWINDOW` + DWM 圆角）；配置枚举值仍为 `winui`；**未依赖 WinAppSDK / XAML Runtime** |
+| feature | `popup-winui`（`Cargo.toml` default 含此项）；`--no-default-features` 仅 WebView |
+
+业务主路径（划词 / 截图译 / 托盘打开）一律经 `popup_backend::with_host` → `PopupHost`，禁止绕过。
+
+### 配置与切换
+
+- 字段：`AppConfig.popup_ui_backend`（JSON camelCase：`popupUiBackend`），取值 `"webview" | "winui"`，**默认 `webview`**；未知值 `normalized` 回退 webview。
+- 设置页（**仅 Windows**）「翻译弹窗 UI」：改配置后需**重启**生效（v1 无热切换）。
+- 非 Windows：`resolve_popup_backend_kind` 恒为 `Webview`；配置可读写不崩溃。
+
+### 启动选用与降级
+
+```
+lib setup
+  → resolve_popup_backend_kind(config, POPUP_WINUI_FEATURE, cfg!(windows))
+  → create_host_with_winui_fallback(create_backend)
+  → manage(Mutex<PopupHost>)
+```
+
+- 仅当配置 `winui` **且** feature + Windows 时创建 `WinuiPopupBackend`。
+- `ensure_created` 失败：同进程 `replace_backend(Webview)` + 一次性系统 dialog（路径 B 成功时不弹；dialog 文案仍可引导 Runtime 页，兼容未来路径 A）。
+- `windowPrecreate.*.popup` 经 `host.ensure_created` 作用于**当前** backend。
+
+### 生命周期（与 backend 无关）
+
+- 弹窗关 = **hide** 常驻；设置 / OCR 关 = **销毁** WebView；托盘退出才结束进程。
+- 原生路径关闭语义同样 hide，不销毁 HWND（destroy 仅切换/退出路径）。
+
+### 开发依赖（本机 / CI）
+
+| 依赖 | 用途 |
+|------|------|
+| Windows 10 / 11（x64） | 产品与原生弹窗目标平台 |
+| Node.js + Rust stable + WebView2 | Tauri 主栈；设置 / OCR / WebView 弹窗 |
+| `popup-winui` feature | 默认开启；CI `cargo test` / `cargo build` 带 default features |
+| **不强制** Windows App Runtime / WinAppSDK / .NET | 路径 B 为纯 Win32 + 现有 `windows` crate；无需 XAML SDK 安装步骤 |
+
+本机加速纯逻辑测：`cd src-tauri && cargo test --no-default-features`。
+
+### 弹窗 backend 内存对照
+
+**场景：** 仅托盘 + 弹窗预建并 hide，静置 ≥30s 后稳态；**不含**打开设置/OCR 的峰值。  
+**指标：** Working Set（工作集）、Private Bytes（专用工作集）。  
+**CI：** 无数值 gate；人工期望原生常驻不差于 WebView。
+
+| 日期 | 版本 / commit | backend | WS (MB) | Private (MB) | 备注 |
+|------|---------------|---------|---------|--------------|------|
+| — | — | webview | 待本机实测 | 待本机实测 | 预建 hide 稳态 |
+| — | — | winui（路径 B） | 待本机实测 | 待本机实测 | 预建 hide 稳态 |
+
+采集命令（两 backend 各启动一轮，静置后再采）：
+
+```powershell
+# 进程名以实际 exe 为准（dev 可能为 shizi / shizi-translator 等）
+Get-Process shizi* -ErrorAction SilentlyContinue |
+  Select-Object Name, Id,
+    @{N='WS_MB';E={[math]::Round($_.WorkingSet64/1MB,1)}},
+    @{N='PM_MB';E={[math]::Round($_.PrivateMemorySize64/1MB,1)}}
+```
 
 ## 托盘与窗口生命周期
 
@@ -70,11 +140,12 @@
 | 领域 | 路径 |
 |------|------|
 | 装配 / 托盘 / 快捷键 | `src-tauri/src/lib.rs`、`app/` |
+| 弹窗双后端 | `src-tauri/src/app/popup_backend/`（`host` / `webview` / `winui/`） |
 | 配置 | `src-tauri/src/core/config/` |
 | 翻译 / 协议 | `src-tauri/src/core/translation/` |
 | LLM / MT | `src-tauri/src/core/llm/`、`core/mt/` |
 | 检查更新 | `src-tauri/src/core/update/`、`ui/update.rs` |
 | 截图 / OCR | `src-tauri/src/core/capture/`、`core/ocr/`、`ocr_translation.rs` |
 | UI commands | `src-tauri/src/ui/` |
-| 翻译弹窗前端 | `frontend/src/popup/` |
+| 翻译弹窗前端（WebView） | `frontend/src/popup/` |
 | 设置页 | `frontend/src/` + `settings.html` |
