@@ -26,15 +26,20 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::HiDpi::{GetDpiForSystem, GetDpiForWindow};
-use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, SetFocus, VK_CONTROL, VK_ESCAPE};
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    GetKeyState, SetActiveWindow, SetFocus, VK_CONTROL, VK_ESCAPE,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DestroyWindow, GetClientRect, IsWindow, IsWindowVisible,
-    LoadCursorW, PostMessageW, RegisterClassExW, SetWindowPos, ShowWindow, CS_DBLCLKS,
-    CS_DROPSHADOW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, HMENU, HWND_TOP, IDC_ARROW,
-    SWP_SHOWWINDOW, SW_HIDE, SW_SHOW, USER_DEFAULT_SCREEN_DPI, WM_CLOSE, WM_DESTROY, WM_KEYDOWN,
+    BringWindowToTop, CreateWindowExW, DefWindowProcW, DestroyWindow, GetClientRect,
+    GetForegroundWindow, GetWindowThreadProcessId, IsWindow, IsWindowVisible, LoadCursorW,
+    PostMessageW, RegisterClassExW, SetForegroundWindow, SetWindowPos, ShowWindow, CS_DBLCLKS,
+    CS_DROPSHADOW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, HMENU, HWND_NOTOPMOST, HWND_TOP,
+    HWND_TOPMOST, IDC_ARROW, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, SW_HIDE,
+    SW_SHOW, SW_SHOWNOACTIVATE, USER_DEFAULT_SCREEN_DPI, WM_CLOSE, WM_DESTROY, WM_KEYDOWN,
     WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MOUSEWHEEL, WM_PAINT, WM_USER, WNDCLASSEXW,
     WS_CLIPCHILDREN, WS_EX_TOOLWINDOW, WS_POPUP,
 };
+use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
 
 use crate::app::popup_backend::types::{
     PopupCardStatus, PopupPositionMode, PopupUserAction, PopupViewModel,
@@ -1361,6 +1366,10 @@ pub fn create_hidden_popup() -> Result<NativePopupHwnd, String> {
 }
 
 /// 显示弹窗。`NearCursor` 复用 `compute_popup_position`；`Restore` 不改坐标。
+///
+/// 全局快捷键 / 取词线程可能非创建线程调用：除定位与 `ShowWindow` 外，必须走
+/// **置前台**（TOPMOST 闪升 + `SetForegroundWindow`），否则 `WS_EX_TOOLWINDOW`
+/// 无任务栏按钮时窗口会静默出现在背后，表现为「快捷键没效果」。
 pub fn show_popup(window: &NativePopupHwnd, mode: PopupPositionMode) -> Result<(), String> {
     if !window.is_valid() {
         return Err("原生弹窗 HWND 无效".to_string());
@@ -1388,27 +1397,89 @@ pub fn show_popup(window: &NativePopupHwnd, mode: PopupPositionMode) -> Result<(
                 let y = logical_to_physical(pos.y, scale);
                 let w = logical_to_physical(POPUP_LOGICAL_WIDTH, scale);
                 let h = logical_to_physical(POPUP_LOGICAL_HEIGHT, scale);
+                // 先定位再显示；z-order 交由 bring_popup_to_foreground 处理
                 unsafe {
-                    SetWindowPos(hwnd, HWND_TOP, x, y, w, h, SWP_SHOWWINDOW)
-                        .map_err(|e| format!("SetWindowPos 失败: {e}"))?;
+                    SetWindowPos(
+                        hwnd,
+                        HWND_TOP,
+                        x,
+                        y,
+                        w,
+                        h,
+                        SWP_SHOWWINDOW | SWP_NOACTIVATE,
+                    )
+                    .map_err(|e| format!("SetWindowPos 失败: {e}"))?;
                 }
             } else {
                 unsafe {
-                    let _ = ShowWindow(hwnd, SW_SHOW);
+                    let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
                 }
             }
         }
         PopupPositionMode::Restore => unsafe {
-            let _ = ShowWindow(hwnd, SW_SHOW);
+            let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
         },
     }
 
-    // 键盘快捷键需要焦点
-    unsafe {
-        let _ = SetFocus(hwnd);
-    }
-
+    bring_popup_to_foreground(hwnd);
     Ok(())
+}
+
+/// 将 TOOLWINDOW 弹窗拉到前台并取得焦点（全局热键回调 / 后台线程安全调用）。
+fn bring_popup_to_foreground(hwnd: HWND) {
+    unsafe {
+        let _ = ShowWindow(hwnd, SW_SHOW);
+        // TOPMOST 闪升：强制盖过当前前台应用，再退回 NOTOPMOST，避免永久置顶
+        let _ = SetWindowPos(
+            hwnd,
+            HWND_TOPMOST,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW,
+        );
+        let _ = SetWindowPos(
+            hwnd,
+            HWND_NOTOPMOST,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW,
+        );
+        let _ = BringWindowToTop(hwnd);
+
+        // 后台线程 / 非前台进程时 SetForegroundWindow 常被拒绝；
+        // 附着到当前前台线程输入队列可提高成功率（全局热键后尤其重要）。
+        let fg = GetForegroundWindow();
+        let target_tid = GetWindowThreadProcessId(hwnd, None);
+        let fg_tid = if fg.0.is_null() {
+            0
+        } else {
+            GetWindowThreadProcessId(fg, None)
+        };
+        let cur_tid = GetCurrentThreadId();
+        let mut attached_fg = false;
+        let mut attached_target = false;
+        if fg_tid != 0 && fg_tid != cur_tid {
+            attached_fg = AttachThreadInput(cur_tid, fg_tid, true).as_bool();
+        }
+        if target_tid != 0 && target_tid != cur_tid {
+            attached_target = AttachThreadInput(cur_tid, target_tid, true).as_bool();
+        }
+
+        let _ = SetForegroundWindow(hwnd);
+        let _ = SetActiveWindow(hwnd);
+        let _ = SetFocus(hwnd);
+
+        if attached_target {
+            let _ = AttachThreadInput(cur_tid, target_tid, false);
+        }
+        if attached_fg {
+            let _ = AttachThreadInput(cur_tid, fg_tid, false);
+        }
+    }
 }
 
 /// 隐藏弹窗（幂等）。

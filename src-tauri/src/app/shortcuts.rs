@@ -456,9 +456,11 @@ fn start_popup_translation(app_handle: tauri::AppHandle, input: TranslationInput
         return;
     }
 
-    // 热路径：弹窗已存活 → host.show + 立即开译（前端已 listen）。
-    let alive = crate::app::popup_backend::with_host(&app_handle, |host| host.is_alive())
-        .unwrap_or(false);
+    use crate::app::popup_backend::{with_host, PopupUiBackendKind};
+
+    // 热路径：弹窗已存活 → host.show + 立即开译。
+    let (alive, kind) = with_host(&app_handle, |host| (host.is_alive(), host.kind()))
+        .unwrap_or((false, PopupUiBackendKind::Webview));
     if alive {
         let config = state.config_store.get();
         if let Ok(config) = &config {
@@ -473,13 +475,40 @@ fn start_popup_translation(app_handle: tauri::AppHandle, input: TranslationInput
         return;
     }
 
-    // 冷路径（自启后首次等）：独立线程 ensure+show → 开译。
-    // 前端 Vue listen 仍可能未就绪，事件可能丢失；pending 原文 + 前端冷启动补发兜底。
-    // ensure_created 在后台线程阻塞建窗，避免快捷键回调栈 WebView2 死锁，并在开译前保证窗就绪。
+    // 冷路径：窗尚未存活。
+    // - WebView：独立线程 ensure+show，避免快捷键回调栈 WebView2 死锁。
+    // - WinUI/原生 HWND：必须在主线程 CreateWindow/Show，否则无消息泵的 worker 建窗会「假死」
+    //   （快捷键看起来完全没效果）。经 run_on_main_thread 调度。
     let app = app_handle.clone();
+    if kind == PopupUiBackendKind::Winui {
+        let app_for_main = app.clone();
+        if let Err(error) = app_for_main.run_on_main_thread(move || {
+            let state = app.state::<AppState>();
+            let show_result = with_host(&app, |host| {
+                host.ensure_created()?;
+                host.show(crate::app::popup_window::PopupPositionMode::NearCursor)
+            })
+            .and_then(std::convert::identity);
+            if let Err(error) = show_result {
+                show_translation_error(&app, error);
+                return;
+            }
+            if let Err(error) = start_translation_from_input(input, app.clone(), state.inner()) {
+                show_translation_error(&app, error);
+            }
+        }) {
+            show_translation_error(
+                &app_handle,
+                format!("无法在主线程唤起原生弹窗: {error}"),
+            );
+        }
+        return;
+    }
+
+    // 前端 Vue listen 仍可能未就绪，事件可能丢失；pending 原文 + 前端冷启动补发兜底。
     std::thread::spawn(move || {
         let state = app.state::<AppState>();
-        let show_result = crate::app::popup_backend::with_host(&app, |host| {
+        let show_result = with_host(&app, |host| {
             host.ensure_created()?;
             host.show(crate::app::popup_window::PopupPositionMode::NearCursor)
         })
