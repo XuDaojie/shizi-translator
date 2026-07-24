@@ -13,8 +13,7 @@ pub const POPUP_WINUI_FEATURE: bool = cfg!(all(windows, feature = "popup-winui")
 pub struct PopupHost {
     backend: Box<dyn PopupBackend>,
     view_model: PopupViewModel,
-    /// 若曾从 WinUI 降级到 WebView，供诊断/设置页提示（本任务仅占位）。
-    #[allow(dead_code)]
+    /// 若曾从 WinUI 降级到 WebView，供诊断/设置页提示。
     degraded_from_winui: bool,
 }
 
@@ -25,6 +24,21 @@ impl PopupHost {
             view_model: PopupViewModel::default(),
             degraded_from_winui: false,
         }
+    }
+
+    /// 销毁当前 backend 并替换为新后端（典型：WinUI 初始化失败 → WebView）。
+    ///
+    /// 设置 `degraded_from_winui`；`view_model` 重置为默认（WebView 靠后续 event 再填）。
+    pub fn replace_backend(&mut self, backend: Box<dyn PopupBackend>) {
+        self.backend.destroy();
+        self.backend = backend;
+        self.view_model = PopupViewModel::default();
+        self.degraded_from_winui = true;
+    }
+
+    /// 是否曾从 WinUI 降级到 WebView（本进程内）。
+    pub fn is_degraded_from_winui(&self) -> bool {
+        self.degraded_from_winui
     }
 
     pub fn ensure_created(&mut self) -> Result<(), String> {
@@ -150,6 +164,33 @@ mod tests {
         assert!(!host.is_visible());
         let ops = log.lock().unwrap().clone();
         assert_eq!(ops.iter().filter(|x| **x == "hide").count(), 2);
+    }
+
+    #[test]
+    fn degraded_flag_set_on_replace() {
+        // 直接 replace_backend 后 is_degraded_from_winui == true，且旧 backend 被 destroy。
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let mut host = PopupHost::from_backend(Box::new(MockBackend {
+            log: log.clone(),
+            visible: false,
+            alive: true,
+        }));
+        assert!(!host.is_degraded_from_winui());
+
+        let log2 = Arc::new(Mutex::new(Vec::new()));
+        host.replace_backend(Box::new(MockBackend {
+            log: log2,
+            visible: false,
+            alive: false,
+        }));
+
+        assert!(host.is_degraded_from_winui());
+        assert_eq!(host.kind(), PopupUiBackendKind::Webview);
+        let ops = log.lock().unwrap().clone();
+        assert!(
+            ops.iter().any(|x| *x == "destroy"),
+            "replace 须 destroy 旧 backend，ops={ops:?}"
+        );
     }
 
     #[test]

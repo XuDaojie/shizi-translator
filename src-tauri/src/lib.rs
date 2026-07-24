@@ -163,14 +163,14 @@ pub fn run() {
                 .state::<AppState>()
                 .set_shortcut_conflicts(shortcut_conflicts);
 
-            // 弹窗后端宿主：配置解析 → create_backend（M1 Winui 回退 WebView）→ manage。
+            // 弹窗后端宿主：配置解析 → create（WinUI ensure 失败则降级 WebView + 提示）→ manage。
             let kind = popup_backend::resolve_popup_backend_kind(
                 &config.popup_ui_backend,
                 popup_backend::POPUP_WINUI_FEATURE,
                 cfg!(windows),
             );
-            let backend = popup_backend::create_backend(app.handle(), kind);
-            app.manage(Mutex::new(PopupHost::from_backend(backend)));
+            let host = popup_backend::create_host_with_winui_fallback(app.handle(), kind);
+            app.manage(Mutex::new(host));
 
             // 按 windowPrecreate（手动 / 自启）决定是否预建 main 与 overlay。
             // 设置页 / 文字识别不在启动时创建。预建经 ensure_popup_window → host.ensure_created。
