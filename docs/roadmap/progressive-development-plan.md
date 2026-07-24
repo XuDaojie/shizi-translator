@@ -245,106 +245,59 @@ Vision Framework
 
 ### 目标
 
-将性能敏感的翻译弹窗从 WebView 替换为 Slint：
+将性能敏感的**翻译弹窗**在 Windows 上做成可选原生后端（配置 popupUiBackend：webview | winui），设置 / OCR / overlay 仍为 WebView。业务仍在 Rust 核心。
 
-```text
-TranslationService 不变
-LlmProvider 不变
-配置系统不变
-Web 设置页不变
-只替换 TranslationPopupPort 实现
-```
+> **实现状态（2026-07）：** 已按设计 spec 落地 **PopupBackend 双后端**（非历史草案中的 Slint 全量替换）。原生表面锁定 **路径 B：Win32**（配置枚举仍为 winui，不依赖 XAML / 不强制 WinAppSDK）。详见：
+> - docs/superpowers/specs/2026-07-24-winui-popup-backend-design.md
+> - docs/superpowers/plans/2026-07-24-winui-popup-backend.md
+> - docs/agent/architecture-notes.md（弹窗双后端 / 内存对照）
 
-需要实现：
+`	ext
+TranslationService / LlmProvider / 配置系统不变
+Web 设置页 / OCR / overlay 不变
+仅翻译弹窗经 PopupBackend 可切换 WebView | 原生
+`
 
-- Slint 弹窗常驻内存。
-- 默认隐藏。
-- 毫秒级 show / hide。
-- 无焦点置顶。
-- 鼠标跟随或选区附近定位。
-- 流式 token 与 Slint property 绑定。
-- Web 翻译窗可保留为 fallback。
+已实现 / 目标对齐：
 
-### 核心交付物
+- [x] PopupBackend + PopupHost + PopupViewModel 共用管道
+- [x] popupUiBackend 配置；Windows 设置页切换；**重启生效**
+- [x] 原生路径 B（Win32 壳 + DWM 圆角）；feature popup-winui 默认开
+- [x] 初始化失败降级 webview；非 Windows 强制 webview
+- [x] 划词 / 截图 / 托盘主路径经 with_host；多服务卡与用户动作（代码就绪，待本机对照测）
+- [ ] 内存常驻对照数值（表格骨架已写入 architecture-notes，待本机实测）
 
-```text
-src-tauri/ui/popup.slint
-src-tauri/src/ui/slint_popup.rs
-src-tauri/src/ui/popup_backend.rs
-```
+### 核心交付物（当前）
 
-Slint 状态建议：
+`	ext
+src-tauri/src/app/popup_backend/
+  trait_api.rs / host.rs / view_model.rs / webview.rs
+  winui/  （路径 B：backend + ui + actions + bootstrap）
+AppConfig.popup_ui_backend  + 设置页 GeneralPanel
+`
 
-```slint
-export component TranslationPopup inherits Window {
-    in-out property <string> source_text;
-    in-out property <string> translated_text;
-    in-out property <string> status;
-    in-out property <bool> is_streaming;
-    in-out property <bool> has_error;
-    in-out property <string> error_message;
+### 技术要点（现状）
 
-    callback retry();
-    callback copy_result();
-    callback close_popup();
-}
-```
+- 关弹窗 = hide 常驻；设置/OCR 关 = 销毁；无 .NET。
+- 热路径：nsure 预建 → show(NearCursor|Restore) → publish 快照（WebView 仍 emit 	ranslation:event）。
+- CI：Windows cargo test / cargo build 带 default features（含 popup-winui），另有 --no-default-features 矩阵。
 
-### 技术难点
+### 历史草案说明
 
-#### 无焦点置顶
+下文曾规划 **Slint** 作为原生弹窗栈；编码阶段已改为 **WinUI 取向 + 路径 B Win32**（见上述 spec）。下列任务列表保留作演进对照，**不以 Slint 为实现目标**：
 
-Windows 侧重点关注：
-
-- `WS_EX_NOACTIVATE`
-- `WS_EX_TOPMOST`
-- `ShowWindow`
-- `SetWindowPos`
-- 不抢输入焦点
-- 不打断用户当前应用
-
-#### 毫秒级唤醒
-
-热路径避免：
-
-- 创建窗口。
-- 重新加载 UI。
-- 重新初始化字体或图形资源。
-- 重新创建 LLM client。
-
-热路径只做：
-
-```text
-set position
-clear state
-show
-push events
-```
-
-#### UI 线程更新
-
-Slint property 更新应由 Slint adapter 内部负责线程切换，不让 core 层知道 UI 运行时细节。
-
-### 推荐开发任务
-
-```text
-任务 1：确认 TranslationPopupPort 接口稳定。
-任务 2：新增 Slint 依赖与 popup.slint，不接入业务，仅能启动隐藏窗口。
-任务 3：实现 SlintPopup adapter，支持 show / hide / push_event。
-任务 4：接入 PopupBackend 配置，允许 Web 和 Slint 切换。
-任务 5：实现 Windows 下无焦点置顶 show/hide。
-任务 6：优化热路径：应用启动时预创建 popup，快捷键触发时只更新状态和显示。
-任务 7：删除 Web 翻译窗中的业务状态，只保留设置页 WebView。
-```
+`	ext
+（历史）任务 1–7：Slint popup / TranslationPopupPort 切换 —— 已由 PopupBackend 方案替代
+（当前）收尾：本机双 backend 主路径手测、内存表填数、按需视觉/无焦点打磨
+`
 
 ### 验收标准
 
-- 切换到 Slint 后，翻译事件仍可流式显示。
-- 里程碑 1 的 `TranslationService` / `LlmProvider` 不需要重写。
-- 弹窗显示不抢焦点。
-- 热启动显示体感接近瞬时。
-- 设置页仍使用 WebView，不受影响。
-- Web 翻译窗可以作为 fallback 保留一段时间。
+- [x] 切换 backend 后翻译事件仍可流式显示（代码经 ViewModel / 	ranslation:event；待本机对照）。
+- [x] 里程碑 1 的 TranslationService / LlmProvider 不需要重写。
+- [x] 设置页仍使用 WebView，不受影响。
+- [x] Web 翻译窗作为 fallback / 默认 backend 保留。
+- [ ] 弹窗显示不抢焦点、热启动体感：代码已就绪，待本机手动。
 
 ## 里程碑 4：多端打包与细节抛光
 

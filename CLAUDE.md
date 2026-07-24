@@ -12,7 +12,7 @@ Windows 端大模型翻译软件（Tauri 2 + Vue/Vite），目标体验接近 ma
 ```
 frontend/          Vite：settings.html（设置）、translate.html（弹窗 Vue）、public/overlay.html（OCR 框选，永久静态）
   src/popup/       翻译弹窗组件与 composable；历史面板复用其卡片组件
-src-tauri/         Rust：lib.rs 装配；app/ 托盘快捷键窗口；core/{config,history,llm,mt,translation,selection,capture,ocr,update}；ui/ commands
+src-tauri/         Rust：lib.rs 装配；app/（托盘/快捷键/窗口 + popup_backend 双后端）；core/{config,history,llm,mt,translation,selection,capture,ocr,update}；ui/ commands
 capabilities/      Tauri 权限（改快捷键/窗口 API 须同步）
 plugins.md         已装插件/技能清单（变更须同步）
 ```
@@ -21,7 +21,7 @@ plugins.md         已装插件/技能清单（变更须同步）
 
 ## 开发与验证
 
-- 环境：Node.js、Rust stable、Windows WebView2
+- 环境：Node.js、Rust stable、Windows WebView2（原生弹窗路径 B 不强制 WinAppSDK）
 - 常用：`npm install` · `npm run tauri dev` · `npm run tauri build` · `cd src-tauri && cargo test|build`
 - 前端：`npm run dev` / `build` / `typecheck` / `test`（vitest）
 - 调试：先 `npm run dev` 再跑 release 下的 dev 模式 exe（加载 localhost:5173），或 VS Code F5 `tauri dev`
@@ -30,9 +30,10 @@ plugins.md         已装插件/技能清单（变更须同步）
 
 完整说明见 [docs/agent/architecture-notes.md](docs/agent/architecture-notes.md)。改模块前先读对应小节。
 
-- **分层**：业务在 Rust 核心；UI 仅弹窗 / 设置 / overlay，勿把核心逻辑写进前端、勿让 UI 模块互耦。
-- **托盘驻留**：关窗 = hide；托盘退出才进程结束。`main` 默认不可见，冷启动由前端 show。
-- **配置事实来源**：`config.json` 的 `services[]`；协议 `openai_chat` / `claude_messages` / `mock` / `microsoft_edge`（`provider_for_service`）。`AppConfig` 另含 `updateChannel`（`stable`/`beta`）、`autoCheckUpdate`（默认 `true`）、`launchAtLogin`（默认 `false`，Windows Run + `--autostart` 静默托盘）。
+- **分层**：业务在 Rust 核心；UI 仅弹窗 / 设置 / overlay，勿把核心逻辑写进前端或原生弹窗层、勿让 UI 模块互耦。设置 / OCR / overlay 始终 WebView。
+- **弹窗双后端**：`AppConfig.popup_ui_backend`（`popupUiBackend`：`webview`|`winui`，默认 webview）；契约 `PopupBackend` / `PopupHost`（`app/popup_backend/`）。Windows 设置页可切换，**重启生效**；非 Windows 强制 webview。原生为路径 B（Win32，feature `popup-winui` 默认开）；`ensure_created` 失败同进程降级 webview。划词/截图/托盘主路径经 `with_host`，禁止绕过。
+- **托盘驻留**：弹窗关窗 = hide；设置/OCR 关窗 = 销毁；托盘退出才进程结束。`main` 默认不可见，冷启动由前端 show（WebView 路径）。
+- **配置事实来源**：`config.json` 的 `services[]`；协议 `openai_chat` / `claude_messages` / `mock` / `microsoft_edge`（`provider_for_service`）。`AppConfig` 另含 `updateChannel`（`stable`/`beta`）、`autoCheckUpdate`（默认 `true`）、`launchAtLogin`（默认 `false`，Windows Run + `--autostart` 静默托盘）、`popupUiBackend`。
 - **配置同步**：设置页 `syncFromBackend`；`save_app_config` → `app-config:changed` 刷新弹窗卡片。
 - **批次翻译**：启用服务保序并发；事件带 `serviceInstanceId`；单服务失败不影响其他。
 - **快捷键**：`Alt+D` 划词、`Alt+S` 截图译；文字识别默认无快捷键（托盘入口）；新快捷键同步 capabilities。

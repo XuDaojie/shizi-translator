@@ -1234,8 +1234,8 @@ git commit -m "docs(ci): 弹窗双后端 CI 说明与架构/内存文档"
 - `docs/superpowers/specs/2026-07-24-winui-popup-backend-design.md` 验收清单勾选
 - 若有 `docs/roadmap/progressive-development-plan.md` 则更新对应条目
 
-- [ ] **步骤 1：** 按 spec「验收清单」逐条勾选并注明证据（测试命令 / 手动）。
-- [ ] **步骤 2：**
+- [x] **步骤 1：** 按 spec「验收清单」逐条勾选并注明证据（测试命令 / 手动 / 待本机手动）。
+- [x] **步骤 2：**
 
 ```bash
 cd src-tauri && cargo test
@@ -1243,13 +1243,13 @@ npm run test
 npm run typecheck
 ```
 
-- [ ] **步骤 3：Commit**
+- [x] **步骤 3：Commit**
 
 ```bash
 git commit -m "docs: 同步弹窗双后端架构与验收状态"
 ```
 
-**M4 / 全计划完成门禁：** spec 验收 1–7 可声明完成；无 .NET；Windows CI 绿。
+**M4 / 全计划完成门禁：** spec 验收 1–7 已勾选（含「待本机手动」子项）；无 .NET；CI 带 `popup-winui` + `--no-default-features`；内存数值待本机填表。
 
 ---
 

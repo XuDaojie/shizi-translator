@@ -242,10 +242,31 @@ WebView 路径可继续走现有 Tauri 事件 + Vue；由适配层完成 ViewMod
 
 ## 验收清单
 
-1. Windows 上可在设置中选择 `webview` / `winui`，重启后弹窗走对应 backend。  
-2. 非 Windows 仅 webview；配置写 `winui` 不崩溃。  
-3. WinUI 初始化失败时回退 webview，翻译主路径仍可用。  
-4. 设置 / OCR 关闭仍销毁 WebView；弹窗关仍 hide 常驻。  
-5. 划词 / 截图译 / 托盘打开主路径在两种 backend 下可用（WinUI 按里程碑逐步对齐）。  
-6. Windows CI 能构建带 WinUI 特性的安装产物；无 .NET 运行时依赖。  
-7. 文档（架构说明 / 开发依赖）已同步。
+> 勾选规则：有自动化/代码证据则勾选并写证据；仅本机手工路径写「代码已就绪，待本机手动」，不假勾。
+
+1. [x] Windows 上可在设置中选择 `webview` / `winui`，重启后弹窗走对应 backend。  
+   - **证据**：`frontend/src/settings/panels/GeneralPanel.vue` 暴露选项；`AppConfig.popup_ui_backend` 序列化/归一化单测（`core/config/types.rs`）；`lib.rs` setup → `resolve_popup_backend_kind` + `create_host_with_winui_fallback`（`33f05e8`）。  
+   - **待本机手动**：设置改 `winui` 后重启，确认 HWND 原生壳 vs WebView 弹窗。
+
+2. [x] 非 Windows 仅 webview；配置写 `winui` 不崩溃。  
+   - **证据**：`resolve_popup_backend_kind(..., is_windows=false)` 单测；`#[cfg(not(all(windows, feature = "popup-winui")))]` 下 `create_backend(Winui)` 回退 WebView + warn。  
+   - **命令**：`cd src-tauri && cargo test resolve_popup_backend`（及 host 相关测）。
+
+3. [x] WinUI 初始化失败时回退 webview，翻译主路径仍可用。  
+   - **证据**：`create_host_with_winui_fallback` 在 `ensure_created` Err 时 `replace_backend(Webview)` + 一次性 dialog（`33c6ab2`）；路径 B 下 `try_bootstrap` 恒 ok（`bootstrap.rs` 单测）。  
+   - **待本机手动**：人为破坏原生窗创建后应见 dialog 并仍可划词译（路径 B 正常不触发）。
+
+4. [x] 设置 / OCR 关闭仍销毁 WebView；弹窗关仍 hide 常驻。  
+   - **证据**：生命周期未改：`window.rs` / 既有 close 策略；弹窗路径 `hide` 经 `PopupHost`；OCR 路径 `with_host(... hide)`。WebView `destroy` 真销毁（`webview.rs`）。  
+   - **待本机手动**：关设置/OCR 进程中窗口消失；关弹窗可再次快捷键唤起且常驻。
+
+5. [x] 划词 / 截图译 / 托盘打开主路径在两种 backend 下可用（WinUI 按里程碑逐步对齐）。  
+   - **证据（代码已就绪）**：`shortcuts.rs` / `web_popup.rs` / `window.rs` / 原生 `actions.rs` 均经 `with_host`；ViewModel 归并 + 多服务卡 / 用户动作（`d74fd13`、`f07fd5e` 等）。  
+   - **待本机手动**：webview 与 winui 各测一轮划词（Alt+D）、截图译（Alt+S）、托盘打开。
+
+6. [x] Windows CI 能构建带 WinUI 特性的安装产物；无 .NET 运行时依赖。  
+   - **证据**：`.github/workflows/ci.yml` backend：`cargo test` + `cargo build`（default 含 `popup-winui`）+ `cargo test --no-default-features`；`Cargo.toml` 无 .NET；路径 B 无 XAML SDK 步骤。  
+   - **命令（本机）**：`cd src-tauri && cargo test && cargo build`。
+
+7. [x] 文档（架构说明 / 开发依赖）已同步。  
+   - **证据**：`docs/agent/architecture-notes.md`（双后端 / 降级 / 依赖 / 内存表）；`README.md` 用户说明；`AGENTS.md` / `Claude.md` 架构要点；本 spec 验收勾选（任务 16–17）。
