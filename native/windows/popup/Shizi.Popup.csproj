@@ -47,4 +47,12 @@
   <ItemGroup>
     <Manifest Include="$(ApplicationManifest)" />
   </ItemGroup>
+
+  <!-- 测试工程在子目录；SDK 默认 **/*.cs 会误编，需显式排除 -->
+  <ItemGroup>
+    <Compile Remove="Shizi.Popup.Tests/**" />
+    <None Remove="Shizi.Popup.Tests/**" />
+    <EmbeddedResource Remove="Shizi.Popup.Tests/**" />
+    <Page Remove="Shizi.Popup.Tests/**" />
+  </ItemGroup>
 </Project>
