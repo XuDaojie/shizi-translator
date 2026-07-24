@@ -16,9 +16,12 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- 顶栏：可拖；图钉 / 截图译 / 收藏 / 设置 -->
-        <Border x:Name="AppTitleBar"
-                Grid.Row="0"
+        <!--
+          顶栏布局要点（WinUI SetTitleBar 坑）：
+          只有中间 DragRegion 交给 SetTitleBar 作拖拽区；左右按钮必须在其外，
+          否则整栏变成非客户区，按钮点不到，双击标题还会被系统当最大化。
+        -->
+        <Border Grid.Row="0"
                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                 BorderThickness="0,0,0,1"
@@ -42,14 +45,20 @@
                     </Button>
                 </StackPanel>
 
-                <TextBlock Grid.Column="1"
-                           Text="Shizi"
-                           VerticalAlignment="Center"
-                           HorizontalAlignment="Center"
-                           FontWeight="SemiBold"
-                           FontSize="13"
-                           Opacity="0.85"
-                           IsHitTestVisible="False" />
+                <!-- 仅此区域 SetTitleBar：拖动窗口；标题文字不参与命中 -->
+                <Border x:Name="AppTitleBar"
+                        Grid.Column="1"
+                        Background="Transparent"
+                        VerticalAlignment="Stretch"
+                        HorizontalAlignment="Stretch">
+                    <TextBlock Text="Shizi"
+                               VerticalAlignment="Center"
+                               HorizontalAlignment="Center"
+                               FontWeight="SemiBold"
+                               FontSize="13"
+                               Opacity="0.85"
+                               IsHitTestVisible="False" />
+                </Border>
 
                 <StackPanel Grid.Column="2"
                             Orientation="Horizontal"

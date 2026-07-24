@@ -29,7 +29,9 @@ pub async fn capture_screen() -> Result<CapturedImage, CaptureError> {
 }
 
 /// 返回光标所在显示器工作区逻辑像素。
-pub use cursor::cursor_logical_context;
+pub use cursor::{
+    cursor_logical_context, cursor_monitor_physical_bounds, cursor_monitor_scale_factor,
+};
 
 /// 对已抓帧按物理像素矩形裁剪并 OCR。
 /// 按 `ocr_services` 解析引擎；视觉失败不回退 Windows。

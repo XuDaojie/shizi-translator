@@ -1,4 +1,4 @@
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::{
@@ -80,10 +80,8 @@ pub async fn start_ocr_capture_flow(app: AppHandle, state: AppState) {
         }
     };
 
-    let scale = app
-        .get_webview_window("main")
-        .and_then(|w| w.scale_factor().ok())
-        .unwrap_or(1.0);
+    // 与 ocr_popup 一致：按光标所在显示器 DPI，避免 main 缺失时 scale=1.0 导致 overlay 仅左上角。
+    let scale = crate::platform::cursor_monitor_scale_factor();
 
     if let Err(error) = state.set_pending_capture(frame, scale) {
         let _ = state.finish_capture();

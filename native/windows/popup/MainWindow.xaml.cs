@@ -55,6 +55,7 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
 
+        // 仅中间 DragRegion（AppTitleBar）参与拖拽；左右按钮在其外，可正常点击。
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
 
@@ -64,13 +65,10 @@ public sealed partial class MainWindow : Window
 
         _appWindow.IsShownInSwitchers = false;
 
-        if (_appWindow.Presenter is OverlappedPresenter presenter)
-        {
-            presenter.IsResizable = false;
-            presenter.IsMaximizable = false;
-            presenter.IsMinimizable = false;
-            presenter.SetBorderAndTitleBar(true, false);
-        }
+        ConfigurePopupPresenter();
+
+        // 双击标题拖拽区仍可能被系统最大化：强制还原，弹窗不允许最大化/全屏。
+        _appWindow.Changed += AppWindow_Changed;
 
         TryResizeLogical(420, 280);
 
@@ -91,6 +89,36 @@ public sealed partial class MainWindow : Window
 
         // 首帧后跑 ready / config / pending
         Activated += MainWindow_FirstActivated;
+    }
+
+    /// <summary>弹窗固定为普通叠层窗：不可改大小 / 最大化 / 最小化。</summary>
+    private void ConfigurePopupPresenter()
+    {
+        if (_appWindow.Presenter is not OverlappedPresenter presenter)
+        {
+            return;
+        }
+
+        presenter.IsResizable = false;
+        presenter.IsMaximizable = false;
+        presenter.IsMinimizable = false;
+        presenter.SetBorderAndTitleBar(true, false);
+        if (presenter.State == OverlappedPresenterState.Maximized
+            || presenter.State == OverlappedPresenterState.Minimized)
+        {
+            presenter.Restore();
+        }
+    }
+
+    private void AppWindow_Changed(AppWindow sender, AppWindowChangedEventArgs args)
+    {
+        if (!args.DidPresenterChange && !args.DidSizeChange)
+        {
+            return;
+        }
+
+        // 标题栏双击等路径仍可能进入 Maximized；立刻还原并重申约束。
+        ConfigurePopupPresenter();
     }
 
     private void MainWindow_FirstActivated(object sender, WindowActivatedEventArgs args)
@@ -127,8 +155,11 @@ public sealed partial class MainWindow : Window
             MoveLogical(logicalX, logicalY);
         }
 
+        // show 前后重申 presenter：避免上次误最大化后仍以全屏形态出现。
+        ConfigurePopupPresenter();
         _appWindow.Show();
         IsPopupVisible = true;
+        ConfigurePopupPresenter();
 
         // 快捷键/托盘在 shizi 主进程触发，弹窗在子进程：Windows 会拦截跨进程
         // SetForegroundWindow/Activate。结果是「IPC show 成功、IsWindowVisible=true」，

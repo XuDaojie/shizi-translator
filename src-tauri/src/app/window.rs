@@ -23,7 +23,11 @@ pub(crate) fn attach_close_to_hide(window: &WebviewWindow) {
 fn present_window(window: &WebviewWindow) -> Result<(), String> {
     window.show().map_err(|error| error.to_string())?;
     window.unminimize().map_err(|error| error.to_string())?;
+    // 设置窗从托盘/WinUI Bridge 打开时，主进程未必拥有前台权；尽量抢焦点，
+    // 避免窗已创建却被其它应用（或置顶弹窗）挡住，表现为「设置按钮无效」。
+    let _ = window.set_always_on_top(true);
     window.set_focus().map_err(|error| error.to_string())?;
+    let _ = window.set_always_on_top(false);
     Ok(())
 }
 

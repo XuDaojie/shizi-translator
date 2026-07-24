@@ -1,28 +1,48 @@
-use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+use tauri::{
+    Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindow,
+    WebviewWindowBuilder, WindowEvent,
+};
 
 use crate::{
     app::state::{AppState, CapturePurpose},
     core::config::AppConfig,
     core::ocr::OcrHints,
-    platform::{recognize_cropped_full, recognize_region},
+    platform::{
+        cursor_monitor_physical_bounds, recognize_cropped_full, recognize_region,
+    },
     ui::web_popup::{show_translation_error, show_translation_popup, start_translation_from_input},
 };
 
 pub const OVERLAY_LABEL: &str = "screenshot-overlay";
 
+/// 把 overlay 对齐到光标所在显示器物理全屏（抓帧同源）。
+/// 仅用 `.fullscreen(true)` 在多屏/DPI 下常落到主屏或尺寸不对，表现为「只盖住左上角」。
+fn place_overlay_on_cursor_monitor(window: &WebviewWindow) {
+    let Some((x, y, w, h)) = cursor_monitor_physical_bounds() else {
+        let _ = window.set_fullscreen(true);
+        return;
+    };
+    // 先退出可能残留的 fullscreen，再按物理矩形铺满抓帧那块屏。
+    let _ = window.set_fullscreen(false);
+    let _ = window.set_position(PhysicalPosition::new(x, y));
+    let _ = window.set_size(PhysicalSize::new(w, h));
+}
+
 fn build_overlay(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, String> {
-    let window = WebviewWindowBuilder::new(app, OVERLAY_LABEL, WebviewUrl::App("overlay.html".into()))
-        .title("Shizi 截图")
-        .decorations(false)
-        .always_on_top(true)
-        .skip_taskbar(true)
-        .resizable(false)
-        .fullscreen(true)
-        // 创建时不可见：WebView2 加载 HTML + canvas putImageData 期间会显示默认白底，
-        // 由前端在内容就绪后 invoke('show_overlay') 让后端显示，消除占位闪烁。
-        .visible(false)
-        .build()
-        .map_err(|e| e.to_string())?;
+    // builder 的 position/inner_size 是逻辑像素；物理矩形在 build 后用 Physical* 对齐。
+    let window =
+        WebviewWindowBuilder::new(app, OVERLAY_LABEL, WebviewUrl::App("overlay.html".into()))
+            .title("Shizi 截图")
+            .decorations(false)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .resizable(false)
+            // 创建时不可见：WebView2 加载 HTML + canvas putImageData 期间会显示默认白底，
+            // 由前端在内容就绪后 invoke('show_overlay') 让后端显示，消除占位闪烁。
+            .visible(false)
+            .build()
+            .map_err(|e| e.to_string())?;
+    place_overlay_on_cursor_monitor(&window);
     // 兜底：overlay 被外部关闭或异常销毁时（非 submit/cancel 正常路径），
     // 释放 pending_capture 帧与 capture 锁，避免锁永久占用导致后续截图快捷键被拒。
     let app_handle = app.clone();
@@ -59,6 +79,7 @@ pub fn ensure_overlay(app: &tauri::AppHandle) -> Result<(), String> {
 /// 打开 overlay：已存在则 reload 读新帧，否则创建。用完 hide 复用（见 hide_overlay）。
 pub fn open_overlay(app: &tauri::AppHandle, _config: &AppConfig) -> Result<(), String> {
     if let Some(window) = app.get_webview_window(OVERLAY_LABEL) {
+        place_overlay_on_cursor_monitor(&window);
         let _ = window.eval("location.reload()");
         return Ok(());
     }
@@ -211,6 +232,8 @@ pub async fn submit_capture_region(
 #[tauri::command]
 pub async fn show_overlay(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window(OVERLAY_LABEL) {
+        // show 前再对齐一次：reload 路径或 DPI 变化时避免仍停在错误矩形。
+        place_overlay_on_cursor_monitor(&window);
         window.show().map_err(|e| e.to_string())?;
         let _ = window.set_focus();
     }
