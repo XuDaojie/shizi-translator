@@ -1,0 +1,34 @@
+# Vendored from microsoft/windows-rs @ 884c9bbc1bd0a2315f00e0f04e34f6b1714653b9
+# (crates/libs/reactor), with local fix: tolerate process DPI already set (Tauri/tao).
+# Drop when upstream ignores ERROR_ACCESS_DENIED in init_app_platform.
+[package]
+name = "windows-reactor"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT OR Apache-2.0"
+description = "Windows UI library (vendored for Tauri DPI coexistence patch)"
+repository = "https://github.com/microsoft/windows-rs"
+publish = false
+
+[features]
+default = []
+test = []
+canvas = ["dep:windows-canvas"]
+
+[dependencies]
+rustc-hash = "2"
+windows-core = { git = "https://github.com/microsoft/windows-rs", rev = "884c9bbc1bd0a2315f00e0f04e34f6b1714653b9", package = "windows-core" }
+windows-numerics = { git = "https://github.com/microsoft/windows-rs", rev = "884c9bbc1bd0a2315f00e0f04e34f6b1714653b9", package = "windows-numerics" }
+windows-collections = { git = "https://github.com/microsoft/windows-rs", rev = "884c9bbc1bd0a2315f00e0f04e34f6b1714653b9", package = "windows-collections", features = ["std"] }
+windows-future = { git = "https://github.com/microsoft/windows-rs", rev = "884c9bbc1bd0a2315f00e0f04e34f6b1714653b9", package = "windows-future" }
+windows-reference = { git = "https://github.com/microsoft/windows-rs", rev = "884c9bbc1bd0a2315f00e0f04e34f6b1714653b9", package = "windows-reference", features = ["std"] }
+windows-threading = { git = "https://github.com/microsoft/windows-rs", rev = "884c9bbc1bd0a2315f00e0f04e34f6b1714653b9", package = "windows-threading" }
+windows-time = { git = "https://github.com/microsoft/windows-rs", rev = "884c9bbc1bd0a2315f00e0f04e34f6b1714653b9", package = "windows-time" }
+windows-composition = { git = "https://github.com/microsoft/windows-rs", rev = "884c9bbc1bd0a2315f00e0f04e34f6b1714653b9", package = "windows-composition", default-features = false, features = ["lifted"] }
+
+[dependencies.windows-canvas]
+git = "https://github.com/microsoft/windows-rs"
+rev = "884c9bbc1bd0a2315f00e0f04e34f6b1714653b9"
+package = "windows-canvas"
+optional = true

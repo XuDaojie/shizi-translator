@@ -731,6 +731,50 @@ mod tests {
         eprintln!("m0_reactor_host_smoke: hide/show 完成，进程仍存活");
     }
 
+    /// 回归：模拟 Tauri/tao 已设置进程 DPI 后再 start（历史上 0x80070005 硬失败）。
+    ///
+    /// ```text
+    /// set SHIZI_M0_SPIKE=1
+    /// cargo test -p shizi --lib m0_reactor_host_smoke_after_dpi_preset -- --nocapture --test-threads=1
+    /// ```
+    ///
+    /// **勿**与 `m0_reactor_host_smoke` 同进程连跑（`HOST_STARTED` 进程级仅一次）。
+    #[test]
+    fn m0_reactor_host_smoke_after_dpi_preset() {
+        if std::env::var("SHIZI_M0_SPIKE").is_err() {
+            eprintln!("skip m0_reactor_host_smoke_after_dpi_preset（设置 SHIZI_M0_SPIKE=1 启用）");
+            return;
+        }
+        if is_host_started() {
+            eprintln!(
+                "skip m0_reactor_host_smoke_after_dpi_preset（HOST 已启动；请单独跑本测试）"
+            );
+            return;
+        }
+
+        ensure_reactor_runtime_assets_for_test();
+
+        // 与 tao 相同：进程级 PerMonitorV2（-4）。第二次 SetProcessDpi 会 ACCESS_DENIED。
+        // SAFETY: user32 FFI；进程级 DPI 设置。
+        let dpi_set = unsafe {
+            windows::Win32::UI::HiDpi::SetProcessDpiAwarenessContext(
+                windows::Win32::UI::HiDpi::DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+            )
+        };
+        // 已设置时可能失败；首次应成功。无论结果，只要进程已有 DPI 上下文即可。
+        let _ = dpi_set;
+
+        let host = match ReactorHostHandle::start() {
+            Ok(h) => h,
+            Err(e) => panic!(
+                "进程 DPI 已预设时 start 仍应成功（vendor 补丁应吞 0x80070005）: {e}"
+            ),
+        };
+        assert!(host.is_alive(), "DPI 预设后 host 应 alive");
+        host.hide();
+        eprintln!("m0_reactor_host_smoke_after_dpi_preset: start ok after DPI preset");
+    }
+
     /// 将 framework-dependent 资产复制到当前测试 exe 目录（若缺失）。
     fn ensure_reactor_runtime_assets_for_test() {
         let exe = match std::env::current_exe() {

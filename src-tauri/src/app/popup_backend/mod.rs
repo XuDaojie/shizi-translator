@@ -57,7 +57,7 @@ pub fn create_host_with_winui_fallback(app: &AppHandle, kind: PopupUiBackendKind
             log::error!("WinUI 弹窗初始化失败，降级 webview: {err}");
             host.replace_backend(Box::new(WebviewPopupBackend::new(app.clone())));
             #[cfg(windows)]
-            spawn_winui_degrade_dialog(app.clone());
+            spawn_winui_degrade_dialog(app.clone(), err);
             // WebView 预建也可由后续 ensure_popup_window 按 config 走；此处 best-effort 一次。
             if let Err(e) = host.ensure_created() {
                 log::warn!("降级 WebView 后 ensure_created 失败: {e}");
@@ -67,11 +67,22 @@ pub fn create_host_with_winui_fallback(app: &AppHandle, kind: PopupUiBackendKind
     host
 }
 
-/// 一次性系统 dialog：说明已降级，可选打开 Runtime 下载页。
+/// 是否像「Runtime / bootstrap 缺失」类错误（dialog 才引导下载页）。
+#[cfg(windows)]
+fn winui_error_suggests_runtime_install(err: &str) -> bool {
+    let lower = err.to_ascii_lowercase();
+    lower.contains("bootstrap")
+        || lower.contains("windows app runtime")
+        || lower.contains("windowsappruntime")
+        || err.contains("Runtime")
+        || err.contains("运行时")
+}
+
+/// 一次性系统 dialog：说明已降级；仅 Runtime 类错误才引导下载页。
 ///
 /// 仅 Windows 编译；`AtomicBool` 保证本进程只弹一次。
 #[cfg(windows)]
-fn spawn_winui_degrade_dialog(app: AppHandle) {
+fn spawn_winui_degrade_dialog(app: AppHandle, err: String) {
     use std::sync::atomic::{AtomicBool, Ordering};
 
     static SHOWN: AtomicBool = AtomicBool::new(false);
@@ -79,28 +90,53 @@ fn spawn_winui_degrade_dialog(app: AppHandle) {
         return;
     }
 
+    let suggest_runtime = winui_error_suggests_runtime_install(&err);
+    // 截断过长错误，避免 dialog 爆版
+    let detail = if err.chars().count() > 280 {
+        let mut s: String = err.chars().take(280).collect();
+        s.push('…');
+        s
+    } else {
+        err
+    };
+
     tauri::async_runtime::spawn(async move {
         let app_for_dialog = app.clone();
+        let suggest_for_dialog = suggest_runtime;
         let go = tauri::async_runtime::spawn_blocking(move || {
             use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
-            app_for_dialog
-                .dialog()
-                .message(
+            let message = if suggest_for_dialog {
+                format!(
                     "原生弹窗初始化失败，已自动切换为 WebView 弹窗。\n\
-                     若需使用原生弹窗，请安装 Windows App Runtime 后重启应用。",
+                     可能缺少 Windows App Runtime（framework-dependent）。\n\n\
+                     详情：{detail}"
                 )
+            } else {
+                format!(
+                    "原生弹窗初始化失败，已自动切换为 WebView 弹窗。\n\
+                     本进程内不会再重试原生后端；修复后请完全退出并重启。\n\n\
+                     详情：{detail}"
+                )
+            };
+            let mut builder = app_for_dialog
+                .dialog()
+                .message(message)
                 .title("弹窗后端已降级")
-                .kind(MessageDialogKind::Info)
-                .buttons(MessageDialogButtons::OkCancelCustom(
+                .kind(MessageDialogKind::Info);
+            if suggest_for_dialog {
+                builder = builder.buttons(MessageDialogButtons::OkCancelCustom(
                     "打开下载页".to_string(),
                     "稍后".to_string(),
-                ))
-                .blocking_show()
+                ));
+            } else {
+                builder = builder.buttons(MessageDialogButtons::Ok);
+            }
+            builder.blocking_show()
         })
         .await
         .unwrap_or(false);
 
-        if go {
+        if go && suggest_runtime {
             if let Err(e) = crate::ui::config::open_url(WINUI_RUNTIME_DOWNLOAD_URL.to_string()) {
                 log::warn!("打开 Windows App Runtime 下载页失败: {e}");
             }
@@ -115,4 +151,26 @@ pub fn with_host<R>(app: &AppHandle, f: impl FnOnce(&mut PopupHost) -> R) -> Res
         .lock()
         .map_err(|_| "PopupHost lock poisoned".to_string())?;
     Ok(f(&mut guard))
+}
+
+#[cfg(all(test, windows))]
+mod degrade_dialog_tests {
+    use super::winui_error_suggests_runtime_install;
+
+    #[test]
+    fn runtime_errors_suggest_download() {
+        assert!(winui_error_suggests_runtime_install(
+            "windows_reactor::bootstrap 失败（需安装 Windows App Runtime）: foo"
+        ));
+        assert!(winui_error_suggests_runtime_install(
+            "路径 R：bootstrap 失败（可降级 WebView）: missing"
+        ));
+    }
+
+    #[test]
+    fn dpi_coexistence_errors_do_not_suggest_download() {
+        assert!(!winui_error_suggests_runtime_install(
+            "App::render / Application::Start 失败: 拒绝访问。 (0x80070005)（HOST 已标记污染）"
+        ));
+    }
 }

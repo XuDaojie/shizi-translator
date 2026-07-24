@@ -141,6 +141,17 @@ cargo test -p shizi --features popup-winui --lib m0_reactor_host_smoke -- --noca
 
 人工本机扫一眼：Mica 在浅/深色系统主题下是否透出桌面；accent 按钮在高对比主题下是否可读。
 
+## 已知问题：Tauri 进程内 DPI 二次设置
+
+| 项 | 说明 |
+|----|------|
+| 现象 | `popupUiBackend=winui` 时日志：`App::render / Application::Start 失败: 拒绝访问。(0x80070005)`，降级 WebView |
+| 根因 | **tao** 已 `SetProcessDpiAwarenessContext(PerMonitorV2)`；upstream `windows-reactor` `init_app_platform` 再次设置失败并 **硬返回**，`Application::Start` 未执行（不是 Runtime 缺失） |
+| 证据 | 独立 `m0_reactor_host_smoke` 通过；整应用 setup 失败；本机二次 SetDpi → `GetLastError=5` |
+| 修复 | vendor `src-tauri/vendor/windows-reactor`：吞掉 DPI `0x80070005`；回归 `m0_reactor_host_smoke_after_dpi_preset` |
+| 文档 | `src-tauri/vendor/windows-reactor/VENDOR.md` |
+| 上游 | https://github.com/microsoft/windows-rs/issues/4742 |
+
 ## 变更日志
 
 | 日期 | 变更 |
@@ -150,3 +161,4 @@ cargo test -p shizi --features popup-winui --lib m0_reactor_host_smoke -- --noca
 | 2026-07-24 | 任务 2：S1 STA host + 哨兵 + 否决门 **Go**；锁定 rev；try_bootstrap 改路径 R |
 | 2026-07-24 | 任务 10：窗 468×520 + Mica；标题「柿子翻译」；柿子橙 accent；结果区滚动确认 |
 | 2026-07-24 | 任务 12：架构/README/AGENTS/CI 写明路径 R + Runtime；M0 结论表已确认 |
+| 2026-07-24 | 修复：vendor reactor 容忍宿主已设 DPI（Tauri 共存 0x80070005） |

@@ -47,7 +47,8 @@ lib setup
 ```
 
 - 仅当配置 `winui` **且** feature + Windows 时创建 `WinuiPopupBackend`（路径 R）。
-- `ensure_created` 失败（含 Windows App Runtime 缺失 / bootstrap 失败 / STA host 启动失败）：同进程 `create_host_with_winui_fallback` → `replace_backend(Webview)` + 一次性系统 dialog（引导 Runtime 下载页）；路径 R 成功时不弹。
+- `ensure_created` 失败（含 Windows App Runtime 缺失 / bootstrap 失败 / STA host 启动失败）：同进程 `create_host_with_winui_fallback` → `replace_backend(Webview)` + 一次性系统 dialog；**仅**错误像 Runtime/bootstrap 缺失时才引导下载页（DPI/共存类只展示详情）。路径 R 成功时不弹。
+- **vendor**：`src-tauri/vendor/windows-reactor`（基于 rev `884c9bb`）修补 `init_app_platform`：宿主（Tauri/tao）已设进程 DPI 时忽略 `0x80070005`，否则会在 `Application::Start` 之前硬失败。详见 `VENDOR.md` 与 spike。
 - `windowPrecreate.*.popup` 经 `host.ensure_created` 作用于**当前** backend。
 
 ### 生命周期（与 backend 无关）

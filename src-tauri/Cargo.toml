@@ -72,8 +72,10 @@ windows = { version = "0.58", features = [
   "Win32_UI_Shell",
   "Win32_UI_WindowsAndMessaging",
 ] }
-# 路径 R：windows-reactor（M0 候选 rev；绿后锁定，见 spike 文档）
-windows-reactor = { git = "https://github.com/microsoft/windows-rs", rev = "884c9bbc1bd0a2315f00e0f04e34f6b1714653b9", package = "windows-reactor" }
+# 路径 R：windows-reactor。源码 vendor 于 vendor/windows-reactor（基于 rev 884c9bb），
+# 补丁：init_app_platform 容忍进程 DPI 已被 Tauri/tao 设置（0x80070005），否则 Application::Start 到不了。
+# setup 仍用上游 git rev（仅复制 Bootstrap 资产）。
+windows-reactor = { path = "vendor/windows-reactor" }
 
 [target.'cfg(windows)'.build-dependencies]
 windows-reactor-setup = { git = "https://github.com/microsoft/windows-rs", rev = "884c9bbc1bd0a2315f00e0f04e34f6b1714653b9", package = "windows-reactor-setup" }
