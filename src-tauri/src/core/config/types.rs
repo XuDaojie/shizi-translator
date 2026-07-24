@@ -59,6 +59,17 @@ fn normalize_update_channel(value: String) -> String {
     }
 }
 
+fn default_popup_ui() -> String {
+    "webview".to_string()
+}
+
+fn normalize_popup_ui(value: String) -> String {
+    match value.as_str() {
+        "webview" | "winui" => value,
+        _ => "webview".to_string(),
+    }
+}
+
 fn default_history_limit() -> usize {
     500
 }
@@ -270,6 +281,9 @@ pub struct AppConfig {
     /// 登录 Windows 后自动启动（HKCU Run；默认关闭，用户显式开启）。
     #[serde(default)]
     pub launch_at_login: bool,
+    /// 翻译弹窗 UI：`webview`（默认）或 `winui`。
+    #[serde(default = "default_popup_ui")]
+    pub popup_ui: String,
 }
 
 impl ServiceInstanceConfig {
@@ -367,6 +381,7 @@ impl AppConfig {
             update_channel: default_update_channel(),
             auto_check_update: true,
             launch_at_login: false,
+            popup_ui: default_popup_ui(),
         }
         .normalized()
     }
@@ -393,6 +408,7 @@ impl AppConfig {
         }
         self.log_level = normalize_log_level(self.log_level);
         self.update_channel = normalize_update_channel(self.update_channel);
+        self.popup_ui = normalize_popup_ui(self.popup_ui);
         self
     }
 
@@ -1146,5 +1162,39 @@ mod tests {
         config.update_channel = "nightly".into();
         let config = config.normalized();
         assert_eq!(config.update_channel, "stable");
+    }
+
+    #[test]
+    fn app_config_defaults_popup_ui_webview() {
+        let config = AppConfig::default();
+        assert_eq!(config.popup_ui, "webview");
+    }
+
+    #[test]
+    fn app_config_missing_popup_ui_deserializes_to_webview() {
+        let json = r#"{
+            "targetLang": "zh-CN",
+            "services": [],
+            "ocrServices": []
+        }"#;
+        let config: AppConfig = serde_json::from_str(json).expect("deserialize");
+        let config = config.normalized();
+        assert_eq!(config.popup_ui, "webview");
+    }
+
+    #[test]
+    fn app_config_normalized_rejects_invalid_popup_ui() {
+        let mut config = AppConfig::default();
+        config.popup_ui = "native".into();
+        let config = config.normalized();
+        assert_eq!(config.popup_ui, "webview");
+    }
+
+    #[test]
+    fn app_config_accepts_winui_popup_ui() {
+        let mut config = AppConfig::default();
+        config.popup_ui = "winui".into();
+        let config = config.normalized();
+        assert_eq!(config.popup_ui, "winui");
     }
 }
