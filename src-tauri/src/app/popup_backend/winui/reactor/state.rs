@@ -197,6 +197,18 @@ mod tests {
         assert_eq!(st.load().source_text, "hello");
     }
 
+    /// host 未 start / 无窗时 store 仍成功（publish pending last-write-wins）。
+    #[test]
+    fn publish_does_not_require_window() {
+        let st = SharedPopupState::default();
+        let vm = PopupViewModel {
+            source_text: "hi".into(),
+            ..Default::default()
+        };
+        st.store(&vm);
+        assert_eq!(st.load().source_text, "hi");
+    }
+
     #[test]
     fn global_snapshot_roundtrip() {
         let mut vm = PopupViewModel::default();

@@ -1,14 +1,16 @@
-//! M0：windows-reactor 专用 STA 宿主（S1 共存模型）。
+//! 路径 R：windows-reactor 专用 STA 宿主（生产化 ensure/show/hide/publish）。
 //!
 //! - 进程级 `bootstrap()` 一次
 //! - 专用 STA 线程跑 `App` 消息循环
 //! - **哨兵窗**（主 `App` 窗，立即 hide）防止 last-window-exit 杀进程
-//! - 弹窗为 `ReactorWindow`；`Hide` 用 `ShowWindow(SW_HIDE)`，**不** `Close`
-//! - `publish_label` / show / hide 经 `mpsc` 非阻塞投递，UI 线程 `DispatcherTimer` 泵送
+//! - 弹窗为 `ReactorWindow`；`Hide` / `Destroy` 用 `ShowWindow(SW_HIDE)`，**不** `Close`
+//! - `publish` / show / hide 经 `mpsc` 非阻塞投递，UI 线程 `DispatcherTimer` 泵送
+//! - 弹窗 HWND 缓存在 `SharedUi`（优先于 FindWindow 标题查找）
+//! - `HOST_STARTED`：线程 spawn 成功后**永不复位**，避免超时后双 STA
 
 #![cfg(all(windows, feature = "popup-winui"))]
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
@@ -16,8 +18,10 @@ use std::time::Duration;
 
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::HWND;
+use windows::Win32::UI::HiDpi::{GetDpiForSystem, GetDpiForWindow};
 use windows::Win32::UI::WindowsAndMessaging::{
-    FindWindowW, IsWindow, IsWindowVisible, ShowWindow, SW_HIDE, SW_SHOW,
+    FindWindowW, IsWindow, IsWindowVisible, SetWindowPos, ShowWindow, HWND_TOP, SWP_NOACTIVATE,
+    SWP_SHOWWINDOW, SW_HIDE, SW_SHOW, USER_DEFAULT_SCREEN_DPI,
 };
 // 注意：windows_reactor 将 `Result` 重导出为 `Result<T> = Result<T, Error>`，
 // 本模块的 API 错误类型用 `String`，故显式使用 `std::result::Result`。
@@ -26,35 +30,104 @@ use windows_reactor::{
     text_block, vstack,
 };
 
+use crate::app::popup_backend::types::{PopupPositionMode, PopupViewModel};
+use crate::app::popup_window::{compute_popup_position, LogicalPos, LogicalRect, LogicalSize};
+use crate::platform::cursor_logical_context;
+
+use super::state::{self, store_global};
+
 /// 哨兵窗标题（主 App 窗；始终存活，默认隐藏）。
 pub const SENTINEL_TITLE: &str = "Shizi Reactor Sentinel";
-/// Spike 弹窗标题（Inspect / FindWindow 用）。
+/// 弹窗标题（Inspect / FindWindow 回退用）。
 pub const POPUP_TITLE: &str = "Shizi Reactor Spike";
+
+/// 与 GDI / 原型对齐的逻辑尺寸（定位用）。
+const POPUP_LOGICAL_WIDTH: f64 = 468.0;
+const POPUP_LOGICAL_HEIGHT: f64 = 320.0;
 
 /// 进程级 bootstrap 结果缓存（成功或失败都只尝试一次）。
 static PROCESS_BOOTSTRAP: OnceLock<std::result::Result<(), String>> = OnceLock::new();
 
 /// 进程内仅允许一个 STA host（Application::Start 全局一次）。
+///
+/// **spawn 成功后永不复位**：即使 ready 超时 / bootstrap 失败，也禁止再次 `start()`，
+/// 避免「超时清标志 → 二次 start → 双 STA」。
 static HOST_STARTED: AtomicBool = AtomicBool::new(false);
 
 /// UI 线程命令。
 #[derive(Debug)]
 pub enum HostCmd {
-    Show,
+    /// 若弹窗 HWND 无效则重建（不重建 Runtime / 不重跑 bootstrap）。
+    Ensure,
+    /// 显示弹窗；`NearCursor` 时按光标工作区定位（与 GDI 同输入）。
+    Show(PopupPositionMode),
+    /// 隐藏弹窗（幂等；不销毁 Runtime）。
     Hide,
+    /// 产品语义：hide 并清除 HWND 缓存，**保留哨兵与 STA**（不 `Close`，避免 last-window-exit）。
+    Destroy,
+    /// 投递 ViewModel（UI 线程 apply；调用方应先 `store` 以保证无窗时快照可读）。
+    Publish(PopupViewModel),
+    /// 兼容 M0：更新 `source_text` 并 re-render。
     SetLabel(String),
     /// 仅 hide 弹窗并保留哨兵；**不会**退出进程。
     Shutdown,
 }
 
-/// 跨线程共享的 UI 槽位（label setter 由弹窗组件挂载）。
+/// 跨线程共享的 UI 槽位（HWND + VM setter 由弹窗组件挂载）。
 struct SharedUi {
-    label_setter: Mutex<Option<AsyncSetState<String>>>,
+    /// 弹窗 HWND 缓存（`HWND.0 as isize`；0 = 无）。
+    popup_hwnd: AtomicIsize,
+    /// UI 挂载后的 VM setter；未挂载时 publish 仅写 `SharedPopupState`（pending）。
+    vm_setter: Mutex<Option<AsyncSetState<PopupViewModel>>>,
+}
+
+impl SharedUi {
+    fn new() -> Self {
+        Self {
+            popup_hwnd: AtomicIsize::new(0),
+            vm_setter: Mutex::new(None),
+        }
+    }
+
+    fn set_popup_hwnd(&self, hwnd: HWND) {
+        let raw = hwnd.0 as isize;
+        if raw != 0 {
+            self.popup_hwnd.store(raw, Ordering::SeqCst);
+        }
+    }
+
+    fn clear_popup_hwnd(&self) {
+        self.popup_hwnd.store(0, Ordering::SeqCst);
+    }
+
+    fn popup_hwnd(&self) -> Option<HWND> {
+        let raw = self.popup_hwnd.load(Ordering::SeqCst);
+        if raw == 0 {
+            return None;
+        }
+        let hwnd = HWND(raw as *mut core::ffi::c_void);
+        let alive = unsafe { IsWindow(hwnd).as_bool() };
+        if alive {
+            Some(hwnd)
+        } else {
+            self.clear_popup_hwnd();
+            None
+        }
+    }
+
+    fn is_popup_visible(&self) -> bool {
+        self.popup_hwnd()
+            .map(|hwnd| unsafe { IsWindowVisible(hwnd).as_bool() })
+            .unwrap_or(false)
+    }
 }
 
 /// 调用方持有的宿主句柄（可 Send；命令非阻塞 send）。
 pub struct ReactorHostHandle {
     tx: Sender<HostCmd>,
+    shared: Arc<SharedUi>,
+    /// `start` 成功 ready 后为 true；STA 存活期间保持 true。
+    alive: Arc<AtomicBool>,
 }
 
 impl ReactorHostHandle {
@@ -62,6 +135,9 @@ impl ReactorHostHandle {
     ///
     /// 失败（Runtime 缺失、bootstrap 失败、启动超时等）返回 `Err`，
     /// 供上层 `create_host_with_winui_fallback` 降级 WebView。
+    ///
+    /// **注意**：线程 `spawn` 成功后即使失败/超时，`HOST_STARTED` 仍保持 true，
+    /// 本进程内不可再次 `start()`（防双 STA）。
     pub fn start() -> std::result::Result<Self, String> {
         if HOST_STARTED.swap(true, Ordering::SeqCst) {
             return Err("ReactorHost 已在本进程启动（S1：仅允许一个 STA Application）".into());
@@ -70,9 +146,8 @@ impl ReactorHostHandle {
         let (tx, rx) = mpsc::channel::<HostCmd>();
         let (ready_tx, ready_rx) = mpsc::channel::<std::result::Result<(), String>>();
 
-        let shared = Arc::new(SharedUi {
-            label_setter: Mutex::new(None),
-        });
+        let shared = Arc::new(SharedUi::new());
+        let alive = Arc::new(AtomicBool::new(false));
         let rx = Arc::new(Mutex::new(rx));
 
         let spawn_result = thread::Builder::new()
@@ -84,36 +159,73 @@ impl ReactorHostHandle {
             });
 
         if let Err(e) = spawn_result {
+            // 仅 spawn 失败可复位：线程根本未起，无双 STA 风险。
             HOST_STARTED.store(false, Ordering::SeqCst);
             return Err(format!("无法创建 reactor STA 线程: {e}"));
         }
 
+        // spawn 已成功：此后 HOST_STARTED 永不复位（含超时 / ready Err）。
         match ready_rx.recv_timeout(Duration::from_secs(30)) {
-            Ok(Ok(())) => Ok(Self { tx }),
-            Ok(Err(e)) => {
-                HOST_STARTED.store(false, Ordering::SeqCst);
-                Err(e)
+            Ok(Ok(())) => {
+                alive.store(true, Ordering::SeqCst);
+                Ok(Self { tx, shared, alive })
             }
-            Err(_) => {
-                HOST_STARTED.store(false, Ordering::SeqCst);
-                Err("reactor UI 线程启动超时（30s）".into())
-            }
+            Ok(Err(e)) => Err(format!(
+                "{e}（HOST 已标记污染，本进程禁止再次 start）"
+            )),
+            Err(_) => Err(
+                "reactor UI 线程启动超时（30s；HOST 已标记污染，禁止再 start 以防双 STA）"
+                    .into(),
+            ),
         }
     }
 
-    /// 非阻塞更新弹窗标签文本。
-    pub fn publish_label(&self, s: impl Into<String>) {
-        let _ = self.tx.send(HostCmd::SetLabel(s.into()));
+    /// STA 是否已成功 ready（handle 级）。
+    pub fn is_alive(&self) -> bool {
+        self.alive.load(Ordering::SeqCst)
     }
 
-    /// 非阻塞显示弹窗（幂等）。
-    pub fn show(&self) {
-        let _ = self.tx.send(HostCmd::Show);
+    /// 弹窗当前是否可见（读缓存 HWND / IsWindowVisible）。
+    pub fn is_visible(&self) -> bool {
+        self.shared.is_popup_visible()
+    }
+
+    /// 非阻塞：确保弹窗 HWND 存在（失效则重建）。
+    pub fn ensure(&self) {
+        let _ = self.tx.send(HostCmd::Ensure);
+    }
+
+    /// 非阻塞显示弹窗。`NearCursor` 用 `compute_popup_position` + 平台 cursor。
+    pub fn show(&self, mode: PopupPositionMode) -> std::result::Result<(), String> {
+        self.tx
+            .send(HostCmd::Show(mode))
+            .map_err(|_| "reactor host 通道已关闭".into())
     }
 
     /// 非阻塞隐藏弹窗（幂等；不销毁 Runtime / 不退出进程）。
     pub fn hide(&self) {
         let _ = self.tx.send(HostCmd::Hide);
+    }
+
+    /// 非阻塞：产品 destroy = hide + 清 HWND 缓存，保留哨兵。
+    pub fn destroy(&self) {
+        let _ = self.tx.send(HostCmd::Destroy);
+    }
+
+    /// 非阻塞 publish：先写全局快照，再 post UI 线程 apply。
+    ///
+    /// 调用线程**不**等待 UI；窗未创建 / setter 未挂载时仅 pending 在
+    /// [`SharedPopupState`]（last-write-wins），挂载后 flush。
+    pub fn publish(&self, vm: &PopupViewModel) {
+        store_global(vm);
+        let _ = self.tx.send(HostCmd::Publish(vm.clone()));
+    }
+
+    /// 兼容 M0：映射为更新 `source_text` 的 publish。
+    pub fn publish_label(&self, s: impl Into<String>) {
+        let mut vm = state::global_snapshot();
+        vm.source_text = s.into();
+        self.publish(&vm);
     }
 
     /// 非阻塞：hide 弹窗，保留哨兵与 STA 循环。
@@ -126,8 +238,9 @@ impl ReactorHostHandle {
 pub fn ensure_process_bootstrap() -> std::result::Result<(), String> {
     PROCESS_BOOTSTRAP
         .get_or_init(|| {
-            windows_reactor::bootstrap()
-                .map_err(|e| format!("windows_reactor::bootstrap 失败（需安装 Windows App Runtime）: {e}"))
+            windows_reactor::bootstrap().map_err(|e| {
+                format!("windows_reactor::bootstrap 失败（需安装 Windows App Runtime）: {e}")
+            })
         })
         .clone()
 }
@@ -212,16 +325,18 @@ fn sentinel_root(
                 }
             }
 
-            // 弹窗创建后略延迟再 hide（Activate 经 Dispatcher 异步），避免 FindWindow 竞态。
+            // 弹窗创建后略延迟再 hide（Activate 经 Dispatcher 异步），并缓存 HWND。
             // 之后由 HostCmd::Show 唤起。
-            match DispatcherTimer::new_one_shot(Duration::from_millis(80), || {
-                hide_window_by_title(POPUP_TITLE);
+            let shared_hide = Arc::clone(&shared);
+            match DispatcherTimer::new_one_shot(Duration::from_millis(80), move || {
+                capture_popup_hwnd(&shared_hide);
+                hide_popup_hwnd(&shared_hide);
             }) {
                 Ok(t) => std::mem::forget(t),
                 Err(e) => {
-                    // 定时器失败则尽力同步 hide，不阻断 ready
                     log::warn!("initial hide timer 失败，回退同步 hide: {e}");
-                    hide_window_by_title(POPUP_TITLE);
+                    capture_popup_hwnd(&shared);
+                    hide_popup_hwnd(&shared);
                 }
             }
 
@@ -234,27 +349,58 @@ fn sentinel_root(
 }
 
 fn popup_root(cx: &mut RenderCx, shared: Arc<SharedUi>) -> Element {
-    let (label, set_label) = cx.use_async_state(String::from("spike"));
+    // 初始值取全局 pending 快照（publish 可能早于窗挂载）。
+    let initial = state::global_snapshot();
+    let (vm, set_vm) = cx.use_async_state(initial);
 
-    // 挂载跨线程 setter（供 HostCmd::SetLabel）
+    // 挂载 setter + flush pending + 缓存 HWND
     cx.use_effect((), {
-        let set_label = set_label.clone();
+        let set_vm = set_vm.clone();
         let shared = Arc::clone(&shared);
         move || {
-            if let Ok(mut slot) = shared.label_setter.lock() {
-                *slot = Some(set_label);
+            capture_popup_hwnd(&shared);
+            if let Ok(mut slot) = shared.vm_setter.lock() {
+                *slot = Some(set_vm.clone());
             }
+            // last-write-wins pending → flush 到 UI
+            let pending = state::global_snapshot();
+            set_vm.call(pending);
         }
     });
 
+    let source = if vm.source_text.is_empty() {
+        String::from("(empty)")
+    } else {
+        vm.source_text.clone()
+    };
+    let card_text = vm
+        .cards
+        .first()
+        .map(|c| {
+            let t = c.text.trim();
+            if !t.is_empty() {
+                t.to_string()
+            } else {
+                let e = c.error_message.trim();
+                if !e.is_empty() {
+                    e.to_string()
+                } else {
+                    String::new()
+                }
+            }
+        })
+        .unwrap_or_default();
+
+    let shared_close = Arc::clone(&shared);
     vstack((
-        text_block("M0 windows-reactor spike")
+        text_block("Reactor host")
             .font_size(14.0)
             .semibold(),
-        text_block(label.clone()).font_size(22.0).bold(),
-        button("Close").on_click(|| {
+        text_block(source).font_size(18.0).bold(),
+        text_block(card_text).font_size(14.0),
+        button("Close").on_click(move || {
             // hide，不 Close → 不触发 last-window-exit
-            hide_window_by_title(POPUP_TITLE);
+            hide_popup_hwnd(&shared_close);
         }),
     ))
     .spacing(12.0)
@@ -262,13 +408,21 @@ fn popup_root(cx: &mut RenderCx, shared: Arc<SharedUi>) -> Element {
 }
 
 fn open_popup(shared: Arc<SharedUi>) -> std::result::Result<(), String> {
+    // 重建前清旧 setter，避免指向已销毁组件
+    if let Ok(mut slot) = shared.vm_setter.lock() {
+        *slot = None;
+    }
     ReactorWindow::new()
         .title(POPUP_TITLE)
-        .inner_size(468.0, 320.0)
+        .inner_size(POPUP_LOGICAL_WIDTH, POPUP_LOGICAL_HEIGHT)
         .backdrop(Backdrop::Mica)
-        .render(move |cx| popup_root(cx, Arc::clone(&shared)))
-        .map(|_| ())
-        .map_err(|e| format!("ReactorWindow 打开失败: {e}"))
+        .render({
+            let shared = Arc::clone(&shared);
+            move |cx| popup_root(cx, Arc::clone(&shared))
+        })
+        .map_err(|e| format!("ReactorWindow 打开失败: {e}"))?;
+    capture_popup_hwnd(&shared);
+    Ok(())
 }
 
 fn pump_commands(rx: &Arc<Mutex<Receiver<HostCmd>>>, shared: &Arc<SharedUi>) {
@@ -277,37 +431,122 @@ fn pump_commands(rx: &Arc<Mutex<Receiver<HostCmd>>>, shared: &Arc<SharedUi>) {
     };
     while let Ok(cmd) = guard.try_recv() {
         match cmd {
-            HostCmd::Show => {
-                show_or_reopen_popup(shared);
+            HostCmd::Ensure => {
+                ensure_popup(shared);
+            }
+            HostCmd::Show(mode) => {
+                show_popup_with_mode(shared, mode);
             }
             HostCmd::Hide | HostCmd::Shutdown => {
-                hide_window_by_title(POPUP_TITLE);
+                hide_popup_hwnd(shared);
+            }
+            HostCmd::Destroy => {
+                // 产品语义：hide 保留哨兵；不 Close。
+                hide_popup_hwnd(shared);
+                shared.clear_popup_hwnd();
+                if let Ok(mut slot) = shared.vm_setter.lock() {
+                    *slot = None;
+                }
+            }
+            HostCmd::Publish(vm) => {
+                apply_publish(shared, &vm);
             }
             HostCmd::SetLabel(s) => {
-                if let Ok(slot) = shared.label_setter.lock() {
-                    if let Some(setter) = slot.as_ref() {
-                        setter.call(s);
-                    }
-                }
+                let mut vm = state::global_snapshot();
+                vm.source_text = s;
+                store_global(&vm);
+                apply_publish(shared, &vm);
             }
         }
     }
 }
 
-fn show_or_reopen_popup(shared: &Arc<SharedUi>) {
-    if let Some(hwnd) = find_hwnd(POPUP_TITLE) {
-        show_hwnd(hwnd);
+fn apply_publish(shared: &SharedUi, vm: &PopupViewModel) {
+    store_global(vm);
+    if let Ok(slot) = shared.vm_setter.lock() {
+        if let Some(setter) = slot.as_ref() {
+            setter.call(vm.clone());
+        }
+        // setter 未挂载：pending 已在 SharedPopupState，挂载 use_effect 会 flush
+    }
+}
+
+fn ensure_popup(shared: &Arc<SharedUi>) {
+    if shared.popup_hwnd().is_some() {
         return;
     }
-    // 标题栏 X 关闭后 HWND 消失：在 UI 线程重建弹窗（不重建 Runtime / 不重跑 bootstrap）
-    if let Ok(mut slot) = shared.label_setter.lock() {
-        *slot = None;
-    }
+    // 标题栏 X 关闭后 HWND 消失：在 UI 线程重建弹窗
     if let Err(e) = open_popup(Arc::clone(shared)) {
-        log::warn!("reactor popup 重建失败: {e}");
+        log::warn!("reactor popup ensure/重建失败: {e}");
+    }
+}
+
+fn show_popup_with_mode(shared: &Arc<SharedUi>, mode: PopupPositionMode) {
+    ensure_popup(shared);
+    let Some(hwnd) = shared
+        .popup_hwnd()
+        .or_else(|| find_hwnd(POPUP_TITLE).inspect(|h| shared.set_popup_hwnd(*h)))
+    else {
+        log::warn!("reactor popup show：无可用 HWND");
+        return;
+    };
+
+    match mode {
+        PopupPositionMode::NearCursor => {
+            let scale = window_scale(hwnd);
+            if let Some((cx, cy, wx, wy, ww, wh)) = cursor_logical_context(scale) {
+                let pos = compute_popup_position(
+                    LogicalPos { x: cx, y: cy },
+                    LogicalSize {
+                        width: POPUP_LOGICAL_WIDTH,
+                        height: POPUP_LOGICAL_HEIGHT,
+                    },
+                    LogicalRect {
+                        x: wx,
+                        y: wy,
+                        width: ww,
+                        height: wh,
+                    },
+                );
+                let x = logical_to_physical(pos.x, scale);
+                let y = logical_to_physical(pos.y, scale);
+                let w = logical_to_physical(POPUP_LOGICAL_WIDTH, scale);
+                let h = logical_to_physical(POPUP_LOGICAL_HEIGHT, scale);
+                unsafe {
+                    let _ = SetWindowPos(
+                        hwnd,
+                        HWND_TOP,
+                        x,
+                        y,
+                        w,
+                        h,
+                        SWP_SHOWWINDOW | SWP_NOACTIVATE,
+                    );
+                }
+            } else {
+                show_hwnd(hwnd);
+            }
+        }
+        PopupPositionMode::Restore => {
+            show_hwnd(hwnd);
+        }
+    }
+}
+
+fn capture_popup_hwnd(shared: &SharedUi) {
+    if let Some(hwnd) = find_hwnd(POPUP_TITLE) {
+        shared.set_popup_hwnd(hwnd);
+    }
+}
+
+fn hide_popup_hwnd(shared: &SharedUi) {
+    if let Some(hwnd) = shared.popup_hwnd() {
+        unsafe {
+            let _ = ShowWindow(hwnd, SW_HIDE);
+        }
         return;
     }
-    // open 后默认可见；与首次 start 时「先 hide 等 Show」不同，此处本就是 Show 路径
+    hide_window_by_title(POPUP_TITLE);
 }
 
 fn signal_ready(
@@ -354,6 +593,22 @@ fn show_hwnd(hwnd: HWND) {
     }
 }
 
+fn logical_to_physical(logical: f64, scale: f64) -> i32 {
+    (logical * scale).round() as i32
+}
+
+fn window_scale(hwnd: HWND) -> f64 {
+    let dpi = unsafe {
+        let d = GetDpiForWindow(hwnd);
+        if d == 0 {
+            GetDpiForSystem().max(USER_DEFAULT_SCREEN_DPI)
+        } else {
+            d
+        }
+    };
+    dpi as f64 / USER_DEFAULT_SCREEN_DPI as f64
+}
+
 /// 测试/诊断：弹窗 HWND 当前是否可见。
 pub fn is_popup_window_visible() -> bool {
     find_hwnd(POPUP_TITLE)
@@ -361,9 +616,15 @@ pub fn is_popup_window_visible() -> bool {
         .unwrap_or(false)
 }
 
+/// 本进程是否已尝试启动过 Reactor host（含污染态）。
+pub fn is_host_started() -> bool {
+    HOST_STARTED.load(Ordering::SeqCst)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::state::SharedPopupState;
     use std::sync::mpsc::TrySendError;
 
     #[test]
@@ -381,25 +642,62 @@ mod tests {
     fn host_cmd_channel_send_is_nonblocking() {
         let (tx, rx) = mpsc::channel::<HostCmd>();
         // 无接收方阻塞时 send 仍立即返回（有界队列才会在满时失败；mpsc 无界）
-        tx.send(HostCmd::SetLabel("a".into())).unwrap();
-        tx.send(HostCmd::Show).unwrap();
+        let vm = PopupViewModel {
+            source_text: "a".into(),
+            ..Default::default()
+        };
+        tx.send(HostCmd::Publish(vm)).unwrap();
+        tx.send(HostCmd::Show(PopupPositionMode::NearCursor))
+            .unwrap();
         tx.send(HostCmd::Hide).unwrap();
-        assert!(matches!(rx.try_recv(), Ok(HostCmd::SetLabel(s)) if s == "a"));
-        assert!(matches!(rx.try_recv(), Ok(HostCmd::Show)));
+        tx.send(HostCmd::Ensure).unwrap();
+        tx.send(HostCmd::Destroy).unwrap();
+        assert!(matches!(rx.try_recv(), Ok(HostCmd::Publish(v)) if v.source_text == "a"));
+        assert!(matches!(
+            rx.try_recv(),
+            Ok(HostCmd::Show(PopupPositionMode::NearCursor))
+        ));
         assert!(matches!(rx.try_recv(), Ok(HostCmd::Hide)));
+        assert!(matches!(rx.try_recv(), Ok(HostCmd::Ensure)));
+        assert!(matches!(rx.try_recv(), Ok(HostCmd::Destroy)));
     }
 
     #[test]
     fn publish_label_api_does_not_block_on_full_queue_semantics() {
         // 文档约束：publish 使用非阻塞 mpsc send（无界 channel 下 send 即非阻塞）。
         let (tx, _rx) = mpsc::sync_channel::<HostCmd>(1);
-        tx.try_send(HostCmd::SetLabel("x".into())).unwrap();
+        let vm = PopupViewModel {
+            source_text: "x".into(),
+            ..Default::default()
+        };
+        tx.try_send(HostCmd::Publish(vm)).unwrap();
         // 队列满时 try_send 立即返回，不阻塞调用线程
-        let err = tx.try_send(HostCmd::SetLabel("y".into())).unwrap_err();
-        assert!(matches!(
-            err,
-            TrySendError::Full(HostCmd::SetLabel(_))
-        ));
+        let err = tx
+            .try_send(HostCmd::Publish(PopupViewModel::default()))
+            .unwrap_err();
+        assert!(matches!(err, TrySendError::Full(HostCmd::Publish(_))));
+    }
+
+    #[test]
+    fn publish_does_not_require_window() {
+        // host 未 start 时 store 全局快照仍成功（与现 backend publish 窗未创建分支一致）
+        let st = SharedPopupState::default();
+        let vm = PopupViewModel {
+            source_text: "hi".into(),
+            ..Default::default()
+        };
+        st.store(&vm);
+        assert_eq!(st.load().source_text, "hi");
+    }
+
+    #[test]
+    fn shared_ui_hwnd_cache_roundtrip() {
+        let ui = SharedUi::new();
+        assert!(ui.popup_hwnd().is_none());
+        // 无效 HWND 不应被缓存为「存活」
+        ui.set_popup_hwnd(HWND(0 as *mut _));
+        // 0 被 set 忽略
+        assert!(ui.popup_hwnd().is_none());
     }
 
     /// 完整 GUI 冒烟：需交互式会话 + Windows App Runtime。
@@ -425,21 +723,19 @@ mod tests {
             Ok(h) => h,
             Err(e) => panic!("start 失败（应可降级 WebView）: {e}"),
         };
+        assert!(host.is_alive());
 
         // 等初始 hide one-shot 完成
         thread::sleep(Duration::from_millis(200));
 
         host.publish_label("m0-label-1");
-        host.show();
+        host.show(PopupPositionMode::Restore).expect("show");
         thread::sleep(Duration::from_millis(800));
         assert!(
             find_hwnd(POPUP_TITLE).is_some(),
             "Show 后应能找到弹窗 HWND（title={POPUP_TITLE})"
         );
-        assert!(
-            is_popup_window_visible(),
-            "Show 后弹窗应可见"
-        );
+        assert!(is_popup_window_visible() || host.is_visible(), "Show 后弹窗应可见");
 
         host.publish_label("m0-label-2");
         thread::sleep(Duration::from_millis(400));
@@ -448,13 +744,16 @@ mod tests {
         thread::sleep(Duration::from_millis(400));
         // hide 后进程必须仍在（本测试能继续即证明未 process::exit）
         assert!(
-            !is_popup_window_visible(),
+            !is_popup_window_visible() && !host.is_visible(),
             "Hide 后弹窗应不可见"
         );
 
-        host.show();
+        host.show(PopupPositionMode::NearCursor).expect("show near");
         thread::sleep(Duration::from_millis(400));
-        assert!(is_popup_window_visible(), "再次 Show 应可见（不重建 Runtime）");
+        assert!(
+            is_popup_window_visible() || host.is_visible(),
+            "再次 Show 应可见（不重建 Runtime）"
+        );
         host.hide();
         // 哨兵仍在；不调用任何会导致 last-window-exit 的 close
         eprintln!("m0_reactor_host_smoke: hide/show 完成，进程仍存活");

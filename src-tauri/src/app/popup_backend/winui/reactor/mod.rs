@@ -7,11 +7,11 @@ pub mod langs;
 pub mod meta;
 pub mod state;
 
-// M0 对外 API：bootstrap 探测 + STA host（后续任务 3+ 使用 handle / 命令）
+// 路径 R 对外 API：bootstrap 探测 + STA host（任务 6 backend 接线）
 #[allow(unused_imports)]
 pub use host::{
-    ensure_process_bootstrap, is_popup_window_visible, is_process_bootstrapped, HostCmd,
-    ReactorHostHandle, POPUP_TITLE, SENTINEL_TITLE,
+    ensure_process_bootstrap, is_host_started, is_popup_window_visible, is_process_bootstrapped,
+    HostCmd, ReactorHostHandle, POPUP_TITLE, SENTINEL_TITLE,
 };
 
 #[allow(unused_imports)]

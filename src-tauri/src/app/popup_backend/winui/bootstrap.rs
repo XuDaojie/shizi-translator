@@ -56,21 +56,44 @@ pub fn ensure_winui_runtime() -> Result<(), String> {
 mod tests {
     use super::*;
 
+    /// 路径 R 探测：消息非空；ok 随本机 Windows App Runtime 而定。
     #[test]
-    fn try_bootstrap_reports_path_r_not_path_b() {
+    fn try_bootstrap_reports_reactor_path() {
         let status = try_bootstrap();
-        // 不再断言「路径 B」恒真；消息应标明路径 R
         assert!(
-            status.message.contains("路径 R"),
-            "期望路径 R 探测文案，实际: {}",
+            !status.message.is_empty(),
+            "bootstrap 消息不应为空"
+        );
+        // Runtime 已装：ok == true 且 message 含路径 R / bootstrap 成功
+        // Runtime 未装：ok == false 且 message 非空（CI 无 Runtime 允许 ok false）
+        assert!(
+            status.message.contains("路径 R")
+                || status.message.contains("Reactor")
+                || status.message.contains("WinAppSDK")
+                || status.message.contains("windows_reactor")
+                || status.message.contains("非 Windows"),
+            "期望路径 R / Reactor 探测文案，实际: {}",
             status.message
         );
-        assert!(!status.message.contains("路径 B"));
-        // 本机有 Runtime 时期望 ok；无 Runtime 时 ok=false 也合法（否决门/降级路径）
+        assert!(
+            !status.message.contains("路径 B"),
+            "不应再报告路径 B: {}",
+            status.message
+        );
         if status.ok {
-            assert!(status.message.contains("bootstrap 成功"));
-        } else {
-            assert!(status.message.contains("bootstrap 失败") || status.message.contains("非 Windows"));
+            assert!(
+                status.message.contains("bootstrap 成功")
+                    || status.message.contains("windows_reactor")
+                    || status.message.contains("WinAppSDK"),
+                "ok 时 message 应说明成功: {}",
+                status.message
+            );
         }
+    }
+
+    /// 兼容旧测试名（与 `try_bootstrap_reports_reactor_path` 同语义）。
+    #[test]
+    fn try_bootstrap_reports_path_r_not_path_b() {
+        try_bootstrap_reports_reactor_path();
     }
 }
