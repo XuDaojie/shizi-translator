@@ -1,6 +1,6 @@
 //! Bridge JSON 协议信封与 payload 类型。
 //!
-//! 请求 type（dispatch 任务再接线）：
+//! 请求 type：
 //! `start_translation` | `cancel_translation` | `retry_translation` |
 //! `set_session_languages` | `open_settings` | `trigger_ocr_translation` |
 //! `save_edge_translate_env` | `take_pending_source_text` | `get_app_config` |
@@ -9,6 +9,10 @@
 //! 推送 type：
 //! `translation_event` | `app_config_changed` | `interface_language_changed` |
 //! `show_context` | `response`
+//!
+//! 宿主接线前类型可能暂无外部调用方。
+
+#![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
 
