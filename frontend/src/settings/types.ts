@@ -1,9 +1,10 @@
-import type { ServiceProtocolId, WindowPrecreateConfig } from '@/types/config';
+import type { PopupUiBackend, ServiceProtocolId, WindowPrecreateConfig } from '@/types/config';
 
 export type ThemeMode = 'light' | 'dark' | 'system'
 export type UILanguage = 'auto' | 'zh-CN' | 'zh-TW' | 'en-US' | 'ja-JP' | 'ko-KR' | 'fr-FR' | 'de-DE' | 'es-ES' | (string & {})
 export type UpdateChannel = 'stable' | 'beta'
 export type LogLevel = 'error' | 'warn' | 'info' | 'debug'
+export type { PopupUiBackend }
 
 export interface GeneralSettings {
   /** 开机自启（已接后端 launchAtLogin → Windows Run）。 */
@@ -12,6 +13,8 @@ export interface GeneralSettings {
   language: UILanguage
   updateChannel: UpdateChannel
   autoCheckUpdate: boolean
+  /** 翻译弹窗 UI 后端：webview（默认）或 winui。设置 UI 由任务 12 暴露。 */
+  popupUiBackend: PopupUiBackend
 }
 
 export interface AdvancedSettings {

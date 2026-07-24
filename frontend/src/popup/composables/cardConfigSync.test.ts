@@ -36,6 +36,7 @@ function minimalConfig(services: Array<{ id: string; name: string; enabled: bool
     logLevel: 'info',
     updateChannel: 'stable',
     autoCheckUpdate: true,
+    popupUiBackend: 'webview',
     shortcuts: {},
   }
 }

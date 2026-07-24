@@ -162,6 +162,7 @@ const buildDefaults = (): AppSettings => {
       language: 'auto',
       updateChannel: 'stable',
       autoCheckUpdate: true,
+      popupUiBackend: 'webview',
     },
     windowPrecreate: {
       manual: { popup: true, overlay: false },
@@ -456,6 +457,7 @@ const loadFromStorage = (): AppSettings => {
         language: g.language ?? defaults.general.language,
         updateChannel: g.updateChannel === 'beta' ? 'beta' : 'stable',
         autoCheckUpdate: g.autoCheckUpdate ?? defaults.general.autoCheckUpdate,
+        popupUiBackend: g.popupUiBackend === 'winui' ? 'winui' : 'webview',
       },
       windowPrecreate: parsed.windowPrecreate ?? defaults.windowPrecreate,
       translation: {
@@ -758,6 +760,8 @@ export const useSettings = () => ({
         backend.autoCheckUpdate ?? state.general.autoCheckUpdate
       state.general.launchAtLogin =
         backend.launchAtLogin ?? state.general.launchAtLogin
+      state.general.popupUiBackend =
+        backend.popupUiBackend === 'winui' ? 'winui' : 'webview'
       if (backend.windowPrecreate) {
         state.windowPrecreate = backend.windowPrecreate
       }

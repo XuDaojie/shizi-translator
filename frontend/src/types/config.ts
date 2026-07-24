@@ -5,6 +5,8 @@
 export type LogLevel = 'error' | 'warn' | 'info' | 'debug';
 export type ServiceProtocolId = 'openai_chat' | 'claude_messages' | 'microsoft_edge' | 'mock';
 export type ChainOfThought = 'off' | 'short' | 'medium' | 'long';
+/** 翻译弹窗 UI 后端：WebView（默认）或 WinUI 原生。 */
+export type PopupUiBackend = 'webview' | 'winui';
 
 export interface ServiceInstanceConfig {
   id: string;
@@ -68,5 +70,7 @@ export interface AppConfig {
   autoCheckUpdate: boolean;
   /** 登录系统后自动启动（Windows Run 键）。旧 config 可能缺省。 */
   launchAtLogin?: boolean;
+  /** 翻译弹窗 UI 后端：`webview`（默认）或 `winui`。 */
+  popupUiBackend: PopupUiBackend;
   shortcuts: Record<string, string>;
 }

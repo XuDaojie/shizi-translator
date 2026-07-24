@@ -78,6 +78,7 @@ export function projectToAppConfig(state: AppSettings): AppConfig {
     updateChannel: state.general.updateChannel,
     autoCheckUpdate: state.general.autoCheckUpdate,
     launchAtLogin: state.general.launchAtLogin,
+    popupUiBackend: state.general.popupUiBackend === 'winui' ? 'winui' : 'webview',
     shortcuts: Object.fromEntries(
       state.shortcut.bindings.map((binding) => [binding.id, binding.keys.trim()]),
     ),

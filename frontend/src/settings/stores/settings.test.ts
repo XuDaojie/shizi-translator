@@ -328,6 +328,7 @@ const makeAppConfig = (services: ServiceInstanceConfig[], over: Partial<AppConfi
   windowPrecreate: { manual: { popup: true, overlay: false }, autostart: { popup: false, overlay: false } }, 
   ocrServices: [], collectUsage: true,
   logLevel: 'info', updateChannel: 'stable', autoCheckUpdate: true,
+  popupUiBackend: 'webview',
   shortcuts: {}, ...over,
 })
 
@@ -616,14 +617,14 @@ describe('syncFromBackend', () => {
     backend.resolve({
       interfaceLanguage: 'auto', targetLang: 'zh-CN', defaultSourceLang: 'auto',
       windowPrecreate: { manual: { popup: true, overlay: false }, autostart: { popup: false, overlay: false } }, 
-      autoCopy: true, restoreClipboard: true, historyLimit: 500, services: [], ocrServices: [], collectUsage: true, logLevel: 'info', updateChannel: 'stable', autoCheckUpdate: true, shortcuts: {},
+      autoCopy: true, restoreClipboard: true, historyLimit: 500, services: [], ocrServices: [], collectUsage: true, logLevel: 'info', updateChannel: 'stable', autoCheckUpdate: true, popupUiBackend: 'webview', shortcuts: {},
     })
     await Promise.all([first, second])
 
     vi.mocked(invokeGetAppConfig).mockResolvedValueOnce({
       interfaceLanguage: 'auto', targetLang: 'zh-CN', defaultSourceLang: 'auto',
       windowPrecreate: { manual: { popup: true, overlay: false }, autostart: { popup: false, overlay: false } }, 
-      autoCopy: true, restoreClipboard: true, historyLimit: 500, services: [], ocrServices: [], collectUsage: true, logLevel: 'info', updateChannel: 'stable', autoCheckUpdate: true, shortcuts: {},
+      autoCopy: true, restoreClipboard: true, historyLimit: 500, services: [], ocrServices: [], collectUsage: true, logLevel: 'info', updateChannel: 'stable', autoCheckUpdate: true, popupUiBackend: 'webview', shortcuts: {},
     })
     vi.mocked(invokeGetInterfaceLanguageSnapshot).mockResolvedValueOnce(languageSnapshot())
     await settings.syncFromBackend()
@@ -654,6 +655,7 @@ describe('syncFromBackend', () => {
       logLevel: 'info',
       updateChannel: 'stable',
       autoCheckUpdate: true,
+      popupUiBackend: 'webview',
       shortcuts: {},
     });
 
@@ -674,7 +676,7 @@ describe('syncFromBackend', () => {
     vi.mocked(invokeGetAppConfig).mockResolvedValue({
       interfaceLanguage: 'zh-CN', targetLang: 'zh-CN', defaultSourceLang: 'auto',
       windowPrecreate: { manual: { popup: true, overlay: false }, autostart: { popup: false, overlay: false } }, 
-      autoCopy: true, restoreClipboard: true, historyLimit: 500, services: [], ocrServices: [], collectUsage: true, logLevel: 'info', updateChannel: 'stable', autoCheckUpdate: true, shortcuts: {},
+      autoCopy: true, restoreClipboard: true, historyLimit: 500, services: [], ocrServices: [], collectUsage: true, logLevel: 'info', updateChannel: 'stable', autoCheckUpdate: true, popupUiBackend: 'webview', shortcuts: {},
     })
     vi.mocked(invokeGetInterfaceLanguageSnapshot).mockResolvedValue(languageSnapshot({
       configuredLocale: 'zh-CN', locale: 'zh-CN',
@@ -705,7 +707,7 @@ describe('syncFromBackend', () => {
     vi.mocked(invokeGetAppConfig).mockResolvedValue({
       interfaceLanguage: 'auto', targetLang: 'zh-CN', defaultSourceLang: 'auto',
       windowPrecreate: { manual: { popup: true, overlay: false }, autostart: { popup: false, overlay: false } }, 
-      autoCopy: true, restoreClipboard: true, historyLimit: 500, services: [], ocrServices: [], collectUsage: true, logLevel: 'info', updateChannel: 'stable', autoCheckUpdate: true, shortcuts: {},
+      autoCopy: true, restoreClipboard: true, historyLimit: 500, services: [], ocrServices: [], collectUsage: true, logLevel: 'info', updateChannel: 'stable', autoCheckUpdate: true, popupUiBackend: 'webview', shortcuts: {},
     })
     vi.mocked(invokeSaveAppConfig).mockRejectedValueOnce(new Error('write failed'))
 
@@ -723,7 +725,7 @@ describe('syncFromBackend', () => {
     vi.mocked(invokeGetAppConfig).mockResolvedValue({
       interfaceLanguage: 'auto', targetLang: 'zh-CN', defaultSourceLang: 'auto',
       windowPrecreate: { manual: { popup: true, overlay: false }, autostart: { popup: false, overlay: false } }, 
-      autoCopy: true, restoreClipboard: true, historyLimit: 500, services: [], ocrServices: [], collectUsage: true, logLevel: 'info', updateChannel: 'stable', autoCheckUpdate: true, shortcuts: {},
+      autoCopy: true, restoreClipboard: true, historyLimit: 500, services: [], ocrServices: [], collectUsage: true, logLevel: 'info', updateChannel: 'stable', autoCheckUpdate: true, popupUiBackend: 'webview', shortcuts: {},
     })
     vi.mocked(invokeGetInterfaceLanguageSnapshot).mockResolvedValue(languageSnapshot())
     const pendingSave = deferred<Awaited<ReturnType<typeof invokeSaveAppConfig>>>()
@@ -810,6 +812,7 @@ describe('syncFromBackend', () => {
       logLevel: 'info',
       updateChannel: 'stable',
       autoCheckUpdate: true,
+      popupUiBackend: 'webview',
       shortcuts: {},
     });
 
@@ -843,7 +846,7 @@ describe('syncFromBackend', () => {
     vi.mocked(invokeGetAppConfig).mockResolvedValue({
       interfaceLanguage: 'zh-CN', targetLang: 'zh-CN', services: [makeBackend({ id: localId })], ocrServices: [],
       windowPrecreate: { manual: { popup: true, overlay: false }, autostart: { popup: false, overlay: false } }, 
-      defaultSourceLang: 'auto', autoCopy: true, restoreClipboard: true, historyLimit: 500, collectUsage: true, logLevel: 'info', updateChannel: 'stable', autoCheckUpdate: true, shortcuts: {},
+      defaultSourceLang: 'auto', autoCopy: true, restoreClipboard: true, historyLimit: 500, collectUsage: true, logLevel: 'info', updateChannel: 'stable', autoCheckUpdate: true, popupUiBackend: 'webview', shortcuts: {},
     });
 
     await settings.syncFromBackend();
@@ -882,6 +885,7 @@ describe('syncFromBackend', () => {
       logLevel: 'info',
       updateChannel: 'stable',
       autoCheckUpdate: true,
+      popupUiBackend: 'webview',
       shortcuts: {
         'translate-selection': 'Ctrl+Alt+D',
         'translate-screenshot': '',
@@ -928,6 +932,7 @@ describe('syncFromBackend', () => {
       logLevel: 'info',
       updateChannel: 'stable',
       autoCheckUpdate: true,
+      popupUiBackend: 'webview',
       shortcuts: { 'translate-selection': 'Alt+D' },
     });
     vi.mocked(invokeGetShortcutConflicts).mockResolvedValue([
@@ -975,6 +980,7 @@ describe('syncFromBackend', () => {
         logLevel: 'info',
         updateChannel: 'stable',
         autoCheckUpdate: true,
+        popupUiBackend: 'webview',
         shortcuts: {},
       });
       await settings.syncFromBackend();
@@ -1025,6 +1031,7 @@ describe('syncFromBackend', () => {
       logLevel: 'info',
       updateChannel: 'stable',
       autoCheckUpdate: true,
+      popupUiBackend: 'webview',
       shortcuts: {},
     });
 
@@ -1066,6 +1073,7 @@ describe('syncFromBackend', () => {
         logLevel: 'info',
         updateChannel: 'stable',
         autoCheckUpdate: true,
+        popupUiBackend: 'webview',
         shortcuts: {},
       });
       await settings.syncFromBackend();
@@ -1150,6 +1158,7 @@ describe('defaultTargetLang', () => {
       logLevel: 'info',
       updateChannel: 'stable',
       autoCheckUpdate: true,
+      popupUiBackend: 'webview',
       shortcuts: {},
     });
     const settings = useSettings();
