@@ -1,6 +1,12 @@
 //! 弹窗 UI facade：按 config/session 选择 backend，统一 ensure/show/hide。
 //!
-//! WinUI：ensure/show 失败则会话级回退 webview（不写回 config）。
+//! # 会话回退语义（不写回 config）
+//!
+//! - WinUI `ensure` / `show` 失败 → `fallback_to_webview_for_session`：`active=Webview`，
+//!   `desired` 仍为 WinUi；**禁止**写 `config_store`。
+//! - `on_popup_ui_config_changed`：`set_desired` + hide 两边，**不** ensure。
+//! - `hide_active`：两边 hide，保证互斥。
+//! - 决策表见 [`resolve_after_ensure`]。
 
 use std::sync::{Mutex, OnceLock};
 
@@ -23,6 +29,22 @@ fn webview_ui() -> WebviewPopupUi {
 #[cfg(windows)]
 fn winui_ui() -> WinUiPopupUi {
     WinUiPopupUi::new()
+}
+
+/// 纯决策：desired + WinUI 本次 ensure/show 是否成功 → 最终应使用的 active。
+///
+/// 与 session 回退语义一致：失败时 active→Webview，调用方负责保留 desired、不写 config。
+pub fn resolve_after_ensure(desired: PopupUiKind, winui_ok: bool) -> PopupUiKind {
+    match desired {
+        PopupUiKind::Webview => PopupUiKind::Webview,
+        PopupUiKind::WinUi => {
+            if winui_ok {
+                PopupUiKind::WinUi
+            } else {
+                PopupUiKind::Webview
+            }
+        }
+    }
 }
 
 /// 进程级后备 session（AppState 尚未 manage 时）。优先用 AppState 单一真相。
@@ -69,6 +91,7 @@ pub fn ensure_for_config(app: &AppHandle, config: &AppConfig) -> Result<(), Stri
     ensure_active(app)
 }
 
+/// ensure 当前 active；WinUI 失败则会话回退 webview 再 ensure（见 [`resolve_after_ensure`]）。
 fn ensure_active(app: &AppHandle) -> Result<(), String> {
     let active = active_kind(app);
     match active {
@@ -79,8 +102,19 @@ fn ensure_active(app: &AppHandle) -> Result<(), String> {
                 match winui_ui().ensure(app) {
                     Ok(()) => Ok(()),
                     Err(e) => {
+                        // 与 resolve_after_ensure(WinUi, false) == Webview 一致；不写 config。
                         log::warn!("WinUI ensure 失败，本会话回退 webview: {e}");
-                        with_session(app, |session| session.fallback_to_webview_for_session())?;
+                        with_session(app, |session| {
+                            session.fallback_to_webview_for_session();
+                            debug_assert_eq!(
+                                session.active(),
+                                resolve_after_ensure(session.desired(), false)
+                            );
+                        })?;
+                        debug_assert_eq!(
+                            resolve_after_ensure(PopupUiKind::WinUi, false),
+                            PopupUiKind::Webview
+                        );
                         webview_ui().ensure(app)
                     }
                 }
@@ -146,7 +180,13 @@ pub fn show_for_config(
                     Ok(()) => Ok(()),
                     Err(e) => {
                         log::warn!("WinUI show 失败，本会话回退 webview: {e}");
-                        with_session(app, |session| session.fallback_to_webview_for_session())?;
+                        with_session(app, |session| {
+                            session.fallback_to_webview_for_session();
+                            debug_assert_eq!(
+                                session.active(),
+                                resolve_after_ensure(session.desired(), false)
+                            );
+                        })?;
                         let _ = winui_ui().hide(app);
                         webview_ui().show(app, mode)
                     }
@@ -187,7 +227,13 @@ pub fn show_blocking_for_config(
                     Ok(()) => Ok(()),
                     Err(e) => {
                         log::warn!("WinUI show(blocking) 失败，本会话回退 webview: {e}");
-                        with_session(app, |session| session.fallback_to_webview_for_session())?;
+                        with_session(app, |session| {
+                            session.fallback_to_webview_for_session();
+                            debug_assert_eq!(
+                                session.active(),
+                                resolve_after_ensure(session.desired(), false)
+                            );
+                        })?;
                         let _ = winui_ui().hide(app);
                         crate::app::popup_window::show_popup_blocking(app, config, mode)
                     }
@@ -234,3 +280,66 @@ pub fn shutdown_winui_host() {
 
 #[cfg(not(windows))]
 pub fn shutdown_winui_host() {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolve_after_ensure_decision_table() {
+        assert_eq!(
+            resolve_after_ensure(PopupUiKind::Webview, true),
+            PopupUiKind::Webview
+        );
+        assert_eq!(
+            resolve_after_ensure(PopupUiKind::Webview, false),
+            PopupUiKind::Webview
+        );
+        assert_eq!(
+            resolve_after_ensure(PopupUiKind::WinUi, true),
+            PopupUiKind::WinUi
+        );
+        assert_eq!(
+            resolve_after_ensure(PopupUiKind::WinUi, false),
+            PopupUiKind::Webview
+        );
+    }
+
+    /// 锁定：ensure 决策失败 → active=Webview、desired 仍 WinUi（不写 config）。
+    #[test]
+    fn ensure_winui_failure_falls_back_without_writing_desired() {
+        let mut s = PopupUiSession::new();
+        s.set_desired(PopupUiKind::WinUi);
+        assert_eq!(s.active(), PopupUiKind::WinUi);
+
+        // 模拟 ensure 失败：与 ensure_active 中 fallback 路径一致
+        let winui_ok = false;
+        assert_eq!(
+            resolve_after_ensure(s.desired(), winui_ok),
+            PopupUiKind::Webview
+        );
+        s.fallback_to_webview_for_session();
+
+        assert_eq!(s.desired(), PopupUiKind::WinUi);
+        assert_eq!(s.active(), PopupUiKind::Webview);
+        assert_eq!(
+            s.active(),
+            resolve_after_ensure(s.desired(), winui_ok),
+            "session.active 必须与 resolve_after_ensure 决策表一致"
+        );
+    }
+
+    #[test]
+    fn ensure_winui_success_keeps_active_winui() {
+        let mut s = PopupUiSession::new();
+        s.set_desired(PopupUiKind::WinUi);
+        let winui_ok = true;
+        assert_eq!(
+            resolve_after_ensure(s.desired(), winui_ok),
+            PopupUiKind::WinUi
+        );
+        // 成功路径不调用 fallback
+        assert_eq!(s.desired(), PopupUiKind::WinUi);
+        assert_eq!(s.active(), PopupUiKind::WinUi);
+    }
+}

@@ -67,6 +67,17 @@ mod tests {
         assert_eq!(s.active(), PopupUiKind::Webview);
     }
 
+    /// ensure WinUI 失败会话回退：active=Webview、desired 仍 WinUi、不写 config。
+    #[test]
+    fn ensure_winui_failure_falls_back_without_writing_desired() {
+        let mut s = PopupUiSession::new();
+        s.set_desired(PopupUiKind::WinUi);
+        // 模拟 ensure 失败（facade::ensure_active 失败分支调用同一方法）
+        s.fallback_to_webview_for_session();
+        assert_eq!(s.desired(), PopupUiKind::WinUi);
+        assert_eq!(s.active(), PopupUiKind::Webview);
+    }
+
     #[test]
     fn sync_desired_preserves_session_fallback() {
         let mut s = PopupUiSession::new();
