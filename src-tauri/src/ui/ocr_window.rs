@@ -79,10 +79,8 @@ pub async fn start_ocr_capture_flow(app: AppHandle, state: AppState) {
         }
     };
 
-    let scale = app
-        .get_webview_window("main")
-        .and_then(|w| w.scale_factor().ok())
-        .unwrap_or(1.0);
+    // 与 ocr_popup 相同：WinUI backend 下无 main WebView 时改从显示器 DPI 取 scale。
+    let scale = crate::ui::capture_scale::resolve_capture_scale_factor(&app);
 
     if let Err(error) = state.set_pending_capture(frame, scale) {
         let _ = state.finish_capture();

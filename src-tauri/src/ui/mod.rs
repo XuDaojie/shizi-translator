@@ -1,3 +1,4 @@
+pub mod capture_scale;
 pub mod config;
 pub mod history;
 pub mod i18n;
