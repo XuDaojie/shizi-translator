@@ -14,6 +14,8 @@ public sealed class TranslationLanguage
     public string Code { get; }
     public string NativeName { get; }
     public string PromptName { get; }
+    /// <summary>英语展示名（语言 Flyout 右侧），同 PromptName。</summary>
+    public string EnglishName => PromptName;
     public string NameKey { get; }
 
     public override string ToString() => NativeName;

@@ -13,6 +13,7 @@
 - **默认** `AppConfig.popupUi: "webview"` → `main` → `translate.html`（Vue，`frontend/src/popup/`），路径 `app/popup_ui/webview` + 既有 `popup_window`。
 - **可选** `popupUi: "winui"`（仅 Windows）→ WinUI3 原生窗；源码 `native/windows/popup`；Rust 侧 `app/popup_ui`（trait / session / facade）+ `app/popup_bridge`（协议、分发、推送、子进程 host）。
 - **Transport**：subprocess + localhost TCP JSON 行协议（`host.rs`）；非进程内 hostfxr。查找 `Shizi.Popup.exe`：exe 旁 `popup-native/` → dev `native/windows/popup/bin/...`。
+- **视觉**：浅色对齐 Open Design `#popup-winui3`（逻辑宽 468、`Resources/PopupTokens.xaml`、Mica 优先）；规格见 `docs/superpowers/specs/2026-07-25-winui-popup-visual-replica-design.md`。
 - **切换**：设置保存后**下次** `ensure`/`show` 生效（不热切）；同一时刻只激活一种后端。
 - **回退**：WinUI `ensure` 失败 → 日志 + **会话内**回退 webview，**不写回** `config.json`。
 - 打包 / CI / 验收清单见 `native/README.md`。

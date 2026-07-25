@@ -5,252 +5,382 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="Shizi 翻译">
 
+    <!--
+      像素级对齐 Open Design #popup-winui3：
+      - 无系统标题栏/边框，自绘圆角 shell + 细边
+      - 标题栏图标密度与原型一致（收藏/书签/主题仅视觉，无业务）
+      - 语言栏用 Button+Flyout（非系统 Combo 外框）
+    -->
     <Grid x:Name="RootGrid"
-          Background="{ThemeResource LayerFillColorDefaultBrush}"
-          Width="420"
+          Background="Transparent"
+          Width="{StaticResource PopupWindowWidth}"
           MinHeight="120"
           SizeChanged="RootGrid_SizeChanged">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="40" />
-            <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
 
-        <!--
-          顶栏布局要点（WinUI SetTitleBar 坑）：
-          只有中间 DragRegion 交给 SetTitleBar 作拖拽区；左右按钮必须在其外，
-          否则整栏变成非客户区，按钮点不到，双击标题还会被系统当最大化。
-        -->
-        <Border Grid.Row="0"
-                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                BorderThickness="0,0,0,1"
-                Padding="8,0">
+        <!-- 圆角外壳：模拟原型 .winui3-popup -->
+        <Border x:Name="ShellBorder"
+                Background="{StaticResource PopupMicaFallbackBrush}"
+                BorderBrush="{StaticResource PopupShellEdgeBrush}"
+                BorderThickness="1"
+                CornerRadius="{StaticResource PopupCornerShell}"
+                Padding="0">
             <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="44" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
 
-                <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
-                    <Button x:Name="PinButton"
-                            Width="32" Height="32"
-                            Padding="0"
-                            Background="Transparent"
-                            BorderThickness="0"
-                            Click="PinButton_Click"
-                            ToolTipService.ToolTip="置顶">
-                        <FontIcon Glyph="&#xE840;" FontSize="14" />
-                    </Button>
-                </StackPanel>
-
-                <!-- 仅此区域 SetTitleBar：拖动窗口；标题文字不参与命中 -->
-                <Border x:Name="AppTitleBar"
-                        Grid.Column="1"
-                        Background="Transparent"
-                        VerticalAlignment="Stretch"
-                        HorizontalAlignment="Stretch">
-                    <TextBlock Text="Shizi"
-                               VerticalAlignment="Center"
-                               HorizontalAlignment="Center"
-                               FontWeight="SemiBold"
-                               FontSize="13"
-                               Opacity="0.85"
-                               IsHitTestVisible="False" />
-                </Border>
-
-                <StackPanel Grid.Column="2"
-                            Orientation="Horizontal"
-                            Spacing="2"
-                            VerticalAlignment="Center">
-                    <Button x:Name="OcrButton"
-                            Width="32" Height="32"
-                            Padding="0"
-                            Background="Transparent"
-                            BorderThickness="0"
-                            Click="OcrButton_Click"
-                            ToolTipService.ToolTip="截图翻译">
-                        <FontIcon Glyph="&#xE8B8;" FontSize="14" />
-                    </Button>
-                    <Button x:Name="BookmarkButton"
-                            Width="32" Height="32"
-                            Padding="0"
-                            Background="Transparent"
-                            BorderThickness="0"
-                            Click="BookmarkButton_Click"
-                            ToolTipService.ToolTip="收藏">
-                        <FontIcon Glyph="&#xE734;" FontSize="14" />
-                    </Button>
-                    <Button x:Name="SettingsButton"
-                            Width="32" Height="32"
-                            Padding="0"
-                            Background="Transparent"
-                            BorderThickness="0"
-                            Click="SettingsButton_Click"
-                            ToolTipService.ToolTip="设置">
-                        <FontIcon Glyph="&#xE713;" FontSize="14" />
-                    </Button>
-                </StackPanel>
-            </Grid>
-        </Border>
-
-        <!-- 内容：原文 / 语言 / 结果卡 -->
-        <ScrollViewer Grid.Row="1"
-                      VerticalScrollBarVisibility="Auto"
-                      HorizontalScrollBarVisibility="Disabled"
-                      Padding="12,10,12,6">
-            <StackPanel x:Name="ContentPanel" Spacing="10">
-
-                <!-- 原文卡 -->
-                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                        BorderThickness="1"
-                        CornerRadius="8"
-                        Padding="10,8">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-
-                        <Grid>
-                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                <TextBlock x:Name="SourceLangBadge"
-                                           Text="自动检测"
-                                           FontSize="11"
-                                           Opacity="0.7"
-                                           VerticalAlignment="Center" />
-                                <Border x:Name="SourceTypeBadgeBorder"
-                                        Background="{ThemeResource AccentFillColorDefaultBrush}"
-                                        CornerRadius="4"
-                                        Padding="6,1"
-                                        Visibility="Collapsed">
-                                    <TextBlock x:Name="SourceTypeBadge"
-                                               Text=""
-                                               FontSize="10"
-                                               Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
-                                </Border>
-                            </StackPanel>
-                            <StackPanel Orientation="Horizontal"
-                                        HorizontalAlignment="Right"
-                                        Spacing="0">
-                                <Button Width="28" Height="28" Padding="0"
-                                        Background="Transparent" BorderThickness="0"
-                                        Click="SourceCopy_Click"
-                                        ToolTipService.ToolTip="复制">
-                                    <FontIcon Glyph="&#xE8C8;" FontSize="12" />
-                                </Button>
-                                <Button Width="28" Height="28" Padding="0"
-                                        Background="Transparent" BorderThickness="0"
-                                        Click="SourceSpeak_Click"
-                                        ToolTipService.ToolTip="朗读">
-                                    <FontIcon Glyph="&#xE767;" FontSize="12" />
-                                </Button>
-                            </StackPanel>
-                        </Grid>
-
-                        <TextBox x:Name="SourceTextBox"
-                                 Grid.Row="1"
-                                 Margin="0,6,0,0"
-                                 AcceptsReturn="True"
-                                 TextWrapping="Wrap"
-                                 PlaceholderText="输入或粘贴要翻译的文本…"
-                                 BorderThickness="0"
-                                 Background="Transparent"
-                                 MinHeight="48"
-                                 MaxHeight="160"
-                                 FontSize="14"
-                                 TextChanged="SourceTextBox_TextChanged"
-                                 KeyDown="SourceTextBox_KeyDown" />
-
-                        <Button x:Name="TranslateButton"
-                                Grid.Row="2"
-                                Content="翻译"
-                                HorizontalAlignment="Right"
-                                Margin="0,4,0,0"
-                                Style="{StaticResource AccentButtonStyle}"
-                                Click="TranslateButton_Click" />
-                    </Grid>
-                </Border>
-
-                <!-- 语言栏 -->
-                <Grid>
+                <!-- ===== 标题栏 44：左品牌钉 / 中拖 / 右工具+窗控 ===== -->
+                <Grid Grid.Row="0" Padding="14,0,0,0">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-
-                    <ComboBox x:Name="SourceLangCombo"
-                              HorizontalAlignment="Stretch"
-                              SelectionChanged="SourceLangCombo_SelectionChanged" />
-
-                    <Button Grid.Column="1"
-                            Width="36" Height="32"
-                            Margin="4,0"
-                            Background="Transparent"
-                            BorderThickness="0"
-                            Click="SwapLang_Click"
-                            ToolTipService.ToolTip="交换语言">
-                        <FontIcon Glyph="&#xE8AB;" FontSize="14" />
-                    </Button>
-
-                    <ComboBox x:Name="TargetLangCombo"
-                              Grid.Column="2"
-                              HorizontalAlignment="Stretch"
-                              SelectionChanged="TargetLangCombo_SelectionChanged" />
-                </Grid>
-
-                <!-- 结果卡列表 -->
-                <StackPanel x:Name="ResultsPanel" Spacing="8" />
-            </StackPanel>
-        </ScrollViewer>
-
-        <!-- 状态栏 + tip -->
-        <Border Grid.Row="2"
-                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                BorderThickness="0,1,0,0"
-                Padding="12,6">
-            <StackPanel Spacing="4">
-                <InfoBar x:Name="TipBar"
-                         IsOpen="False"
-                         IsClosable="True"
-                         Severity="Informational"
-                         CloseButtonClick="TipBar_CloseButtonClick" />
-                <Grid>
-                    <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
-                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                        <ProgressRing x:Name="StatusRing"
-                                      Width="14" Height="14"
-                                      IsActive="False" />
-                        <TextBlock x:Name="StatusText"
-                                   Text="就绪"
-                                   FontSize="12"
-                                   Opacity="0.8"
-                                   VerticalAlignment="Center" />
-                        <HyperlinkButton x:Name="StatusActionButton"
-                                         Content="取消"
-                                         FontSize="12"
-                                         Padding="4,0"
-                                         Visibility="Collapsed"
-                                         Click="StatusAction_Click" />
+                    <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,4,0" VerticalAlignment="Center">
+                            <Border Width="20" Height="20"
+                                    CornerRadius="{StaticResource PopupCornerBrand}"
+                                    Background="{StaticResource PopupAccentBrush}"
+                                    VerticalAlignment="Center">
+                                <TextBlock Text="文" FontSize="11" FontWeight="Bold"
+                                           Foreground="{StaticResource PopupOnAccentBrush}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           IsHitTestVisible="False" />
+                            </Border>
+                            <TextBlock Text="shizi" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{StaticResource PopupFgBrush}"
+                                       VerticalAlignment="Center" IsHitTestVisible="False"
+                                       CharacterSpacing="10" />
+                        </StackPanel>
+
+                        <Button x:Name="PinButton"
+                                Style="{StaticResource PopupIconButtonStyle}"
+                                Click="PinButton_Click"
+                                ToolTipService.ToolTip="置顶">
+                            <FontIcon x:Name="PinIcon" Glyph="&#xE840;" FontSize="16"
+                                      Foreground="{StaticResource PopupFgBrush}" />
+                        </Button>
                     </StackPanel>
 
-                    <TextBlock x:Name="CharCountText"
-                               Grid.Column="1"
-                               Text="0 字"
-                               FontSize="12"
-                               Opacity="0.55"
-                               VerticalAlignment="Center" />
+                    <Border x:Name="AppTitleBar"
+                            Grid.Column="1"
+                            Background="Transparent"
+                            VerticalAlignment="Stretch"
+                            HorizontalAlignment="Stretch" />
+
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="0" VerticalAlignment="Center">
+                        <!-- 视觉对齐原型：收藏/截图/书签/设置/主题（收藏书签主题 no-op） -->
+                        <Button x:Name="FavButton"
+                                Style="{StaticResource PopupIconButtonStyle}"
+                                Click="FavButton_Click"
+                                ToolTipService.ToolTip="收藏">
+                            <FontIcon x:Name="FavIcon" Glyph="&#xE734;" FontSize="16"
+                                      Foreground="{StaticResource PopupFgBrush}" />
+                        </Button>
+                        <Button x:Name="OcrButton"
+                                Style="{StaticResource PopupIconButtonStyle}"
+                                Click="OcrButton_Click"
+                                ToolTipService.ToolTip="截图翻译">
+                            <FontIcon Glyph="&#xE8B8;" FontSize="16"
+                                      Foreground="{StaticResource PopupFgBrush}" />
+                        </Button>
+                        <Button x:Name="BookmarkButton"
+                                Style="{StaticResource PopupIconButtonStyle}"
+                                Click="BookmarkButton_Click"
+                                ToolTipService.ToolTip="书签">
+                            <FontIcon Glyph="&#xE8A5;" FontSize="16"
+                                      Foreground="{StaticResource PopupFgBrush}" />
+                        </Button>
+                        <Button x:Name="SettingsButton"
+                                Style="{StaticResource PopupIconButtonStyle}"
+                                Click="SettingsButton_Click"
+                                ToolTipService.ToolTip="设置">
+                            <FontIcon Glyph="&#xE713;" FontSize="16"
+                                      Foreground="{StaticResource PopupFgBrush}" />
+                        </Button>
+                        <Button x:Name="ThemeButton"
+                                Style="{StaticResource PopupIconButtonStyle}"
+                                Click="ThemeButton_Click"
+                                ToolTipService.ToolTip="主题">
+                            <FontIcon Glyph="&#xE708;" FontSize="16"
+                                      Foreground="{StaticResource PopupFgBrush}" />
+                        </Button>
+
+                        <Border Width="1" Height="16"
+                                Background="{StaticResource PopupBorderBrush}"
+                                Margin="4,0" VerticalAlignment="Center" />
+
+                        <Button x:Name="MinButton"
+                                Style="{StaticResource PopupWinButtonStyle}"
+                                Click="MinButton_Click"
+                                ToolTipService.ToolTip="最小化">
+                            <FontIcon Glyph="&#xE921;" FontSize="12"
+                                      Foreground="{StaticResource PopupFgBrush}" />
+                        </Button>
+                        <Button x:Name="CloseButton"
+                                Style="{StaticResource PopupWinButtonStyle}"
+                                Click="CloseButton_Click"
+                                PointerEntered="CloseButton_PointerEntered"
+                                PointerExited="CloseButton_PointerExited"
+                                ToolTipService.ToolTip="关闭">
+                            <FontIcon x:Name="CloseIcon" Glyph="&#xE8BB;" FontSize="12"
+                                      Foreground="{StaticResource PopupFgBrush}" />
+                        </Button>
+                    </StackPanel>
                 </Grid>
-            </StackPanel>
+
+                <!-- ===== body pad 14 / gap 10 ===== -->
+                <ScrollViewer Grid.Row="1"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              Padding="14,0">
+                    <StackPanel x:Name="ContentPanel" Spacing="10" Margin="0,0,0,4">
+
+                        <!-- 源文卡 -->
+                        <Border x:Name="SourceCardBorder"
+                                Background="{StaticResource PopupCardBgBrush}"
+                                BorderBrush="{StaticResource PopupBorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{StaticResource PopupCornerMd}"
+                                Padding="12,10,12,8"
+                                GotFocus="SourceCard_GotFocus"
+                                LostFocus="SourceCard_LostFocus">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="*" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <TextBox x:Name="SourceTextBox"
+                                         Style="{StaticResource PopupSourceTextBoxStyle}"
+                                         AcceptsReturn="True"
+                                         TextWrapping="Wrap"
+                                         PlaceholderText="输入或粘贴要翻译的文本…"
+                                         MinHeight="72"
+                                         MaxHeight="148"
+                                         TextChanged="SourceTextBox_TextChanged"
+                                         KeyDown="SourceTextBox_KeyDown"
+                                         GotFocus="SourceTextBox_GotFocus"
+                                         LostFocus="SourceTextBox_LostFocus" />
+
+                                <Grid Grid.Row="1" Margin="0,8,0,0">
+                                    <Border Height="1"
+                                            VerticalAlignment="Top"
+                                            Margin="0,0,0,6"
+                                            Background="{StaticResource PopupBorderBrush}" />
+                                    <Grid Margin="0,8,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+                                            <Button Style="{StaticResource PopupMetaButtonStyle}"
+                                                    Click="SourceSpeak_Click"
+                                                    ToolTipService.ToolTip="朗读">
+                                                <FontIcon Glyph="&#xE767;" FontSize="12"
+                                                          Foreground="{StaticResource PopupFg2Brush}" />
+                                            </Button>
+                                            <Button Style="{StaticResource PopupMetaButtonStyle}"
+                                                    Click="SourceCopy_Click"
+                                                    ToolTipService.ToolTip="复制">
+                                                <FontIcon Glyph="&#xE8C8;" FontSize="12"
+                                                          Foreground="{StaticResource PopupFg2Brush}" />
+                                            </Button>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                                            <Border x:Name="SourceTypeBadgeBorder"
+                                                    Background="{StaticResource PopupAccentSoftBrush}"
+                                                    CornerRadius="{StaticResource PopupCornerPill}"
+                                                    Padding="6,2"
+                                                    Visibility="Collapsed">
+                                                <TextBlock x:Name="SourceTypeBadge" FontSize="10" FontWeight="SemiBold"
+                                                           Foreground="{StaticResource PopupAccentBrush}" />
+                                            </Border>
+                                            <Border Background="{StaticResource PopupAccentSoftBrush}"
+                                                    CornerRadius="{StaticResource PopupCornerPill}"
+                                                    Padding="8,2">
+                                                <TextBlock x:Name="SourceLangBadge"
+                                                           Text="自动检测"
+                                                           FontSize="11"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{StaticResource PopupAccentBrush}" />
+                                            </Border>
+                                        </StackPanel>
+                                    </Grid>
+                                </Grid>
+                            </Grid>
+                        </Border>
+
+                        <!-- 语言栏：一体分段 Button + Flyout（无 Combo 外框） -->
+                        <Border Background="{StaticResource PopupCardBgBrush}"
+                                BorderBrush="{StaticResource PopupBorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{StaticResource PopupCornerMd}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <Button x:Name="SourceLangButton"
+                                        Style="{StaticResource PopupLangSideButtonStyle}"
+                                        Click="SourceLangButton_Click">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <TextBlock x:Name="SourceLangLabel"
+                                                   Text="自动检测"
+                                                   FontSize="13"
+                                                   FontWeight="Medium"
+                                                   Foreground="{StaticResource PopupFgBrush}"
+                                                   MaxWidth="140"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <FontIcon Glyph="&#xE70D;" FontSize="11"
+                                                  Foreground="{StaticResource PopupFg3Brush}" />
+                                    </StackPanel>
+                                    <Button.Flyout>
+                                        <Flyout x:Name="SourceLangFlyout"
+                                                Placement="Bottom"
+                                                LightDismissOverlayMode="On">
+                                            <ListView x:Name="SourceLangList"
+                                                      Width="240"
+                                                      MaxHeight="280"
+                                                      SelectionMode="Single"
+                                                      IsItemClickEnabled="True"
+                                                      ItemClick="SourceLangList_ItemClick">
+                                                <ListView.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Grid Padding="6,7" ColumnSpacing="10">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock Text="{Binding NativeName}"
+                                                                       FontSize="13"
+                                                                       Foreground="{StaticResource PopupFgBrush}" />
+                                                            <TextBlock Grid.Column="1"
+                                                                       Text="{Binding EnglishName}"
+                                                                       FontSize="11"
+                                                                       Foreground="{StaticResource PopupFg3Brush}"
+                                                                       VerticalAlignment="Center" />
+                                                        </Grid>
+                                                    </DataTemplate>
+                                                </ListView.ItemTemplate>
+                                            </ListView>
+                                        </Flyout>
+                                    </Button.Flyout>
+                                </Button>
+
+                                <Button x:Name="SwapLangButton"
+                                        Grid.Column="1"
+                                        Width="{StaticResource PopupLangSwapWidth}"
+                                        Height="36"
+                                        Style="{StaticResource PopupIconButtonStyle}"
+                                        Click="SwapLang_Click"
+                                        ToolTipService.ToolTip="交换语言">
+                                    <FontIcon Glyph="&#xE8AB;" FontSize="14"
+                                              Foreground="{StaticResource PopupFg2Brush}" />
+                                </Button>
+
+                                <Button x:Name="TargetLangButton"
+                                        Grid.Column="2"
+                                        Style="{StaticResource PopupLangSideButtonStyle}"
+                                        Click="TargetLangButton_Click">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <TextBlock x:Name="TargetLangLabel"
+                                                   Text="简体中文"
+                                                   FontSize="13"
+                                                   FontWeight="Medium"
+                                                   Foreground="{StaticResource PopupFgBrush}"
+                                                   MaxWidth="140"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <FontIcon Glyph="&#xE70D;" FontSize="11"
+                                                  Foreground="{StaticResource PopupFg3Brush}" />
+                                    </StackPanel>
+                                    <Button.Flyout>
+                                        <Flyout x:Name="TargetLangFlyout"
+                                                Placement="Bottom"
+                                                LightDismissOverlayMode="On">
+                                            <ListView x:Name="TargetLangList"
+                                                      Width="240"
+                                                      MaxHeight="280"
+                                                      SelectionMode="Single"
+                                                      IsItemClickEnabled="True"
+                                                      ItemClick="TargetLangList_ItemClick">
+                                                <ListView.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Grid Padding="6,7" ColumnSpacing="10">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock Text="{Binding NativeName}"
+                                                                       FontSize="13"
+                                                                       Foreground="{StaticResource PopupFgBrush}" />
+                                                            <TextBlock Grid.Column="1"
+                                                                       Text="{Binding EnglishName}"
+                                                                       FontSize="11"
+                                                                       Foreground="{StaticResource PopupFg3Brush}"
+                                                                       VerticalAlignment="Center" />
+                                                        </Grid>
+                                                    </DataTemplate>
+                                                </ListView.ItemTemplate>
+                                            </ListView>
+                                        </Flyout>
+                                    </Button.Flyout>
+                                </Button>
+                            </Grid>
+                        </Border>
+
+                        <StackPanel x:Name="ResultsPanel" Spacing="8" />
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- ===== 状态栏 ===== -->
+                <Border Grid.Row="2"
+                        Background="Transparent"
+                        BorderBrush="{StaticResource PopupBorderBrush}"
+                        BorderThickness="0,1,0,0"
+                        Padding="14,8,14,10">
+                    <StackPanel Spacing="4">
+                        <InfoBar x:Name="TipBar"
+                                 IsOpen="False"
+                                 IsClosable="True"
+                                 Severity="Informational"
+                                 CloseButtonClick="TipBar_CloseButtonClick" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <Ellipse x:Name="StatusDot" Width="6" Height="6"
+                                         Fill="{StaticResource PopupSuccessBrush}"
+                                         VerticalAlignment="Center" />
+                                <TextBlock x:Name="StatusText" Text="就绪" FontSize="12"
+                                           Foreground="{StaticResource PopupFg2Brush}"
+                                           VerticalAlignment="Center" />
+                                <HyperlinkButton x:Name="StatusActionButton"
+                                                 Content="取消"
+                                                 FontSize="12"
+                                                 Padding="4,0"
+                                                 Foreground="{StaticResource PopupAccentBrush}"
+                                                 Visibility="Collapsed"
+                                                 Click="StatusAction_Click" />
+                            </StackPanel>
+                            <TextBlock x:Name="CharCountText"
+                                       Grid.Column="1"
+                                       Text="0 字"
+                                       FontSize="12"
+                                       Foreground="{StaticResource PopupFg3Brush}"
+                                       VerticalAlignment="Center" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+            </Grid>
         </Border>
     </Grid>
 </Window>

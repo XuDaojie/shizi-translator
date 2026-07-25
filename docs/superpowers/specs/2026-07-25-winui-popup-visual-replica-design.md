@@ -1,7 +1,7 @@
 # WinUI3 翻译弹窗视觉复刻（对齐 Open Design 原型）
 
 > 日期：2026-07-25  
-> 状态：**设计已确认，待实现**  
+> 状态：**实现完成（视觉复刻 A 档）**  
 > 规模：**M**（现有 C# 弹窗 UI 视觉复刻；Bridge / Rust 核心不动）  
 > 分支：`feature/winui-native-translation-popup`
 
