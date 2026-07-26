@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.UI.Dispatching;
 using Shizi.Popup.Host;
 using Shizi.Popup.Services;
 
@@ -38,8 +39,26 @@ public sealed class NativeBridge
     /// <summary>是否已挂接 UI→Rust 写出（无 IPC 独立启动时为 false）。</summary>
     public bool HasRequestSink => _requestSink is not null;
 
-    /// <summary>Rust → UI：接收 BridgePush / BridgeResponse JSON 字符串。</summary>
+    /// <summary>
+    /// Rust → UI：接收 BridgePush / BridgeResponse JSON。
+    /// 必须在 UI 线程处理：翻译事件会高频改状态并 Rebuild 卡片；
+    /// 在 IPC 线程改 Dictionary 同时 UI 枚举 → 崩溃；Storyboard 也须在 UI 线程启停。
+    /// </summary>
     public void ReceivePushJson(string json)
+    {
+        var dq = _controller?.Window.DispatcherQueue;
+        if (dq is not null && !dq.HasThreadAccess)
+        {
+            // 不阻塞 IPC 读循环（避免与 call_op 等待 result 死锁）；丢队则尽力同步处理
+            if (!dq.TryEnqueue(DispatcherQueuePriority.Normal, () => ProcessPushOnUi(json)))
+                ProcessPushOnUi(json);
+            return;
+        }
+
+        ProcessPushOnUi(json);
+    }
+
+    private void ProcessPushOnUi(string json)
     {
         try
         {
@@ -50,9 +69,25 @@ public sealed class NativeBridge
             var typeName = root.TryGetProperty("type", out var t) ? t.GetString() ?? "?" : "?";
             _controller?.Window.OnBridgePushHint(typeName);
         }
-        catch
+        catch (Exception ex)
         {
-            _controller?.Window.OnBridgePushHint("push?");
+            try
+            {
+                CrashLog.Write("ReceivePushJson", ex);
+            }
+            catch
+            {
+                // ignore
+            }
+
+            try
+            {
+                _controller?.Window.OnBridgePushHint("push?");
+            }
+            catch
+            {
+                // ignore
+            }
         }
     }
 

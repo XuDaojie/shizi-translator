@@ -32,7 +32,11 @@ public static class ServiceIcons
                     VerticalAlignment = VerticalAlignment.Center,
                     HorizontalAlignment = HorizontalAlignment.Center,
                 };
-                image.Source = new SvgImageSource(new Uri(path));
+                // file:// URI；裸盘符路径 new Uri(path) 在部分环境下会炸
+                var uri = new Uri(path, UriKind.Absolute);
+                if (!uri.IsAbsoluteUri || uri.Scheme != Uri.UriSchemeFile)
+                    uri = new Uri("file:///" + path.Replace('\\', '/'));
+                image.Source = new SvgImageSource(uri);
                 return image;
             }
             catch

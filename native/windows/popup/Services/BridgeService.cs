@@ -249,24 +249,30 @@ public sealed class BridgeService
         }
     }
 
-    public void ToggleCardCollapsed(string serviceInstanceId)
+    /// <param name="raiseUi">
+    /// 为 false 时仅改状态，由调用方做折叠动画后自行刷新尺寸（对齐 Vue class 切换 + CSS transition）。
+    /// </param>
+    public void ToggleCardCollapsed(string serviceInstanceId, bool raiseUi = true)
     {
         if (!State.Cards.TryGetValue(serviceInstanceId, out var card))
             return;
 
         card.Collapsed = !card.Collapsed;
         card.CollapseUserOverride = true;
-        RaiseUi();
+        if (raiseUi)
+            RaiseUi();
     }
 
     /// <summary>结果卡「展开全文 / 收起」（仅 UI 本地状态，无 Bridge 协议）。</summary>
-    public void ToggleCardExpanded(string serviceInstanceId)
+    /// <param name="raiseUi">为 false 时仅改状态，由调用方做 max-height 动画。</param>
+    public void ToggleCardExpanded(string serviceInstanceId, bool raiseUi = true)
     {
         if (!State.Cards.TryGetValue(serviceInstanceId, out var card))
             return;
 
         card.Expanded = !card.Expanded;
-        RaiseUi();
+        if (raiseUi)
+            RaiseUi();
     }
 
     public void ShowTip(string message)

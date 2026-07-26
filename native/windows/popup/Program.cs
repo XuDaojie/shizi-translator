@@ -22,6 +22,20 @@ public static class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        // 捕获未处理异常，避免「翻译一触发进程直接没了」却无日志
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
+            if (e.ExceptionObject is Exception ex)
+                CrashLog.Write("AppDomain.UnhandledException", ex);
+            else
+                CrashLog.Write($"AppDomain.UnhandledException: {e.ExceptionObject}");
+        };
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            CrashLog.Write("TaskScheduler.UnobservedTaskException", e.Exception);
+            e.SetObserved();
+        };
+
         try
         {
             XamlCheckProcessRequirements();

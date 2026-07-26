@@ -14,6 +14,13 @@ public partial class App : Application
     public App()
     {
         _options = Program.StartupOptions;
+        // UI 线程未处理异常（Rebuild/Storyboard 等）写日志后再抛出，便于对照 crash log
+        UnhandledException += (_, e) =>
+        {
+            CrashLog.Write("Application.UnhandledException", e.Exception);
+            // 尽量吞掉可恢复异常，避免进程直接退出（翻译流高频刷新时尤其关键）
+            e.Handled = true;
+        };
         InitializeComponent();
     }
 

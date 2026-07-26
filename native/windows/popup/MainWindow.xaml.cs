@@ -4,8 +4,10 @@ using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Shapes;
 using Shizi.Popup.Data;
 using Shizi.Popup.Services;
@@ -60,6 +62,16 @@ public sealed partial class MainWindow : Window
     private double _lastReportedHeight;
     private DispatcherTimer? _tipTimer;
     private DispatcherTimer? _sizeDebounce;
+    private Storyboard? _statusDotPulse;
+    /// <summary>卡片 loading 脉冲/光标闪烁等 Forever Storyboard；Rebuild 前必须 Stop，否则目标被拆掉会崩进程。</summary>
+    private readonly List<Storyboard> _cardStoryboards = new();
+    /// <summary>合并高频 RaiseUi（delta 流）为单次 UI 刷新，降低 Clear/Storyboard 抖动。</summary>
+    private bool _uiRefreshQueued;
+
+    /// <summary>与 Vue components.css 卡片折叠 / 展开全文 transition 对齐（0.15s）。</summary>
+    private const int CardAnimMs = 150;
+    /// <summary>正文折叠上限 6.4em @ 13px line-height 1.6 → 约 4 行。</summary>
+    private const double ResultClipCollapsedPx = 21 * 4;
 
     public MainWindow()
     {
@@ -324,15 +336,49 @@ public sealed partial class MainWindow : Window
     {
         try
         {
-            DispatcherQueue.TryEnqueue(() =>
+            // 已在 UI 线程则合并到下一帧；否则入队一次，期间多次 RaiseUi 只刷新一次
+            if (DispatcherQueue.HasThreadAccess)
             {
-                RefreshFromBridge();
-                ReportContentSize();
-            });
+                if (_uiRefreshQueued)
+                    return;
+                _uiRefreshQueued = true;
+                _ = DispatcherQueue.TryEnqueue(() =>
+                {
+                    _uiRefreshQueued = false;
+                    SafeRefreshFromBridge();
+                });
+                return;
+            }
+
+            if (_uiRefreshQueued)
+                return;
+            _uiRefreshQueued = true;
+            if (!DispatcherQueue.TryEnqueue(() =>
+                {
+                    _uiRefreshQueued = false;
+                    SafeRefreshFromBridge();
+                }))
+            {
+                _uiRefreshQueued = false;
+            }
         }
-        catch
+        catch (Exception ex)
         {
-            // ignore
+            _uiRefreshQueued = false;
+            CrashLog.Write("OnBridgeUiChanged.Enqueue", ex);
+        }
+    }
+
+    private void SafeRefreshFromBridge()
+    {
+        try
+        {
+            RefreshFromBridge();
+            ReportContentSize();
+        }
+        catch (Exception ex)
+        {
+            CrashLog.Write("OnBridgeUiChanged.Refresh", ex);
         }
     }
 
@@ -440,7 +486,7 @@ public sealed partial class MainWindow : Window
     {
         StatusText.Text = Localization.T(_bridge.StatusKey);
 
-        // 状态点：翻译中 accent；完成 success；失败 destructive；其它 accent 静态
+        // 状态点：翻译中 accent + pulse；完成 success；失败 destructive；其它 accent 静态
         var accent = TryResourceBrush("PopupAccentBrush") ?? new SolidColorBrush(Color.FromArgb(255, 0xD5, 0x5A, 0x1F));
         var success = TryResourceBrush("PopupSuccessBrush") ?? new SolidColorBrush(Color.FromArgb(255, 0x10, 0x7C, 0x10));
         var danger = TryResourceBrush("PopupDestructiveBrush") ?? new SolidColorBrush(Color.FromArgb(255, 0xC4, 0x2B, 0x1C));
@@ -452,6 +498,8 @@ public sealed partial class MainWindow : Window
             StatusDot.Fill = success;
         else
             StatusDot.Fill = accent;
+
+        SetLoadingPulse(StatusDot, ref _statusDotPulse, _bridge.StatusLoading);
 
         switch (_bridge.StatusAction)
         {
@@ -471,14 +519,59 @@ public sealed partial class MainWindow : Window
 
     private void RebuildResultCards()
     {
+        // 翻译 delta 会极高频 Rebuild：先停 Forever 动画再 Clear，避免目标已出树仍被 Composition 驱动而崩进程
+        StopCardStoryboards();
         ResultsPanel.Children.Clear();
-        foreach (var id in _bridge.State.CardOrder)
+
+        // 快照，避免与状态机并发改动（push 已迁 UI 线程，仍防御）
+        List<string> order;
+        List<CardState> cards;
+        try
         {
-            if (!_bridge.State.Cards.TryGetValue(id, out var card))
-                continue;
-            ResultsPanel.Children.Add(BuildResultCard(card));
+            order = _bridge.State.CardOrder.ToList();
+            cards = order
+                .Select(id => _bridge.State.Cards.TryGetValue(id, out var c) ? c : null)
+                .Where(c => c is not null)
+                .Cast<CardState>()
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            CrashLog.Write("RebuildResultCards.Snapshot", ex);
+            return;
+        }
+
+        foreach (var card in cards)
+        {
+            try
+            {
+                ResultsPanel.Children.Add(BuildResultCard(card));
+            }
+            catch (Exception ex)
+            {
+                CrashLog.Write($"RebuildResultCards.Build[{card.ServiceInstanceId}]", ex);
+            }
         }
     }
+
+    private void StopCardStoryboards()
+    {
+        foreach (var sb in _cardStoryboards)
+        {
+            try
+            {
+                sb.Stop();
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        _cardStoryboards.Clear();
+    }
+
+    private void TrackCardStoryboard(Storyboard sb) => _cardStoryboards.Add(sb);
 
     private UIElement BuildResultCard(CardState card)
     {
@@ -494,8 +587,6 @@ public sealed partial class MainWindow : Window
         var fg3 = TryResourceBrush("PopupFg3Brush") ?? new SolidColorBrush(Color.FromArgb(255, 0x8A, 0x8A, 0x8A));
         var accent = TryResourceBrush("PopupAccentBrush") ?? new SolidColorBrush(Color.FromArgb(255, 0xD5, 0x5A, 0x1F));
         var danger = TryResourceBrush("PopupDestructiveBrush") ?? new SolidColorBrush(Color.FromArgb(255, 0xC4, 0x2B, 0x1C));
-        var warning = TryResourceBrush("PopupWarningBrush") ?? new SolidColorBrush(Color.FromArgb(255, 0xCA, 0x50, 0x10));
-        var onAccent = TryResourceBrush("PopupOnAccentBrush") ?? new SolidColorBrush(Colors.White);
 
         var root = new Border
         {
@@ -545,13 +636,12 @@ public sealed partial class MainWindow : Window
         Grid.SetColumn(title, 1);
         header.Children.Add(title);
 
-        // 状态点：失败/取消红；翻译中 accent；pending 橙；完成不显示
-        if (card.Status is CardStatus.Translating or CardStatus.Pending or CardStatus.Failed or CardStatus.Cancelled)
+        // 状态点：对齐 Vue showDotFinal —— 仅 translating 显示 pulse；失败/取消红点；pending/完成不显示
+        if (card.Status is CardStatus.Translating or CardStatus.Failed or CardStatus.Cancelled)
         {
             var fill = card.Status switch
             {
                 CardStatus.Failed or CardStatus.Cancelled => danger,
-                CardStatus.Pending => warning,
                 _ => accent,
             };
             var dot = new Ellipse
@@ -561,266 +651,399 @@ public sealed partial class MainWindow : Window
                 Fill = fill,
                 Margin = new Thickness(2, 0, 4, 0),
                 VerticalAlignment = VerticalAlignment.Center,
-                Opacity = card.Status == CardStatus.Translating ? 1.0 : 1.0,
             };
+            // 仅流式中脉冲（pending 空闲卡不转圈）
+            if (card.Status == CardStatus.Translating)
+                StartPulseForever(dot);
             Grid.SetColumn(dot, 2);
             header.Children.Add(dot);
         }
 
-        // 折叠 chevron：展开态向下 E70D，折叠态向右 E76C 近似 -90° → 用 E76C / E70D
-        var collapseBtn = MakeIconButton(
-            card.Collapsed ? "\uE76C" : "\uE70D",
-            Localization.T(card.Collapsed ? "popup.tooltip.expand" : "popup.tooltip.collapse"),
-            20,
-            11);
-        collapseBtn.Click += (_, _) => _bridge.ToggleCardCollapsed(serviceId);
+        // 折叠 chevron：始终向下，折叠时 RotateTransform -90°（对齐原型）
+        var collapseIcon = new FontIcon
+        {
+            Glyph = "\uE70D",
+            FontSize = 11,
+            Foreground = fg2,
+            RenderTransformOrigin = new Windows.Foundation.Point(0.5, 0.5),
+            RenderTransform = new RotateTransform { Angle = card.Collapsed ? -90 : 0 },
+        };
+        var collapseBtn = new Button
+        {
+            Width = 20,
+            Height = 20,
+            Padding = new Thickness(0),
+            Background = new SolidColorBrush(Colors.Transparent),
+            BorderThickness = new Thickness(0),
+            CornerRadius = new CornerRadius(4),
+            Content = collapseIcon,
+        };
+        if (Application.Current?.Resources.TryGetValue("PopupMetaButtonStyle", out var collapseStyleObj) == true
+            && collapseStyleObj is Style collapseStyle)
+        {
+            collapseBtn.Style = collapseStyle;
+            collapseBtn.Width = 20;
+            collapseBtn.Height = 20;
+            collapseBtn.Content = collapseIcon;
+        }
+
+        ToolTipService.SetToolTip(
+            collapseBtn,
+            Localization.T(card.Collapsed ? "popup.tooltip.expand" : "popup.tooltip.collapse"));
         Grid.SetColumn(collapseBtn, 3);
         header.Children.Add(collapseBtn);
 
+        // body 始终在树内（MaxHeight 动画折叠），对齐 Vue grid 0fr↔1fr
+        var body = BuildResultCardBody(card, serviceId, textSnapshot: card.Text ?? "", fg, fg2, fg3, accent, danger, borderBrush, out var textClip, out var expandChevron);
+        // 展开态用大有限 MaxHeight（勿用 Infinity，否则 Measure 偶发污染窗高 → Resize 异常像「闪一下消失」）
+        const double BodyExpandedMax = 8000;
+        var bodyHost = new Border
+        {
+            Child = body,
+            MaxHeight = card.Collapsed ? 0 : BodyExpandedMax,
+            Opacity = card.Collapsed ? 0 : 1,
+            // 裁剪子元素，避免折叠过程中内容溢出
+            Clip = card.Collapsed
+                ? new RectangleGeometry { Rect = new Windows.Foundation.Rect(0, 0, 0, 0) }
+                : null,
+        };
+
+        void ToggleCollapse()
+        {
+            if (!_bridge.State.Cards.TryGetValue(serviceId, out var live))
+                return;
+            var collapsing = !live.Collapsed;
+            _bridge.ToggleCardCollapsed(serviceId, raiseUi: false);
+            ToolTipService.SetToolTip(
+                collapseBtn,
+                Localization.T(collapsing ? "popup.tooltip.expand" : "popup.tooltip.collapse"));
+            AnimateCardBodyCollapse(bodyHost, body, collapseIcon, collapsing);
+        }
+
+        collapseBtn.Click += (_, _) => ToggleCollapse();
         header.PointerPressed += (_, e) =>
         {
             if (e.OriginalSource is DependencyObject src && IsDescendantOf(src, collapseBtn))
                 return;
-            _bridge.ToggleCardCollapsed(serviceId);
+            ToggleCollapse();
         };
+
         stack.Children.Add(header);
+        stack.Children.Add(bodyHost);
+        root.Child = stack;
+        return root;
+    }
 
-        if (!card.Collapsed)
+    /// <summary>构建结果卡 body（始终挂载，由 bodyHost MaxHeight 控制折叠）。</summary>
+    private StackPanel BuildResultCardBody(
+        CardState card,
+        string serviceId,
+        string textSnapshot,
+        Brush fg,
+        Brush fg2,
+        Brush fg3,
+        Brush accent,
+        Brush danger,
+        Brush borderBrush,
+        out Border? textClip,
+        out FontIcon? expandChevron)
+    {
+        textClip = null;
+        expandChevron = null;
+
+        var body = new StackPanel
         {
-            // body: padding 0 12 9
-            var body = new StackPanel
+            Spacing = 0,
+            Padding = new Thickness(12, 0, 12, 9),
+        };
+
+        if (card.Status == CardStatus.Failed)
+        {
+            body.Children.Add(new TextBlock
             {
-                Spacing = 0,
-                Padding = new Thickness(12, 0, 12, 9),
-            };
-
-            var textSnapshot = card.Text ?? "";
-            UIElement? bodyTextEl = null;
-
-            if (card.Status == CardStatus.Failed)
+                Text = Localization.T(card.ErrorTitleKey ?? "popup.error.translationFailed"),
+                Foreground = danger,
+                FontSize = 12,
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                Margin = new Thickness(0, 0, 0, 4),
+            });
+            if (!string.IsNullOrEmpty(card.ErrorMessage))
             {
                 body.Children.Add(new TextBlock
                 {
-                    Text = Localization.T(card.ErrorTitleKey ?? "popup.error.translationFailed"),
-                    Foreground = danger,
-                    FontSize = 12,
-                    FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-                    Margin = new Thickness(0, 0, 0, 4),
-                });
-                if (!string.IsNullOrEmpty(card.ErrorMessage))
-                {
-                    bodyTextEl = new TextBlock
-                    {
-                        Text = card.ErrorMessage,
-                        FontSize = 13,
-                        Foreground = fg2,
-                        TextWrapping = TextWrapping.WrapWholeWords,
-                        LineHeight = 21,
-                    };
-                    body.Children.Add(bodyTextEl);
-                }
-            }
-            else if (card.Status == CardStatus.Cancelled)
-            {
-                body.Children.Add(new TextBlock
-                {
-                    Text = Localization.T(card.ErrorTitleKey ?? "popup.status.cancelled"),
-                    FontSize = 12,
-                    Foreground = fg3,
-                    Margin = new Thickness(0, 0, 0, 4),
-                });
-                if (!string.IsNullOrEmpty(textSnapshot))
-                {
-                    bodyTextEl = MakeResultTextBlock(textSnapshot, fg, card.Expanded);
-                    body.Children.Add(bodyTextEl);
-                }
-            }
-            else if (card.Status == CardStatus.Translating && string.IsNullOrEmpty(textSnapshot))
-            {
-                // 流式占位：弱色 + 细竖线近似光标
-                var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2 };
-                row.Children.Add(new TextBlock
-                {
-                    Text = " ",
+                    Text = card.ErrorMessage,
                     FontSize = 13,
-                    Foreground = fg3,
+                    Foreground = fg2,
+                    TextWrapping = TextWrapping.WrapWholeWords,
+                    LineHeight = 21,
                 });
-                row.Children.Add(new Border
-                {
-                    Width = 1,
-                    Height = 14,
-                    Background = accent,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Opacity = 0.85,
-                });
-                body.Children.Add(row);
             }
-            else if (card.Status == CardStatus.Pending)
+        }
+        else if (card.Status == CardStatus.Cancelled)
+        {
+            body.Children.Add(new TextBlock
             {
-                body.Children.Add(new TextBlock
-                {
-                    Text = "…",
-                    FontSize = 13,
-                    Foreground = fg3,
-                    Opacity = 0.55,
-                });
-            }
-            else
+                Text = Localization.T(card.ErrorTitleKey ?? "popup.status.cancelled"),
+                FontSize = 12,
+                Foreground = fg3,
+                Margin = new Thickness(0, 0, 0, 4),
+            });
+            if (!string.IsNullOrEmpty(textSnapshot))
             {
-                bodyTextEl = MakeResultTextBlock(textSnapshot, fg, card.Expanded);
-                body.Children.Add(bodyTextEl);
+                textClip = MakeClippedResultText(textSnapshot, fg, card.Expanded, showStreamCursor: false, accent);
+                body.Children.Add(textClip);
             }
+        }
+        else if (card.Status == CardStatus.Translating && string.IsNullOrEmpty(textSnapshot))
+        {
+            // 空流式：闪烁光标占位（对齐 .stream-cursor）
+            var cursor = MakeStreamCursor(accent);
+            body.Children.Add(cursor);
+        }
+        else if (card.Status == CardStatus.Pending)
+        {
+            body.Children.Add(new TextBlock
+            {
+                Text = "…",
+                FontSize = 13,
+                Foreground = fg3,
+                Opacity = 0.55,
+            });
+        }
+        else
+        {
+            var streaming = card.Status == CardStatus.Translating;
+            textClip = MakeClippedResultText(textSnapshot, fg, card.Expanded, streaming, accent);
+            body.Children.Add(textClip);
+        }
 
-            // 溢出：≈ 4 行 (6.4em @ 13px) → 展开全文
-            var overflow = EstimateHasOverflow(textSnapshot);
-            card.HasOverflow = overflow;
-            var canExpand = overflow && (
-                card.Status is CardStatus.Finished or CardStatus.Cancelled
-                || (card.Status == CardStatus.Translating && !string.IsNullOrEmpty(textSnapshot)));
-            if (canExpand)
+        // 溢出：≈ 4 行 (6.4em @ 13px) → 展开全文
+        var overflow = EstimateHasOverflow(textSnapshot);
+        card.HasOverflow = overflow;
+        var canExpand = overflow && (
+            card.Status is CardStatus.Finished or CardStatus.Cancelled
+            || (card.Status == CardStatus.Translating && !string.IsNullOrEmpty(textSnapshot)));
+        if (canExpand)
+        {
+            var expandLabelTb = new TextBlock
             {
-                var expandLabel = card.Expanded
+                Text = card.Expanded
                     ? Localization.T("popup.action.collapseFull")
-                    : Localization.T("popup.action.expandFull");
-                var expandBtn = new Button
-                {
-                    Background = new SolidColorBrush(Colors.Transparent),
-                    BorderThickness = new Thickness(0),
-                    Padding = new Thickness(4, 2, 4, 2),
-                    Margin = new Thickness(-2, 4, 0, 0),
-                    HorizontalAlignment = HorizontalAlignment.Left,
-                    Content = new StackPanel
-                    {
-                        Orientation = Orientation.Horizontal,
-                        Spacing = 3,
-                        Children =
-                        {
-                            new TextBlock
-                            {
-                                Text = expandLabel,
-                                FontSize = 11,
-                                Foreground = fg2,
-                                VerticalAlignment = VerticalAlignment.Center,
-                            },
-                            new FontIcon
-                            {
-                                Glyph = card.Expanded ? "\uE70E" : "\uE70D",
-                                FontSize = 10,
-                                Foreground = fg2,
-                                VerticalAlignment = VerticalAlignment.Center,
-                            },
-                        },
-                    },
-                };
-                expandBtn.Click += (_, _) => _bridge.ToggleCardExpanded(serviceId);
-                body.Children.Add(expandBtn);
-            }
-
-            // actions: margin-top 6；左 22px 图标；右 model 10px + tokens
-            var showMeta = card.Protocol != "microsoft_edge"
-                && (!string.IsNullOrWhiteSpace(card.ModelName) || card.Usage is not null);
-            var canActOnText = !string.IsNullOrEmpty(textSnapshot) || card.Status is CardStatus.Finished;
-            var showRetry = card.Status is CardStatus.Failed or CardStatus.Cancelled;
-
-            if (canActOnText || showRetry || showMeta)
+                    : Localization.T("popup.action.expandFull"),
+                FontSize = 11,
+                Foreground = fg2,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            expandChevron = new FontIcon
             {
-                var actions = new Grid { Margin = new Thickness(0, 6, 0, 0) };
-                actions.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-                actions.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-                var left = new StackPanel
+                Glyph = "\uE70D",
+                FontSize = 10,
+                Foreground = fg2,
+                VerticalAlignment = VerticalAlignment.Center,
+                RenderTransformOrigin = new Windows.Foundation.Point(0.5, 0.5),
+                RenderTransform = new RotateTransform { Angle = card.Expanded ? 180 : 0 },
+            };
+            var expandBtn = new Button
+            {
+                Background = new SolidColorBrush(Colors.Transparent),
+                BorderThickness = new Thickness(0),
+                Padding = new Thickness(4, 2, 4, 2),
+                Margin = new Thickness(-2, 4, 0, 0),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                Content = new StackPanel
                 {
                     Orientation = Orientation.Horizontal,
                     Spacing = 3,
+                    Children = { expandLabelTb, expandChevron },
+                },
+            };
+            var clipRef = textClip;
+            var chevronRef = expandChevron;
+            expandBtn.Click += (_, _) =>
+            {
+                if (!_bridge.State.Cards.TryGetValue(serviceId, out var live) || clipRef is null)
+                    return;
+                var expanding = !live.Expanded;
+                _bridge.ToggleCardExpanded(serviceId, raiseUi: false);
+                expandLabelTb.Text = expanding
+                    ? Localization.T("popup.action.collapseFull")
+                    : Localization.T("popup.action.expandFull");
+                AnimateTextClipExpand(clipRef, chevronRef, expanding);
+            };
+            body.Children.Add(expandBtn);
+        }
+
+        // actions: margin-top 6；左 22px 图标；右 model 10px + tokens
+        var showMeta = card.Protocol != "microsoft_edge"
+            && (!string.IsNullOrWhiteSpace(card.ModelName) || card.Usage is not null);
+        var canActOnText = !string.IsNullOrEmpty(textSnapshot) || card.Status is CardStatus.Finished;
+        var showRetry = card.Status is CardStatus.Failed or CardStatus.Cancelled;
+
+        if (canActOnText || showRetry || showMeta)
+        {
+            var actions = new Grid { Margin = new Thickness(0, 6, 0, 0) };
+            actions.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            actions.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var left = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 3,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+
+            if (canActOnText)
+            {
+                var speakBtn = MakeIconButton("\uE767", Localization.T("popup.tooltip.speak"), 22, 12);
+                speakBtn.Click += async (_, _) =>
+                {
+                    try { await _speech.SpeakAsync(textSnapshot); }
+                    catch { /* ignore */ }
+                };
+                left.Children.Add(speakBtn);
+
+                var copyBtn = MakeIconButton("\uE8C8", Localization.T("popup.tooltip.copy"), 22, 12);
+                copyBtn.Click += (_, _) =>
+                {
+                    CopyText(textSnapshot);
+                    ShowTipBar(Localization.T("popup.toast.copied"));
+                };
+                left.Children.Add(copyBtn);
+            }
+
+            if (showRetry)
+            {
+                var retryBtn = MakeIconButton("\uE72C", Localization.T("popup.tooltip.retry"), 22, 12);
+                retryBtn.Click += (_, _) => _bridge.RetryTranslation();
+                left.Children.Add(retryBtn);
+            }
+
+            Grid.SetColumn(left, 0);
+            actions.Children.Add(left);
+
+            if (showMeta)
+            {
+                var right = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 7,
                     VerticalAlignment = VerticalAlignment.Center,
+                    HorizontalAlignment = HorizontalAlignment.Right,
                 };
 
-                if (canActOnText)
+                if (!string.IsNullOrWhiteSpace(card.ModelName))
                 {
-                    var speakBtn = MakeIconButton("\uE767", Localization.T("popup.tooltip.speak"), 22, 12);
-                    speakBtn.Click += async (_, _) =>
+                    right.Children.Add(new TextBlock
                     {
-                        try { await _speech.SpeakAsync(textSnapshot); }
-                        catch { /* ignore */ }
-                    };
-                    left.Children.Add(speakBtn);
-
-                    var copyBtn = MakeIconButton("\uE8C8", Localization.T("popup.tooltip.copy"), 22, 12);
-                    copyBtn.Click += (_, _) =>
-                    {
-                        CopyText(textSnapshot);
-                        ShowTipBar(Localization.T("popup.toast.copied"));
-                    };
-                    left.Children.Add(copyBtn);
+                        Text = card.ModelName,
+                        FontSize = 10, // 0.625rem
+                        FontFamily = new FontFamily("Cascadia Mono, Consolas, Courier New"),
+                        Foreground = fg3,
+                        VerticalAlignment = VerticalAlignment.Center,
+                        MaxWidth = 150,
+                        TextTrimming = TextTrimming.CharacterEllipsis,
+                    });
                 }
 
-                if (showRetry)
+                if (card.Usage is not null)
                 {
-                    var retryBtn = MakeIconButton("\uE72C", Localization.T("popup.tooltip.retry"), 22, 12);
-                    retryBtn.Click += (_, _) => _bridge.RetryTranslation();
-                    left.Children.Add(retryBtn);
-                }
-
-                Grid.SetColumn(left, 0);
-                actions.Children.Add(left);
-
-                if (showMeta)
-                {
-                    var right = new StackPanel
+                    var tokens = new StackPanel
                     {
                         Orientation = Orientation.Horizontal,
                         Spacing = 7,
                         VerticalAlignment = VerticalAlignment.Center,
-                        HorizontalAlignment = HorizontalAlignment.Right,
                     };
-
-                    if (!string.IsNullOrWhiteSpace(card.ModelName))
+                    tokens.Children.Add(MakeTokenChip("↑", card.Usage.InputTokens, fg3));
+                    tokens.Children.Add(new Border
                     {
-                        right.Children.Add(new TextBlock
-                        {
-                            Text = card.ModelName,
-                            FontSize = 10, // 0.625rem
-                            FontFamily = new FontFamily("Cascadia Mono, Consolas, Courier New"),
-                            Foreground = fg3,
-                            VerticalAlignment = VerticalAlignment.Center,
-                            MaxWidth = 150,
-                            TextTrimming = TextTrimming.CharacterEllipsis,
-                        });
-                    }
-
-                    if (card.Usage is not null)
-                    {
-                        var tokens = new StackPanel
-                        {
-                            Orientation = Orientation.Horizontal,
-                            Spacing = 7,
-                            VerticalAlignment = VerticalAlignment.Center,
-                        };
-                        tokens.Children.Add(MakeTokenChip("↑", card.Usage.InputTokens, fg3));
-                        tokens.Children.Add(new Border
-                        {
-                            Width = 1,
-                            Height = 9,
-                            Background = borderBrush,
-                            VerticalAlignment = VerticalAlignment.Center,
-                            Opacity = 0.9,
-                        });
-                        tokens.Children.Add(MakeTokenChip("↓", card.Usage.OutputTokens, fg3));
-                        right.Children.Add(tokens);
-                    }
-
-                    Grid.SetColumn(right, 1);
-                    actions.Children.Add(right);
+                        Width = 1,
+                        Height = 9,
+                        Background = borderBrush,
+                        VerticalAlignment = VerticalAlignment.Center,
+                        Opacity = 0.9,
+                    });
+                    tokens.Children.Add(MakeTokenChip("↓", card.Usage.OutputTokens, fg3));
+                    right.Children.Add(tokens);
                 }
 
-                body.Children.Add(actions);
+                Grid.SetColumn(right, 1);
+                actions.Children.Add(right);
             }
 
-            stack.Children.Add(body);
+            body.Children.Add(actions);
         }
 
-        root.Child = stack;
-        return root;
+        return body;
+    }
+
+    /// <summary>正文 clip 容器：未展开 MaxHeight≈4 行，展开时测高动画（对齐 .result-text-clip）。</summary>
+    private Border MakeClippedResultText(string text, Brush fg, bool expanded, bool showStreamCursor, Brush accent)
+    {
+        // 避免 InlineUIContainer + Forever Storyboard（流式高频 Rebuild 时易崩）
+        // 结构：TextBlock 正文 + 可选行内光标（同 StackPanel 横向无法折行，故光标放文末下方一条）
+        UIElement bodyEl;
+        if (showStreamCursor)
+        {
+            var tb = new TextBlock
+            {
+                Text = text,
+                FontSize = 13,
+                Foreground = fg,
+                TextWrapping = TextWrapping.WrapWholeWords,
+                IsTextSelectionEnabled = true,
+                LineHeight = 21,
+            };
+            var cursor = MakeStreamCursor(accent);
+            // 光标接在最后一行视觉后：用 Grid 叠在文末近似（简版）；正文非空时贴底
+            var stack = new StackPanel { Spacing = 0 };
+            stack.Children.Add(tb);
+            var cursorRow = new StackPanel { Orientation = Orientation.Horizontal };
+            cursorRow.Children.Add(cursor);
+            stack.Children.Add(cursorRow);
+            bodyEl = stack;
+        }
+        else
+        {
+            bodyEl = new TextBlock
+            {
+                Text = text,
+                FontSize = 13,
+                Foreground = fg,
+                TextWrapping = TextWrapping.WrapWholeWords,
+                IsTextSelectionEnabled = true,
+                LineHeight = 21,
+            };
+        }
+
+        var overflow = EstimateHasOverflow(text);
+        var clip = new Border
+        {
+            Child = bodyEl,
+            Tag = EstimateFullTextHeight(text),
+        };
+
+        if (overflow && !expanded)
+            clip.MaxHeight = ResultClipCollapsedPx;
+        else if (overflow && expanded)
+            clip.MaxHeight = EstimateFullTextHeight(text);
+
+        return clip;
+    }
+
+    /// <summary>流式光标：1px 竖线 + 1s 闪烁（对齐 .stream-cursor / blink）。</summary>
+    private Border MakeStreamCursor(Brush accent)
+    {
+        var cursor = new Border
+        {
+            Width = 1,
+            Height = 14,
+            Background = accent,
+            Margin = new Thickness(1, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Bottom,
+            Opacity = 1,
+        };
+        StartBlinkForever(cursor);
+        return cursor;
     }
 
     /// <summary>正文 13px / line-height 1.6；未展开时限制约 4 行。</summary>
@@ -838,9 +1061,22 @@ public sealed partial class MainWindow : Window
         if (!expanded && EstimateHasOverflow(text))
         {
             // 6.4em ≈ 4 行
-            tb.MaxHeight = 21 * 4;
+            tb.MaxHeight = ResultClipCollapsedPx;
         }
         return tb;
+    }
+
+    private static double EstimateFullTextHeight(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return ResultClipCollapsedPx;
+        var lines = text.Replace("\r\n", "\n").Split('\n');
+        var softLines = 0;
+        foreach (var line in lines)
+            softLines += Math.Max(1, (int)Math.Ceiling(line.Length / 32.0));
+        var hardLines = lines.Length;
+        var lineCount = Math.Max(hardLines, softLines);
+        return Math.Max(ResultClipCollapsedPx, lineCount * 21.0);
     }
 
     private static bool EstimateHasOverflow(string? text)
@@ -990,7 +1226,7 @@ public sealed partial class MainWindow : Window
 
     private void ReportContentSize()
     {
-        if (_sizeReportBusy)
+        if (_sizeReportBusy || !IsPopupVisible)
             return;
         _sizeReportBusy = true;
         try
@@ -999,6 +1235,9 @@ public sealed partial class MainWindow : Window
             var contentWidth = PopupLogicalWidth - 28;
             ContentPanel.Measure(new Windows.Foundation.Size(contentWidth, double.PositiveInfinity));
             var contentH = ContentPanel.DesiredSize.Height;
+            // 防止 NaN/Infinity 经 Clamp 后仍污染 Resize → 1px「闪一下消失」
+            if (double.IsNaN(contentH) || double.IsInfinity(contentH) || contentH < 0)
+                contentH = 120;
             var h = Math.Clamp(contentH + 44 + 40 + 16, 160, 720);
             const double w = PopupLogicalWidth;
 
@@ -1021,9 +1260,22 @@ public sealed partial class MainWindow : Window
 
     private void TryResizeLogical(double width, double height)
     {
+        if (double.IsNaN(width) || double.IsNaN(height)
+            || double.IsInfinity(width) || double.IsInfinity(height)
+            || width < 1 || height < 1)
+        {
+            return;
+        }
+
         var scale = Content?.XamlRoot?.RasterizationScale ?? GetDpiScaleFallback();
-        var w = Math.Max(1, (int)Math.Round(width * scale));
-        var h = Math.Max(1, (int)Math.Round(height * scale));
+        if (scale < 0.5 || double.IsNaN(scale) || double.IsInfinity(scale))
+            scale = 1.0;
+
+        var w = Math.Max(160, (int)Math.Round(width * scale));
+        var h = Math.Max(120, (int)Math.Round(height * scale));
+        // 物理像素上限，避免异常量测把窗口撑到不可用
+        w = Math.Min(w, 2400);
+        h = Math.Min(h, 2000);
         _appWindow.Resize(new SizeInt32(w, h));
     }
 
@@ -1192,17 +1444,295 @@ public sealed partial class MainWindow : Window
         UpdateCharCount();
     }
 
-    private void SourceTextBox_KeyDown(object sender, KeyRoutedEventArgs e)
+    /// <summary>
+    /// 必须用 PreviewKeyDown：TextBox AcceptsReturn 时 KeyDown 已太晚，换行会先插入。
+    /// 对齐 Vue SourceCard：Enter 提交，Shift+Enter 换行。
+    /// </summary>
+    private void SourceTextBox_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (e.Key == VirtualKey.Enter)
+        if (e.Key != VirtualKey.Enter)
+            return;
+
+        var shift = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift);
+        if (shift.HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down))
+            return;
+
+        e.Handled = true;
+        _bridge.StartTranslation(SourceTextBox.Text);
+    }
+
+    // ——— 动画：loading / 折叠 / 展开全文（对齐 components.css 0.15s）———
+
+    /// <summary>状态点 pulse（1.2s ease-in-out infinite，对齐 .result-header-dot / .status-dot.loading）。</summary>
+    private void StartPulseForever(UIElement target)
+    {
+        var anim = new DoubleAnimation
         {
-            var ctrl = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control);
-            if (ctrl.HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down))
-            {
-                e.Handled = true;
-                _bridge.StartTranslation(SourceTextBox.Text);
-            }
+            From = 1.0,
+            To = 0.4,
+            Duration = TimeSpan.FromMilliseconds(600),
+            AutoReverse = true,
+            RepeatBehavior = RepeatBehavior.Forever,
+            EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut },
+        };
+        Storyboard.SetTarget(anim, target);
+        Storyboard.SetTargetProperty(anim, "Opacity");
+        var sb = new Storyboard();
+        sb.Children.Add(anim);
+        TrackCardStoryboard(sb);
+        sb.Begin();
+    }
+
+    /// <summary>流式光标闪烁（1s steps，近似 blink）。</summary>
+    private void StartBlinkForever(UIElement target)
+    {
+        var anim = new DoubleAnimationUsingKeyFrames
+        {
+            RepeatBehavior = RepeatBehavior.Forever,
+            Duration = TimeSpan.FromSeconds(1),
+        };
+        anim.KeyFrames.Add(new DiscreteDoubleKeyFrame { KeyTime = KeyTime.FromTimeSpan(TimeSpan.Zero), Value = 1 });
+        anim.KeyFrames.Add(new DiscreteDoubleKeyFrame { KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(500)), Value = 0 });
+        Storyboard.SetTarget(anim, target);
+        Storyboard.SetTargetProperty(anim, "Opacity");
+        var sb = new Storyboard();
+        sb.Children.Add(anim);
+        TrackCardStoryboard(sb);
+        sb.Begin();
+    }
+
+    /// <summary>可停用的 pulse（状态栏圆点）；loading 切换时复用同一 Storyboard 引用。</summary>
+    private static void SetLoadingPulse(UIElement target, ref Storyboard? sb, bool loading)
+    {
+        sb?.Stop();
+        sb = null;
+        target.Opacity = 1;
+        if (!loading)
+            return;
+
+        var anim = new DoubleAnimation
+        {
+            From = 1.0,
+            To = 0.4,
+            Duration = TimeSpan.FromMilliseconds(500),
+            AutoReverse = true,
+            RepeatBehavior = RepeatBehavior.Forever,
+            EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut },
+        };
+        Storyboard.SetTarget(anim, target);
+        Storyboard.SetTargetProperty(anim, "Opacity");
+        sb = new Storyboard();
+        sb.Children.Add(anim);
+        sb.Begin();
+    }
+
+    /// <summary>整卡 body 折叠/展开：MaxHeight + Opacity + chevron 旋转（~150ms）。</summary>
+    private void AnimateCardBodyCollapse(Border bodyHost, FrameworkElement body, FontIcon chevron, bool collapsing)
+    {
+        // 先量测展开高度
+        bodyHost.Clip = null;
+        body.Measure(new Windows.Foundation.Size(bodyHost.ActualWidth > 0 ? bodyHost.ActualWidth : PopupLogicalWidth - 28, double.PositiveInfinity));
+        var fullH = Math.Max(body.DesiredSize.Height, body.ActualHeight);
+        if (fullH < 1)
+            fullH = 1;
+
+        double fromH;
+        double toH;
+        double fromOp;
+        double toOp;
+        double fromAngle;
+        double toAngle;
+
+        if (collapsing)
+        {
+            fromH = bodyHost.ActualHeight > 1 ? bodyHost.ActualHeight : fullH;
+            toH = 0;
+            fromOp = 1;
+            toOp = 0;
+            fromAngle = 0;
+            toAngle = -90;
+            bodyHost.MaxHeight = fromH;
+            bodyHost.Opacity = 1;
         }
+        else
+        {
+            fromH = 0;
+            toH = fullH;
+            fromOp = 0;
+            toOp = 1;
+            fromAngle = -90;
+            toAngle = 0;
+            bodyHost.MaxHeight = 0;
+            bodyHost.Opacity = 0;
+        }
+
+        var dur = TimeSpan.FromMilliseconds(CardAnimMs);
+        var ease = new QuadraticEase { EasingMode = EasingMode.EaseInOut };
+
+        var hAnim = new DoubleAnimation
+        {
+            From = fromH,
+            To = toH,
+            Duration = dur,
+            EasingFunction = ease,
+            // MaxHeight 影响布局：WinUI 默认禁用 dependent animation，不设则动画被静默跳过
+            EnableDependentAnimation = true,
+        };
+        Storyboard.SetTarget(hAnim, bodyHost);
+        Storyboard.SetTargetProperty(hAnim, "MaxHeight");
+
+        var oAnim = new DoubleAnimation
+        {
+            From = fromOp,
+            To = toOp,
+            Duration = TimeSpan.FromMilliseconds(120),
+            EasingFunction = ease,
+        };
+        Storyboard.SetTarget(oAnim, bodyHost);
+        Storyboard.SetTargetProperty(oAnim, "Opacity");
+
+        if (chevron.RenderTransform is not RotateTransform rot)
+        {
+            rot = new RotateTransform { Angle = fromAngle };
+            chevron.RenderTransform = rot;
+            chevron.RenderTransformOrigin = new Windows.Foundation.Point(0.5, 0.5);
+        }
+        else
+        {
+            rot.Angle = fromAngle;
+        }
+
+        var rAnim = new DoubleAnimation
+        {
+            From = fromAngle,
+            To = toAngle,
+            Duration = dur,
+            EasingFunction = ease,
+        };
+        Storyboard.SetTarget(rAnim, rot);
+        Storyboard.SetTargetProperty(rAnim, "Angle");
+
+        var sb = new Storyboard();
+        sb.Children.Add(hAnim);
+        sb.Children.Add(oAnim);
+        sb.Children.Add(rAnim);
+        sb.Completed += (_, _) =>
+        {
+            if (collapsing)
+            {
+                bodyHost.MaxHeight = 0;
+                bodyHost.Opacity = 0;
+                bodyHost.Clip = new RectangleGeometry { Rect = new Windows.Foundation.Rect(0, 0, 0, 0) };
+            }
+            else
+            {
+                bodyHost.MaxHeight = Math.Max(fullH * 2, 8000);
+                bodyHost.Opacity = 1;
+                bodyHost.Clip = null;
+            }
+
+            ScheduleReportContentSize();
+        };
+        sb.Begin();
+
+        // 动画过程中持续跟窗高（对齐 Vue 折叠时 setSize）
+        ScheduleReportContentSize();
+    }
+
+    /// <summary>展开全文 / 收起：clip MaxHeight 插值 + chevron 180°。</summary>
+    private void AnimateTextClipExpand(Border textClip, FontIcon? chevron, bool expanding)
+    {
+        var fullH = textClip.Tag is double d && d > 0
+            ? d
+            : EstimateFullTextHeight(ExtractTextBlockText(textClip.Child as TextBlock));
+        // 优先用实测
+        if (textClip.Child is FrameworkElement fe)
+        {
+            fe.Measure(new Windows.Foundation.Size(
+                textClip.ActualWidth > 0 ? textClip.ActualWidth : PopupLogicalWidth - 52,
+                double.PositiveInfinity));
+            if (fe.DesiredSize.Height > ResultClipCollapsedPx)
+                fullH = fe.DesiredSize.Height;
+        }
+
+        var fromH = expanding
+            ? (textClip.ActualHeight > 0 ? textClip.ActualHeight : ResultClipCollapsedPx)
+            : (textClip.ActualHeight > 0 ? textClip.ActualHeight : fullH);
+        var toH = expanding ? fullH : ResultClipCollapsedPx;
+
+        textClip.MaxHeight = fromH;
+
+        var hAnim = new DoubleAnimation
+        {
+            From = fromH,
+            To = toH,
+            Duration = TimeSpan.FromMilliseconds(CardAnimMs),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseInOut },
+            EnableDependentAnimation = true,
+        };
+        Storyboard.SetTarget(hAnim, textClip);
+        Storyboard.SetTargetProperty(hAnim, "MaxHeight");
+
+        var sb = new Storyboard();
+        sb.Children.Add(hAnim);
+
+        if (chevron is not null)
+        {
+            if (chevron.RenderTransform is not RotateTransform rot)
+            {
+                rot = new RotateTransform();
+                chevron.RenderTransform = rot;
+                chevron.RenderTransformOrigin = new Windows.Foundation.Point(0.5, 0.5);
+            }
+
+            var rAnim = new DoubleAnimation
+            {
+                From = expanding ? 0 : 180,
+                To = expanding ? 180 : 0,
+                Duration = TimeSpan.FromMilliseconds(CardAnimMs),
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseInOut },
+            };
+            Storyboard.SetTarget(rAnim, rot);
+            Storyboard.SetTargetProperty(rAnim, "Angle");
+            sb.Children.Add(rAnim);
+        }
+
+        sb.Completed += (_, _) =>
+        {
+            textClip.MaxHeight = expanding ? fullH : ResultClipCollapsedPx;
+            textClip.Tag = fullH;
+            ScheduleReportContentSize();
+        };
+        sb.Begin();
+        ScheduleReportContentSize();
+    }
+
+    private static string ExtractTextBlockText(TextBlock? tb)
+    {
+        if (tb is null)
+            return "";
+        if (!string.IsNullOrEmpty(tb.Text))
+            return tb.Text;
+        // 使用 Inlines 时 Text 可能为空
+        var sb = new System.Text.StringBuilder();
+        foreach (var inline in tb.Inlines)
+        {
+            if (inline is Run run)
+                sb.Append(run.Text);
+        }
+        return sb.ToString();
+    }
+
+    private void ScheduleReportContentSize()
+    {
+        _sizeDebounce?.Stop();
+        _sizeDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(40) };
+        _sizeDebounce.Tick += (_, _) =>
+        {
+            _sizeDebounce?.Stop();
+            ReportContentSize();
+        };
+        _sizeDebounce.Start();
     }
 
     private void SwapLang_Click(object sender, RoutedEventArgs e)

@@ -163,7 +163,7 @@
                                          MinHeight="80"
                                          MaxHeight="141"
                                          TextChanged="SourceTextBox_TextChanged"
-                                         KeyDown="SourceTextBox_KeyDown"
+                                         PreviewKeyDown="SourceTextBox_PreviewKeyDown"
                                          GotFocus="SourceTextBox_GotFocus"
                                          LostFocus="SourceTextBox_LostFocus" />
 
