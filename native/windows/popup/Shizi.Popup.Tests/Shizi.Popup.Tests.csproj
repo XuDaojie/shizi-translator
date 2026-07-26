@@ -18,10 +18,11 @@
     </PackageReference>
   </ItemGroup>
 
-  <!-- 共享纯逻辑源码，避免引用 WinUI WinExe -->
+  <!-- 共享纯逻辑源码，避免引用 WinUI WinExe（排除依赖 WinUI 的 ServiceIcons.cs） -->
   <ItemGroup>
     <Compile Include="..\State\**\*.cs" Link="State\%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="..\Data\**\*.cs" Link="Data\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Remove="..\Data\ServiceIcons.cs" />
   </ItemGroup>
 
 </Project>

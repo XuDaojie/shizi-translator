@@ -520,30 +520,17 @@ public sealed partial class MainWindow : Window
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        var iconBg = EngineIconBrush(card.Protocol, card.ServiceType, accent);
-        var initial = string.IsNullOrEmpty(displayName)
-            ? "?"
-            : char.ToUpperInvariant(displayName.Trim()[0]).ToString();
-        var icon = new Border
+        // 与设置页 ServiceIcon 同源：Assets/service-icons/{serviceType}.svg
+        var iconHost = new Border
         {
             Width = 14,
             Height = 14,
-            CornerRadius = new CornerRadius(3),
-            Background = iconBg,
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(0, 0, 6, 0),
-            Child = new TextBlock
-            {
-                Text = initial,
-                FontSize = 9,
-                FontWeight = Microsoft.UI.Text.FontWeights.Bold,
-                Foreground = onAccent,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center,
-            },
+            Child = ServiceIcons.Create(card.ServiceType, displayName, 14),
         };
-        Grid.SetColumn(icon, 0);
-        header.Children.Add(icon);
+        Grid.SetColumn(iconHost, 0);
+        header.Children.Add(iconHost);
 
         var title = new TextBlock
         {
@@ -867,31 +854,6 @@ public sealed partial class MainWindow : Window
         foreach (var line in lines)
             softLines += Math.Max(1, (int)Math.Ceiling(line.Length / 32.0));
         return Math.Max(hardLines, softLines) > 4;
-    }
-
-    private static Brush EngineIconBrush(string protocol, string serviceType, Brush fallback)
-    {
-        // 原型各引擎色块：按协议/类型近似（非 SVG）
-        var key = (protocol ?? "").ToLowerInvariant();
-        var st = (serviceType ?? "").ToLowerInvariant();
-        Color c;
-        if (key.Contains("openai") || st.Contains("openai"))
-            c = Color.FromArgb(255, 0x10, 0xA3, 0x7F);
-        else if (key.Contains("claude") || st.Contains("claude") || st.Contains("anthropic"))
-            c = Color.FromArgb(255, 0xD4, 0xA2, 0x7F);
-        else if (key.Contains("microsoft") || st.Contains("edge") || st.Contains("azure"))
-            c = Color.FromArgb(255, 0x00, 0x78, 0xD4);
-        else if (st.Contains("google") || st.Contains("gemini"))
-            c = Color.FromArgb(255, 0x42, 0x85, 0xF4);
-        else if (st.Contains("aws") || st.Contains("amazon"))
-            c = Color.FromArgb(255, 0x23, 0x2F, 0x3E);
-        else if (st.Contains("deepseek"))
-            c = Color.FromArgb(255, 0x4D, 0x6B, 0xFE);
-        else if (st.Contains("火山") || st.Contains("volc") || st.Contains("byte"))
-            c = Color.FromArgb(255, 0x3B, 0x82, 0xF6);
-        else
-            return fallback;
-        return new SolidColorBrush(c);
     }
 
     private static bool IsDescendantOf(DependencyObject? node, DependencyObject ancestor)

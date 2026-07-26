@@ -52,4 +52,12 @@
     <EmbeddedResource Remove="Shizi.Popup.Tests/**" />
     <Page Remove="Shizi.Popup.Tests/**" />
   </ItemGroup>
+
+  <!-- 与设置页对齐的服务品牌图标（SVG） -->
+  <ItemGroup>
+    <Content Include="Assets\service-icons\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
 </Project>
+
