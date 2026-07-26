@@ -34,7 +34,7 @@ fn ensure_popup_native_resources_dir() {
     let marker = dest.join(".shizi-popup-native-placeholder");
     let _ = fs::write(
         marker,
-        "Placeholder so tauri bundle.resources path exists. Run npm run popup-native:copy to fill.\n",
+        "Placeholder so tauri bundle.resources path exists. Run npm run native:release to fill.\n",
     );
 }
 

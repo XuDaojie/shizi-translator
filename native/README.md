@@ -77,20 +77,24 @@ native/windows/popup/bin/x64/Debug/net8.0-windows10.0.19041.0/win-x64/Shizi.Popu
 ### 推荐流程
 
 ```bash
-# 仓库根目录：build + 拷到 src-tauri/resources/popup-native
-npm run popup-native:copy
-# 或
-powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/copy-popup-native.ps1
+# 开发：tauri dev 的 beforeDevCommand 会自动跑 native:dev
+# （Debug 构建 + stage；源码未变可跳过 rebuild）
+npm run tauri dev
+# 改了 native/ 且 dev 已在跑：再执行一次，脚本会结束残留 Shizi.Popup
+npm run native:dev
 
-# 正式打包（beforeBuildCommand 会自动再跑一次 popup-native:copy）
-npm run tauri build
+# 发版 / 安装包
+npm run native:release
+npm run tauri build   # beforeBuildCommand 也会再跑 native:release
 ```
 
 | 项 | 说明 |
 |----|------|
-| 脚本 | `scripts/copy-popup-native.ps1` → `src-tauri/resources/popup-native/`，并在已有 `target/{debug,release}` 时同步到 exe 旁 |
-| `tauri.conf.json` | `bundle.resources`: `resources/popup-native` → 安装目录 `popup-native/` |
-| `build.rs` | Windows 上 best-effort `dotnet build`；Release 时同步到 `resources/popup-native` 与 `target/<profile>/popup-native` |
+| npm 入口 | **`native:dev`** / **`native:release`**（不绑「弹窗」语义；后续其它原生窗也可由同一脚本扩展） |
+| 脚本 | `scripts/build-native.ps1`：`-Configuration Debug\|Release`；stage 到 `resources/popup-native` 与 `target/{debug,release}/popup-native` |
+| 磁盘目录 `popup-native/` | 当前为**翻译弹窗宿主**的旁路目录名（`host.rs` 查找约定）；不是 npm 命令名。多原生面时再演进布局 |
+| `tauri.conf.json` | **beforeDevCommand** = `native:dev && npm run dev`；**beforeBuildCommand** 含 `native:release` |
+| `build.rs` | Windows 上 best-effort `dotnet build`；Release 时同步到上述 stage 路径 |
 | 体积 | **WASDK 自包含**，整树可达数百 MB；目录已 gitignore，勿提交 |
 | 严格模式 | `SHIZI_POPUP_NATIVE_STRICT=1` 时脚本失败非 0 退出（发版流水线可用） |
 | 强制重编 | `SHIZI_BUILD_WINUI=1` 让 `build.rs` 强制 `dotnet build` |

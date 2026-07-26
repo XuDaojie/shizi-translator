@@ -5,8 +5,8 @@
   "build": {
     "frontendDist": "../frontend/dist",
     "devUrl": "http://localhost:5173",
-    "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build && npm run popup-native:copy"
+    "beforeDevCommand": "npm run native:dev && npm run dev",
+    "beforeBuildCommand": "npm run build && npm run native:release"
   },
   "bundle": {
     "icon": [

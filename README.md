@@ -212,16 +212,18 @@
 
 ```bash
 npm install                 # 安装依赖
-npm run tauri dev           # 开发模式（Vite + 后端）
-npm run tauri build         # 生成 release 安装包（NSIS；会 best-effort 拷贝 WinUI 产物）
-npm run popup-native:copy   # 单独构建并拷贝 WinUI → src-tauri/resources/popup-native
+npm run tauri dev           # 开发模式（先 native:dev 再 Vite + 后端）
+npm run tauri build         # 生成 release 安装包（NSIS；会 best-effort 构建/stage 原生）
+npm run native:dev          # 构建并 stage Windows 原生 Debug（改 native/ 后、dev 已在跑时可再跑）
+npm run native:release      # 构建并 stage Windows 原生 Release（发版）
 npm run typecheck           # 前端类型检查
 npm run test                # 前端单测
 cd src-tauri && cargo test  # 后端单测
-dotnet test native/windows/popup/Shizi.Popup.Tests/Shizi.Popup.Tests.csproj -c Release  # WinUI 单测
+dotnet test native/windows/popup/Shizi.Popup.Tests/Shizi.Popup.Tests.csproj -c Release  # 原生弹窗单测
 ```
 
-WinUI 打包布局、查找路径与验收清单见 [`native/README.md`](native/README.md)。
+说明：`tauri dev` 的 `beforeDevCommand` 会跑 `native:dev`，把当前 Windows 原生宿主（现为翻译弹窗进程）stage 到主程序旁 `popup-native/`。未装 .NET 时 best-effort 跳过，WebView 路径不受影响。  
+原生构建与查找路径见 [`native/README.md`](native/README.md)。
 
 仅启动前端（无 Tauri 容器，`invoke` 不可用）：
 

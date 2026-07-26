@@ -25,6 +25,7 @@ plugins.md         已装插件/技能清单（变更须同步）
 - 环境：Node.js、Rust stable、Windows WebView2
 - 常用：`npm install` · `npm run tauri dev` · `npm run tauri build` · `cd src-tauri && cargo test|build`
 - 前端：`npm run dev` / `build` / `typecheck` / `test`（vitest）
+- Windows 原生（`native/windows/*`）：`tauri dev` 经 `beforeDevCommand` 跑 `native:dev`（Debug 构建并 stage 到 `target/debug/popup-native` 等）；改原生 UI 且 dev 已在跑时再 `npm run native:dev` 并重启/杀掉 `Shizi.Popup`；发版用 `native:release`
 - 调试：先 `npm run dev` 再跑 release 下的 dev 模式 exe（加载 localhost:5173），或 VS Code F5 `tauri dev`
 
 ## 架构要点（必守）

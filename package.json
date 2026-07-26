@@ -13,7 +13,9 @@
     "release:bump:dry": "node scripts/bump-version.js --dry",
     "release:bump:beta": "node scripts/bump-version.js --beta",
     "release:bump:dry:beta": "node scripts/bump-version.js --dry --beta",
-    "popup-native:copy": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/copy-popup-native.ps1"
+    "native:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/build-native.ps1 -Configuration Debug -SkipBuildIfFresh",
+    "native:release": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/build-native.ps1 -Configuration Release",
+    "tauri:dev": "tauri dev"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4",
