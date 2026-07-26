@@ -259,6 +259,16 @@ public sealed class BridgeService
         RaiseUi();
     }
 
+    /// <summary>结果卡「展开全文 / 收起」（仅 UI 本地状态，无 Bridge 协议）。</summary>
+    public void ToggleCardExpanded(string serviceInstanceId)
+    {
+        if (!State.Cards.TryGetValue(serviceInstanceId, out var card))
+            return;
+
+        card.Expanded = !card.Expanded;
+        RaiseUi();
+    }
+
     public void ShowTip(string message)
     {
         TipMessage = message;

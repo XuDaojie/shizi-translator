@@ -20,13 +20,16 @@
     <SolidColorBrush x:Key="PopupDestructiveBrush" Color="#C42B1C" />
     <SolidColorBrush x:Key="PopupWarningBrush" Color="#CA5010" />
 
-    <!-- 卡表面：略提高不透明，Mica 上仍有层次（≈ 白 0.88） -->
-    <SolidColorBrush x:Key="PopupCardBgBrush" Color="#E0FFFFFF" />
+    <!-- 卡表面：原型 rgba(255,255,255,0.72) 在 Mica 上偏透；略提不透明保证可读 ≈ 0.90 -->
+    <SolidColorBrush x:Key="PopupCardBgBrush" Color="#E6FFFFFF" />
     <SolidColorBrush x:Key="PopupSoftBrush" Color="#00FFFFFF" />
+    <!-- 原型 border 0.5px @ 6%；WinUI 用 1px 等价 -->
     <SolidColorBrush x:Key="PopupBorderBrush" Color="#0F000000" />
     <SolidColorBrush x:Key="PopupBorder2Brush" Color="#1F000000" />
     <SolidColorBrush x:Key="PopupHoverBrush" Color="#0A000000" />
     <SolidColorBrush x:Key="PopupPressedBrush" Color="#06000000" />
+    <!-- 引擎图标默认底 -->
+    <SolidColorBrush x:Key="PopupEngineIconBgBrush" Color="#D55A1F" />
     <!-- 无 Mica 时窗底：#F4F4F4 @ 0.92 -->
     <SolidColorBrush x:Key="PopupMicaFallbackBrush" Color="#EBF4F4F4" />
     <SolidColorBrush x:Key="PopupShellEdgeBrush" Color="#0F000000" />

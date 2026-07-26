@@ -482,15 +482,19 @@ public sealed partial class MainWindow : Window
 
     private UIElement BuildResultCard(CardState card)
     {
+        // 对齐 components.css .result-card / ResultCardView
         var cardBg = TryResourceBrush("PopupCardBgBrush")
-            ?? new SolidColorBrush(Color.FromArgb(0xB8, 255, 255, 255));
+            ?? new SolidColorBrush(Color.FromArgb(0xE6, 255, 255, 255));
         var borderBrush = TryResourceBrush("PopupBorderBrush")
             ?? new SolidColorBrush(Color.FromArgb(0x0F, 0, 0, 0));
+        var border2 = TryResourceBrush("PopupBorder2Brush")
+            ?? new SolidColorBrush(Color.FromArgb(0x1F, 0, 0, 0));
         var fg = TryResourceBrush("PopupFgBrush") ?? new SolidColorBrush(Color.FromArgb(255, 0x1A, 0x1A, 0x1A));
         var fg2 = TryResourceBrush("PopupFg2Brush") ?? new SolidColorBrush(Color.FromArgb(255, 0x5D, 0x5D, 0x5D));
         var fg3 = TryResourceBrush("PopupFg3Brush") ?? new SolidColorBrush(Color.FromArgb(255, 0x8A, 0x8A, 0x8A));
         var accent = TryResourceBrush("PopupAccentBrush") ?? new SolidColorBrush(Color.FromArgb(255, 0xD5, 0x5A, 0x1F));
         var danger = TryResourceBrush("PopupDestructiveBrush") ?? new SolidColorBrush(Color.FromArgb(255, 0xC4, 0x2B, 0x1C));
+        var warning = TryResourceBrush("PopupWarningBrush") ?? new SolidColorBrush(Color.FromArgb(255, 0xCA, 0x50, 0x10));
         var onAccent = TryResourceBrush("PopupOnAccentBrush") ?? new SolidColorBrush(Colors.White);
 
         var root = new Border
@@ -499,32 +503,33 @@ public sealed partial class MainWindow : Window
             BorderBrush = borderBrush,
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(8),
-            Padding = new Thickness(0, 0, 0, 0),
         };
+
+        // 轻阴影感：hover 时加粗描边（原型 shadow-card-h）
+        root.PointerEntered += (_, _) => root.BorderBrush = border2;
+        root.PointerExited += (_, _) => root.BorderBrush = borderBrush;
 
         var stack = new StackPanel { Spacing = 0 };
+        var serviceId = card.ServiceInstanceId;
+        var displayName = string.IsNullOrWhiteSpace(card.ServiceName) ? card.ServiceInstanceId : card.ServiceName;
 
-        // —— 头：图标 + 名 + 状态点 + 折叠 ——
-        var header = new Grid
-        {
-            Padding = new Thickness(12, 6, 8, 6),
-        };
+        // —— header: padding 6 12；icon 14 + name 11px + status + collapse 20 ——
+        var header = new Grid { Padding = new Thickness(12, 6, 8, 6) };
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        var displayName = string.IsNullOrWhiteSpace(card.ServiceName) ? card.ServiceInstanceId : card.ServiceName;
+        var iconBg = EngineIconBrush(card.Protocol, card.ServiceType, accent);
         var initial = string.IsNullOrEmpty(displayName)
             ? "?"
-            : displayName.Trim()[0].ToString().ToUpperInvariant();
-
+            : char.ToUpperInvariant(displayName.Trim()[0]).ToString();
         var icon = new Border
         {
             Width = 14,
             Height = 14,
             CornerRadius = new CornerRadius(3),
-            Background = accent,
+            Background = iconBg,
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(0, 0, 6, 0),
             Child = new TextBlock
@@ -544,7 +549,7 @@ public sealed partial class MainWindow : Window
         {
             Text = displayName,
             FontWeight = Microsoft.UI.Text.FontWeights.Medium,
-            FontSize = 11,
+            FontSize = 11, // 0.6875rem
             Foreground = fg2,
             VerticalAlignment = VerticalAlignment.Center,
             TextWrapping = TextWrapping.NoWrap,
@@ -553,69 +558,79 @@ public sealed partial class MainWindow : Window
         Grid.SetColumn(title, 1);
         header.Children.Add(title);
 
-        // 状态点：翻译中 / 失败 / pending
-        if (card.Status is CardStatus.Translating or CardStatus.Pending or CardStatus.Failed)
+        // 状态点：失败/取消红；翻译中 accent；pending 橙；完成不显示
+        if (card.Status is CardStatus.Translating or CardStatus.Pending or CardStatus.Failed or CardStatus.Cancelled)
         {
+            var fill = card.Status switch
+            {
+                CardStatus.Failed or CardStatus.Cancelled => danger,
+                CardStatus.Pending => warning,
+                _ => accent,
+            };
             var dot = new Ellipse
             {
                 Width = 6,
                 Height = 6,
-                Fill = card.Status == CardStatus.Failed ? danger : accent,
-                Margin = new Thickness(4, 0, 4, 0),
+                Fill = fill,
+                Margin = new Thickness(2, 0, 4, 0),
                 VerticalAlignment = VerticalAlignment.Center,
+                Opacity = card.Status == CardStatus.Translating ? 1.0 : 1.0,
             };
             Grid.SetColumn(dot, 2);
             header.Children.Add(dot);
         }
 
+        // 折叠 chevron：展开态向下 E70D，折叠态向右 E76C 近似 -90° → 用 E76C / E70D
         var collapseBtn = MakeIconButton(
-            card.Collapsed ? "\uE70D" : "\uE70E",
+            card.Collapsed ? "\uE76C" : "\uE70D",
             Localization.T(card.Collapsed ? "popup.tooltip.expand" : "popup.tooltip.collapse"),
             20,
             11);
-        var serviceId = card.ServiceInstanceId;
         collapseBtn.Click += (_, _) => _bridge.ToggleCardCollapsed(serviceId);
         Grid.SetColumn(collapseBtn, 3);
         header.Children.Add(collapseBtn);
 
-        // 点击头折叠（除按钮外）
         header.PointerPressed += (_, e) =>
         {
             if (e.OriginalSource is DependencyObject src && IsDescendantOf(src, collapseBtn))
                 return;
             _bridge.ToggleCardCollapsed(serviceId);
         };
-
         stack.Children.Add(header);
 
-        // —— 身 + 底栏 ——
         if (!card.Collapsed)
         {
+            // body: padding 0 12 9
             var body = new StackPanel
             {
-                Spacing = 6,
+                Spacing = 0,
                 Padding = new Thickness(12, 0, 12, 9),
             };
 
+            var textSnapshot = card.Text ?? "";
+            UIElement? bodyTextEl = null;
+
             if (card.Status == CardStatus.Failed)
             {
-                var errTitle = Localization.T(card.ErrorTitleKey ?? "popup.error.translationFailed");
                 body.Children.Add(new TextBlock
                 {
-                    Text = errTitle,
+                    Text = Localization.T(card.ErrorTitleKey ?? "popup.error.translationFailed"),
                     Foreground = danger,
                     FontSize = 12,
                     FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                    Margin = new Thickness(0, 0, 0, 4),
                 });
                 if (!string.IsNullOrEmpty(card.ErrorMessage))
                 {
-                    body.Children.Add(new TextBlock
+                    bodyTextEl = new TextBlock
                     {
                         Text = card.ErrorMessage,
-                        FontSize = 12,
+                        FontSize = 13,
                         Foreground = fg2,
                         TextWrapping = TextWrapping.WrapWholeWords,
-                    });
+                        LineHeight = 21,
+                    };
+                    body.Children.Add(bodyTextEl);
                 }
             }
             else if (card.Status == CardStatus.Cancelled)
@@ -625,63 +640,102 @@ public sealed partial class MainWindow : Window
                     Text = Localization.T(card.ErrorTitleKey ?? "popup.status.cancelled"),
                     FontSize = 12,
                     Foreground = fg3,
+                    Margin = new Thickness(0, 0, 0, 4),
                 });
-                if (!string.IsNullOrEmpty(card.Text))
+                if (!string.IsNullOrEmpty(textSnapshot))
                 {
-                    body.Children.Add(new TextBlock
-                    {
-                        Text = card.Text,
-                        FontSize = 14,
-                        Foreground = fg,
-                        TextWrapping = TextWrapping.WrapWholeWords,
-                        IsTextSelectionEnabled = true,
-                    });
+                    bodyTextEl = MakeResultTextBlock(textSnapshot, fg, card.Expanded);
+                    body.Children.Add(bodyTextEl);
                 }
             }
-            else if (card.Status == CardStatus.Translating && string.IsNullOrEmpty(card.Text))
+            else if (card.Status == CardStatus.Translating && string.IsNullOrEmpty(textSnapshot))
             {
-                body.Children.Add(new TextBlock
+                // 流式占位：弱色 + 细竖线近似光标
+                var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2 };
+                row.Children.Add(new TextBlock
                 {
-                    Text = "…",
-                    FontSize = 14,
+                    Text = " ",
+                    FontSize = 13,
                     Foreground = fg3,
                 });
+                row.Children.Add(new Border
+                {
+                    Width = 1,
+                    Height = 14,
+                    Background = accent,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Opacity = 0.85,
+                });
+                body.Children.Add(row);
             }
             else if (card.Status == CardStatus.Pending)
             {
                 body.Children.Add(new TextBlock
                 {
                     Text = "…",
-                    FontSize = 12,
+                    FontSize = 13,
                     Foreground = fg3,
-                    Opacity = 0.7,
+                    Opacity = 0.55,
                 });
             }
             else
             {
-                body.Children.Add(new TextBlock
-                {
-                    Text = card.Text,
-                    // 原型 components.css .result-text: 0.8125rem ≈ 13
-                    FontSize = 13,
-                    Foreground = fg,
-                    TextWrapping = TextWrapping.WrapWholeWords,
-                    IsTextSelectionEnabled = true,
-                    LineHeight = 21,
-                });
+                bodyTextEl = MakeResultTextBlock(textSnapshot, fg, card.Expanded);
+                body.Children.Add(bodyTextEl);
             }
 
-            // 底栏对齐 ResultCardView：左 speak/copy(/retry)，右 model + ↑in | ↓out
-            // 头栏只有 引擎图标+名+状态点+折叠，绝不放复制/朗读/model
+            // 溢出：≈ 4 行 (6.4em @ 13px) → 展开全文
+            var overflow = EstimateHasOverflow(textSnapshot);
+            card.HasOverflow = overflow;
+            var canExpand = overflow && (
+                card.Status is CardStatus.Finished or CardStatus.Cancelled
+                || (card.Status == CardStatus.Translating && !string.IsNullOrEmpty(textSnapshot)));
+            if (canExpand)
+            {
+                var expandLabel = card.Expanded
+                    ? Localization.T("popup.action.collapseFull")
+                    : Localization.T("popup.action.expandFull");
+                var expandBtn = new Button
+                {
+                    Background = new SolidColorBrush(Colors.Transparent),
+                    BorderThickness = new Thickness(0),
+                    Padding = new Thickness(4, 2, 4, 2),
+                    Margin = new Thickness(-2, 4, 0, 0),
+                    HorizontalAlignment = HorizontalAlignment.Left,
+                    Content = new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        Spacing = 3,
+                        Children =
+                        {
+                            new TextBlock
+                            {
+                                Text = expandLabel,
+                                FontSize = 11,
+                                Foreground = fg2,
+                                VerticalAlignment = VerticalAlignment.Center,
+                            },
+                            new FontIcon
+                            {
+                                Glyph = card.Expanded ? "\uE70E" : "\uE70D",
+                                FontSize = 10,
+                                Foreground = fg2,
+                                VerticalAlignment = VerticalAlignment.Center,
+                            },
+                        },
+                    },
+                };
+                expandBtn.Click += (_, _) => _bridge.ToggleCardExpanded(serviceId);
+                body.Children.Add(expandBtn);
+            }
+
+            // actions: margin-top 6；左 22px 图标；右 model 10px + tokens
             var showMeta = card.Protocol != "microsoft_edge"
                 && (!string.IsNullOrWhiteSpace(card.ModelName) || card.Usage is not null);
-            var textSnapshot = card.Text ?? "";
-            var canActOnText = !string.IsNullOrEmpty(textSnapshot)
-                || card.Status is CardStatus.Finished;
+            var canActOnText = !string.IsNullOrEmpty(textSnapshot) || card.Status is CardStatus.Finished;
             var showRetry = card.Status is CardStatus.Failed or CardStatus.Cancelled;
-            var showLeftActions = canActOnText || showRetry;
 
-            if (showLeftActions || showMeta)
+            if (canActOnText || showRetry || showMeta)
             {
                 var actions = new Grid { Margin = new Thickness(0, 6, 0, 0) };
                 actions.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -692,7 +746,6 @@ public sealed partial class MainWindow : Window
                     Orientation = Orientation.Horizontal,
                     Spacing = 3,
                     VerticalAlignment = VerticalAlignment.Center,
-                    HorizontalAlignment = HorizontalAlignment.Left,
                 };
 
                 if (canActOnText)
@@ -726,7 +779,6 @@ public sealed partial class MainWindow : Window
 
                 if (showMeta)
                 {
-                    // result-model-group：margin-left:auto；model-tag + tokens
                     var right = new StackPanel
                     {
                         Orientation = Orientation.Horizontal,
@@ -740,33 +792,33 @@ public sealed partial class MainWindow : Window
                         right.Children.Add(new TextBlock
                         {
                             Text = card.ModelName,
-                            FontSize = 10,
+                            FontSize = 10, // 0.625rem
                             FontFamily = new FontFamily("Cascadia Mono, Consolas, Courier New"),
                             Foreground = fg3,
                             VerticalAlignment = VerticalAlignment.Center,
-                            MaxWidth = 160,
+                            MaxWidth = 150,
                             TextTrimming = TextTrimming.CharacterEllipsis,
                         });
                     }
 
                     if (card.Usage is not null)
                     {
-                        // ↑in | ↓out（非 "Tokens x → y"）
                         var tokens = new StackPanel
                         {
                             Orientation = Orientation.Horizontal,
-                            Spacing = 6,
+                            Spacing = 7,
                             VerticalAlignment = VerticalAlignment.Center,
                         };
-                        tokens.Children.Add(MakeTokenChip("\uE74A", card.Usage.InputTokens, fg3));
+                        tokens.Children.Add(MakeTokenChip("↑", card.Usage.InputTokens, fg3));
                         tokens.Children.Add(new Border
                         {
                             Width = 1,
                             Height = 9,
                             Background = borderBrush,
                             VerticalAlignment = VerticalAlignment.Center,
+                            Opacity = 0.9,
                         });
-                        tokens.Children.Add(MakeTokenChip("\uE74B", card.Usage.OutputTokens, fg3));
+                        tokens.Children.Add(MakeTokenChip("↓", card.Usage.OutputTokens, fg3));
                         right.Children.Add(tokens);
                     }
 
@@ -784,6 +836,64 @@ public sealed partial class MainWindow : Window
         return root;
     }
 
+    /// <summary>正文 13px / line-height 1.6；未展开时限制约 4 行。</summary>
+    private static TextBlock MakeResultTextBlock(string text, Brush fg, bool expanded)
+    {
+        var tb = new TextBlock
+        {
+            Text = text,
+            FontSize = 13,
+            Foreground = fg,
+            TextWrapping = TextWrapping.WrapWholeWords,
+            IsTextSelectionEnabled = true,
+            LineHeight = 21, // 13 * 1.6
+        };
+        if (!expanded && EstimateHasOverflow(text))
+        {
+            // 6.4em ≈ 4 行
+            tb.MaxHeight = 21 * 4;
+        }
+        return tb;
+    }
+
+    private static bool EstimateHasOverflow(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return false;
+        var lines = text.Replace("\r\n", "\n").Split('\n');
+        var hardLines = lines.Length;
+        // 约 32 汉字/行（卡宽 ~440 - pad）
+        var softLines = 0;
+        foreach (var line in lines)
+            softLines += Math.Max(1, (int)Math.Ceiling(line.Length / 32.0));
+        return Math.Max(hardLines, softLines) > 4;
+    }
+
+    private static Brush EngineIconBrush(string protocol, string serviceType, Brush fallback)
+    {
+        // 原型各引擎色块：按协议/类型近似（非 SVG）
+        var key = (protocol ?? "").ToLowerInvariant();
+        var st = (serviceType ?? "").ToLowerInvariant();
+        Color c;
+        if (key.Contains("openai") || st.Contains("openai"))
+            c = Color.FromArgb(255, 0x10, 0xA3, 0x7F);
+        else if (key.Contains("claude") || st.Contains("claude") || st.Contains("anthropic"))
+            c = Color.FromArgb(255, 0xD4, 0xA2, 0x7F);
+        else if (key.Contains("microsoft") || st.Contains("edge") || st.Contains("azure"))
+            c = Color.FromArgb(255, 0x00, 0x78, 0xD4);
+        else if (st.Contains("google") || st.Contains("gemini"))
+            c = Color.FromArgb(255, 0x42, 0x85, 0xF4);
+        else if (st.Contains("aws") || st.Contains("amazon"))
+            c = Color.FromArgb(255, 0x23, 0x2F, 0x3E);
+        else if (st.Contains("deepseek"))
+            c = Color.FromArgb(255, 0x4D, 0x6B, 0xFE);
+        else if (st.Contains("火山") || st.Contains("volc") || st.Contains("byte"))
+            c = Color.FromArgb(255, 0x3B, 0x82, 0xF6);
+        else
+            return fallback;
+        return new SolidColorBrush(c);
+    }
+
     private static bool IsDescendantOf(DependencyObject? node, DependencyObject ancestor)
     {
         while (node is not null)
@@ -795,8 +905,8 @@ public sealed partial class MainWindow : Window
         return false;
     }
 
-    /// <summary>原型 .result-tokens .tok：小箭头 + 数字。</summary>
-    private static UIElement MakeTokenChip(string arrowGlyph, int value, Brush fg3)
+    /// <summary>原型 .result-tokens .tok：↑/↓ + 数字（0.625rem）。</summary>
+    private static UIElement MakeTokenChip(string arrow, int value, Brush fg3)
     {
         var row = new StackPanel
         {
@@ -804,10 +914,10 @@ public sealed partial class MainWindow : Window
             Spacing = 2,
             VerticalAlignment = VerticalAlignment.Center,
         };
-        row.Children.Add(new FontIcon
+        row.Children.Add(new TextBlock
         {
-            Glyph = arrowGlyph,
-            FontSize = 9,
+            Text = arrow,
+            FontSize = 10,
             Foreground = fg3,
             Opacity = 0.55,
             VerticalAlignment = VerticalAlignment.Center,

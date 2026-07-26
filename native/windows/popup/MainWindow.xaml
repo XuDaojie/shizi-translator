@@ -137,9 +137,10 @@
                               VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled"
                               Padding="14,0">
+                    <!-- body gap 10；结果卡间距 6（components.css .results） -->
                     <StackPanel x:Name="ContentPanel" Spacing="10" Margin="0,0,0,4">
 
-                        <!-- 源文卡 -->
+                        <!-- 源文卡：padding 10 12 8；meta 顶部分隔 + 左操作右 badge -->
                         <Border x:Name="SourceCardBorder"
                                 Background="{StaticResource PopupCardBgBrush}"
                                 BorderBrush="{StaticResource PopupBorderBrush}"
@@ -159,58 +160,56 @@
                                          AcceptsReturn="True"
                                          TextWrapping="Wrap"
                                          PlaceholderText="输入或粘贴要翻译的文本…"
-                                         MinHeight="72"
-                                         MaxHeight="148"
+                                         MinHeight="80"
+                                         MaxHeight="141"
                                          TextChanged="SourceTextBox_TextChanged"
                                          KeyDown="SourceTextBox_KeyDown"
                                          GotFocus="SourceTextBox_GotFocus"
                                          LostFocus="SourceTextBox_LostFocus" />
 
-                                <Grid Grid.Row="1" Margin="0,8,0,0">
-                                    <Border Height="1"
-                                            VerticalAlignment="Top"
-                                            Margin="0,0,0,6"
-                                            Background="{StaticResource PopupBorderBrush}" />
-                                    <Grid Margin="0,8,0,0">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
-                                            <Button Style="{StaticResource PopupMetaButtonStyle}"
-                                                    Click="SourceSpeak_Click"
-                                                    ToolTipService.ToolTip="朗读">
-                                                <FontIcon Glyph="&#xE767;" FontSize="12"
-                                                          Foreground="{StaticResource PopupFg2Brush}" />
-                                            </Button>
-                                            <Button Style="{StaticResource PopupMetaButtonStyle}"
-                                                    Click="SourceCopy_Click"
-                                                    ToolTipService.ToolTip="复制">
-                                                <FontIcon Glyph="&#xE8C8;" FontSize="12"
-                                                          Foreground="{StaticResource PopupFg2Brush}" />
-                                            </Button>
-                                        </StackPanel>
-                                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                                            <Border x:Name="SourceTypeBadgeBorder"
-                                                    Background="{StaticResource PopupAccentSoftBrush}"
-                                                    CornerRadius="{StaticResource PopupCornerPill}"
-                                                    Padding="6,2"
-                                                    Visibility="Collapsed">
-                                                <TextBlock x:Name="SourceTypeBadge" FontSize="10" FontWeight="SemiBold"
-                                                           Foreground="{StaticResource PopupAccentBrush}" />
-                                            </Border>
-                                            <Border Background="{StaticResource PopupAccentSoftBrush}"
-                                                    CornerRadius="{StaticResource PopupCornerPill}"
-                                                    Padding="8,2">
-                                                <TextBlock x:Name="SourceLangBadge"
-                                                           Text="自动检测"
-                                                           FontSize="11"
-                                                           FontWeight="SemiBold"
-                                                           Foreground="{StaticResource PopupAccentBrush}" />
-                                            </Border>
-                                        </StackPanel>
-                                    </Grid>
+                                <!-- source-meta: margin-top 8; padding-top 6; border-top -->
+                                <Grid Grid.Row="1" Margin="0,8,0,0" Padding="0,6,0,0"
+                                      BorderBrush="{StaticResource PopupBorderBrush}"
+                                      BorderThickness="0,1,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Orientation="Horizontal" Spacing="3" VerticalAlignment="Center">
+                                        <Button Style="{StaticResource PopupMetaButtonStyle}"
+                                                Click="SourceSpeak_Click"
+                                                ToolTipService.ToolTip="朗读">
+                                            <FontIcon Glyph="&#xE767;" FontSize="12"
+                                                      Foreground="{StaticResource PopupFg2Brush}" />
+                                        </Button>
+                                        <Button Style="{StaticResource PopupMetaButtonStyle}"
+                                                Click="SourceCopy_Click"
+                                                ToolTipService.ToolTip="复制">
+                                            <FontIcon Glyph="&#xE8C8;" FontSize="12"
+                                                      Foreground="{StaticResource PopupFg2Brush}" />
+                                        </Button>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                                        <Border x:Name="SourceTypeBadgeBorder"
+                                                Background="{StaticResource PopupAccentSoftBrush}"
+                                                CornerRadius="{StaticResource PopupCornerPill}"
+                                                Padding="8,2"
+                                                Visibility="Collapsed">
+                                            <TextBlock x:Name="SourceTypeBadge" FontSize="11" FontWeight="SemiBold"
+                                                       Foreground="{StaticResource PopupAccentBrush}" />
+                                        </Border>
+                                        <Border Background="{StaticResource PopupAccentSoftBrush}"
+                                                CornerRadius="{StaticResource PopupCornerPill}"
+                                                Padding="8,2">
+                                            <TextBlock x:Name="SourceLangBadge"
+                                                       Text="自动检测"
+                                                       FontSize="11"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{StaticResource PopupAccentBrush}"
+                                                       LineHeight="16.5" />
+                                        </Border>
+                                    </StackPanel>
                                 </Grid>
                             </Grid>
                         </Border>
@@ -335,7 +334,7 @@
                             </Grid>
                         </Border>
 
-                        <StackPanel x:Name="ResultsPanel" Spacing="8" />
+                        <StackPanel x:Name="ResultsPanel" Spacing="6" />
                     </StackPanel>
                 </ScrollViewer>
 
