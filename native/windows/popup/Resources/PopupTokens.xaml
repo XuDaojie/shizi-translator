@@ -30,8 +30,8 @@
     <SolidColorBrush x:Key="PopupPressedBrush" Color="#06000000" />
     <!-- 引擎图标默认底 -->
     <SolidColorBrush x:Key="PopupEngineIconBgBrush" Color="#D55A1F" />
-    <!-- 无 Mica 时窗底：#F4F4F4 @ 0.92 -->
-    <SolidColorBrush x:Key="PopupMicaFallbackBrush" Color="#EBF4F4F4" />
+    <!-- 无 Mica 时窗底：#F4F4F4 @ 80%（对齐设计 / 用户 Mica 透明度 80%） -->
+    <SolidColorBrush x:Key="PopupMicaFallbackBrush" Color="#CCF4F4F4" />
     <SolidColorBrush x:Key="PopupShellEdgeBrush" Color="#0F000000" />
 
     <x:Double x:Key="PopupWindowWidth">468</x:Double>

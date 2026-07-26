@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using Microsoft.UI;
+using Microsoft.UI.Composition;
 using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -16,6 +17,7 @@ using Windows.ApplicationModel.DataTransfer;
 using Windows.Graphics;
 using Windows.System;
 using Windows.UI;
+using WinRT;
 using WinRT.Interop;
 
 namespace Shizi.Popup;
@@ -62,7 +64,11 @@ public sealed partial class MainWindow : Window
     private double _lastReportedHeight;
     private DispatcherTimer? _tipTimer;
     private DispatcherTimer? _sizeDebounce;
+    private DispatcherTimer? _sizeFollowTimer;
+    private int _sizeFollowRemaining;
     private Storyboard? _statusDotPulse;
+    private MicaController? _micaController;
+    private SystemBackdropConfiguration? _micaConfig;
     /// <summary>卡片 loading 脉冲/光标闪烁等 Forever Storyboard；Rebuild 前必须 Stop，否则目标被拆掉会崩进程。</summary>
     private readonly List<Storyboard> _cardStoryboards = new();
     /// <summary>合并高频 RaiseUi（delta 流）为单次 UI 刷新，降低 Clear/Storyboard 抖动。</summary>
@@ -72,6 +78,8 @@ public sealed partial class MainWindow : Window
     private const int CardAnimMs = 150;
     /// <summary>正文折叠上限 6.4em @ 13px line-height 1.6 → 约 4 行。</summary>
     private const double ResultClipCollapsedPx = 21 * 4;
+    /// <summary>Mica / 回退底不透明度 80%（设计 #F4F4F4 @ ~80%）。</summary>
+    private const float MicaOpacity = 0.80f;
 
     public MainWindow()
     {
@@ -152,19 +160,44 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    /// <summary>Mica 优先（shell 透明让材质透出）；不可用时 solid 近似。</summary>
+    /// <summary>
+    /// Mica 优先，不透明度约 80%（Tint/Luminosity）；不可用时 #F4F4F4@80% solid。
+    /// 使用 <see cref="MicaController"/> 以便调 TintOpacity（XAML MicaBackdrop 无法调透明度）。
+    /// </summary>
     private void TryApplyMicaBackdrop()
     {
         try
         {
             if (MicaController.IsSupported())
             {
-                SystemBackdrop = new MicaBackdrop
+                _micaConfig = new SystemBackdropConfiguration
+                {
+                    IsInputActive = true,
+                };
+                ApplyMicaTheme();
+
+                Activated += (_, args) =>
+                {
+                    if (_micaConfig is not null)
+                    {
+                        _micaConfig.IsInputActive =
+                            args.WindowActivationState != WindowActivationState.Deactivated;
+                    }
+                };
+                if (Content is FrameworkElement rootFe)
+                    rootFe.ActualThemeChanged += (_, _) => ApplyMicaTheme();
+
+                _micaController = new MicaController
                 {
                     Kind = MicaKind.Base,
+                    // 80% 不透明：略透出桌面，对齐设计「#F4F4F4 @ ~80%」
+                    TintOpacity = MicaOpacity,
+                    LuminosityOpacity = MicaOpacity,
                 };
+                _micaController.AddSystemBackdropTarget(this.As<ICompositionSupportsSystemBackdrop>());
+                _micaController.SetSystemBackdropConfiguration(_micaConfig);
+
                 RootGrid.Background = new SolidColorBrush(Colors.Transparent);
-                // 材质由 SystemBackdrop 提供；shell 仅保留细边与圆角裁剪
                 ShellBorder.Background = new SolidColorBrush(Colors.Transparent);
                 return;
             }
@@ -176,7 +209,20 @@ public sealed partial class MainWindow : Window
 
         RootGrid.Background = new SolidColorBrush(Colors.Transparent);
         ShellBorder.Background = TryResourceBrush("PopupMicaFallbackBrush")
-            ?? new SolidColorBrush(Color.FromArgb(0xEB, 0xF4, 0xF4, 0xF4));
+            ?? new SolidColorBrush(Color.FromArgb(0xCC, 0xF4, 0xF4, 0xF4));
+    }
+
+    private void ApplyMicaTheme()
+    {
+        if (_micaConfig is null)
+            return;
+        var theme = (Content as FrameworkElement)?.ActualTheme ?? ElementTheme.Default;
+        _micaConfig.Theme = theme switch
+        {
+            ElementTheme.Dark => SystemBackdropTheme.Dark,
+            ElementTheme.Light => SystemBackdropTheme.Light,
+            _ => SystemBackdropTheme.Default,
+        };
     }
 
     private void AppWindow_Changed(AppWindow sender, AppWindowChangedEventArgs args)
@@ -1224,29 +1270,44 @@ public sealed partial class MainWindow : Window
         _tipTimer.Start();
     }
 
-    private void ReportContentSize()
+    /// <param name="notifyHost">
+    /// 为 false 时只本地 Resize（折叠动画逐帧跟窗用），避免每帧 IPC set_size 往返造成顿挫。
+    /// </param>
+    /// <param name="liveFollow">动画跟随时用更小阈值 + 优先 ActualHeight。</param>
+    private void ReportContentSize(bool notifyHost = true, bool liveFollow = false)
     {
         if (_sizeReportBusy || !IsPopupVisible)
             return;
         _sizeReportBusy = true;
         try
         {
-            // 内容期望高度：量测 + 顶栏 + 状态栏边距（body 水平 pad 14*2）
-            var contentWidth = PopupLogicalWidth - 28;
-            ContentPanel.Measure(new Windows.Foundation.Size(contentWidth, double.PositiveInfinity));
-            var contentH = ContentPanel.DesiredSize.Height;
+            double contentH;
+            if (liveFollow && ContentPanel.ActualHeight > 1)
+            {
+                // 折叠 MaxHeight 动画每帧会改 ActualHeight；直接读避免 Measure 与动画态打架
+                contentH = ContentPanel.ActualHeight;
+            }
+            else
+            {
+                var contentWidth = PopupLogicalWidth - 28;
+                ContentPanel.Measure(new Windows.Foundation.Size(contentWidth, double.PositiveInfinity));
+                contentH = ContentPanel.DesiredSize.Height;
+            }
+
             // 防止 NaN/Infinity 经 Clamp 后仍污染 Resize → 1px「闪一下消失」
             if (double.IsNaN(contentH) || double.IsInfinity(contentH) || contentH < 0)
                 contentH = 120;
             var h = Math.Clamp(contentH + 44 + 40 + 16, 160, 720);
             const double w = PopupLogicalWidth;
 
-            if (Math.Abs(h - _lastReportedHeight) < 2)
+            var threshold = liveFollow ? 0.5 : 2.0;
+            if (Math.Abs(h - _lastReportedHeight) < threshold)
                 return;
 
             _lastReportedHeight = h;
             TryResizeLogical(w, h);
-            _bridge.ReportContentSize(w, h);
+            if (notifyHost)
+                _bridge.ReportContentSize(w, h);
         }
         catch
         {
@@ -1631,12 +1692,13 @@ public sealed partial class MainWindow : Window
                 bodyHost.Clip = null;
             }
 
-            ScheduleReportContentSize();
+            // 终帧再通知宿主（动画期间只本地跟窗）
+            FollowWindowSizeDuringAnim(0);
         };
         sb.Begin();
 
-        // 动画过程中持续跟窗高（对齐 Vue 折叠时 setSize）
-        ScheduleReportContentSize();
+        // 与卡片 150ms 动画同帧跟窗高（对齐 Vue ResizeObserver + rAF）
+        FollowWindowSizeDuringAnim(CardAnimMs);
     }
 
     /// <summary>展开全文 / 收起：clip MaxHeight 插值 + chevron 180°。</summary>
@@ -1701,10 +1763,10 @@ public sealed partial class MainWindow : Window
         {
             textClip.MaxHeight = expanding ? fullH : ResultClipCollapsedPx;
             textClip.Tag = fullH;
-            ScheduleReportContentSize();
+            FollowWindowSizeDuringAnim(0);
         };
         sb.Begin();
-        ScheduleReportContentSize();
+        FollowWindowSizeDuringAnim(CardAnimMs);
     }
 
     private static string ExtractTextBlockText(TextBlock? tb)
@@ -1723,8 +1785,43 @@ public sealed partial class MainWindow : Window
         return sb.ToString();
     }
 
+    /// <summary>
+    /// 卡片折叠/展开全文期间 ~60fps 本地跟窗高；结束再 report 宿主。
+    /// durationMs=0 表示只做终帧同步（含 notifyHost）。
+    /// </summary>
+    private void FollowWindowSizeDuringAnim(int durationMs)
+    {
+        _sizeDebounce?.Stop();
+        _sizeFollowTimer?.Stop();
+
+        if (durationMs <= 0)
+        {
+            ReportContentSize(notifyHost: true, liveFollow: false);
+            return;
+        }
+
+        const int frameMs = 16;
+        _sizeFollowRemaining = Math.Max(2, durationMs / frameMs + 3);
+        _sizeFollowTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(frameMs) };
+        _sizeFollowTimer.Tick += (_, _) =>
+        {
+            ReportContentSize(notifyHost: false, liveFollow: true);
+            if (--_sizeFollowRemaining > 0)
+                return;
+            _sizeFollowTimer?.Stop();
+            _sizeFollowTimer = null;
+            ReportContentSize(notifyHost: true, liveFollow: false);
+        };
+        _sizeFollowTimer.Start();
+        ReportContentSize(notifyHost: false, liveFollow: true);
+    }
+
     private void ScheduleReportContentSize()
     {
+        // 动画跟窗进行中勿被 SizeChanged 防抖打断
+        if (_sizeFollowTimer is { IsEnabled: true })
+            return;
+
         _sizeDebounce?.Stop();
         _sizeDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(40) };
         _sizeDebounce.Tick += (_, _) =>
