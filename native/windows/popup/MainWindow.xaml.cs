@@ -53,6 +53,8 @@ public sealed partial class MainWindow : Window
     // DWMWA_WINDOW_CORNER_PREFERENCE = 33; DWMWCP_ROUND = 2; DWMWCP_ROUNDSMALL = 3
     private const int DwmwaWindowCornerPreference = 33;
     private const int DwmwcpRound = 2;
+    /// <summary>禁用 DWM 对 HWND 尺寸变化的过渡动画，避免与卡片跟窗逐帧 Resize 叠成「弹一下再缩」。</summary>
+    private const int DwmwaTransitionsForcedisabled = 3;
 
     private readonly AppWindow _appWindow;
     private readonly BridgeService _bridge = BridgeService.Instance;
@@ -62,10 +64,12 @@ public sealed partial class MainWindow : Window
     private bool _startupStarted;
     private bool _sizeReportBusy;
     private double _lastReportedHeight;
+    private int _lastResizePhysicalH;
     private DispatcherTimer? _tipTimer;
     private DispatcherTimer? _sizeDebounce;
-    private DispatcherTimer? _sizeFollowTimer;
-    private int _sizeFollowRemaining;
+    /// <summary>卡片伸缩动画期间：屏蔽 SizeChanged，每帧按内容真实期望高跟窗（对齐 Vue ResizeObserver）。</summary>
+    private bool _sizeFollowActive;
+    private EventHandler<object>? _sizeFollowRenderHandler;
     private Storyboard? _statusDotPulse;
     private SystemBackdropConfiguration? _micaConfig;
     /// <summary>卡片 loading 脉冲/光标闪烁等 Forever Storyboard；Rebuild 前必须 Stop，否则目标被拆掉会崩进程。</summary>
@@ -77,6 +81,13 @@ public sealed partial class MainWindow : Window
     private const int CardAnimMs = 150;
     /// <summary>正文折叠上限 6.4em @ 13px line-height 1.6 → 约 4 行。</summary>
     private const double ResultClipCollapsedPx = 20.8 * 4;
+    /// <summary>
+    /// 结果卡 body 展开态 MaxHeight 上限。必须用大有限值：ClearValue/Infinity 会让 Measure 偶发虚高，
+    /// 窗高猛拉后再被 Actual 纠正（用户看到的「突然更长又缩回」）。
+    /// </summary>
+    private const double BodyExpandedMax = 8000;
+    private const double PopupMinLogicalHeight = 160;
+    private const double PopupMaxLogicalHeight = 720;
     /// <summary>
     /// 原型滑块「Mica 透明度」80% → CSS alpha=0.80。
     /// 系统 Acrylic 比 CSS backdrop-filter 更密，Tint 略低于 0.80 才能在观感上对齐原型 80%（否则像 95~98% 实色）。
@@ -104,6 +115,7 @@ public sealed partial class MainWindow : Window
 
         ConfigurePopupPresenter();
         TryApplyRoundedCorners(hwnd);
+        TryDisableDwmResizeTransitions(hwnd);
         TryApplyMicaBackdrop();
 
         // 双击标题拖拽区仍可能被系统最大化：强制还原，弹窗不允许最大化/全屏。
@@ -220,6 +232,23 @@ public sealed partial class MainWindow : Window
         {
             var pref = DwmwcpRound;
             _ = DwmSetWindowAttribute(hwnd, DwmwaWindowCornerPreference, ref pref, sizeof(int));
+        }
+        catch
+        {
+            // ignore
+        }
+    }
+
+    /// <summary>
+    /// 关掉 DWM 对窗口尺寸/显示的过渡。逐帧 Resize 时若保留系统动画，会与卡片 MaxHeight 动画
+    /// 叠成不同步的「弹一下 / 回弹」（WebView 路径同样每帧 setSize，但 HWND 侧表现不同）。
+    /// </summary>
+    private static void TryDisableDwmResizeTransitions(IntPtr hwnd)
+    {
+        try
+        {
+            var disable = 1;
+            _ = DwmSetWindowAttribute(hwnd, DwmwaTransitionsForcedisabled, ref disable, sizeof(int));
         }
         catch
         {
@@ -896,8 +925,7 @@ public sealed partial class MainWindow : Window
 
         // body 始终在树内（MaxHeight 动画折叠），对齐 Vue grid 0fr↔1fr
         var body = BuildResultCardBody(card, serviceId, textSnapshot: card.Text ?? "", fg, fg2, fg3, accent, danger, borderBrush, out var textClip, out var expandChevron);
-        // 展开态用大有限 MaxHeight（勿用 Infinity，否则 Measure 偶发污染窗高 → Resize 异常像「闪一下消失」）
-        const double BodyExpandedMax = 8000;
+        // 展开态用大有限 MaxHeight（见 BodyExpandedMax 注释）
         var bodyHost = new Border
         {
             Child = body,
@@ -1456,35 +1484,20 @@ public sealed partial class MainWindow : Window
     /// <param name="notifyHost">
     /// 为 false 时只本地 Resize（折叠动画逐帧跟窗用），避免每帧 IPC set_size 往返造成顿挫。
     /// </param>
-    /// <param name="liveFollow">动画跟随时用更小阈值 + 优先 ActualHeight。</param>
-    private void ReportContentSize(bool notifyHost = true, bool liveFollow = false)
+    /// <param name="force">为 true 时忽略高度阈值（动画终帧必须上报宿主）。</param>
+    private void ReportContentSize(bool notifyHost = true, bool force = false)
     {
         if (_sizeReportBusy || !IsPopupVisible)
             return;
         _sizeReportBusy = true;
         try
         {
-            double contentH;
-            if (liveFollow && ContentPanel.ActualHeight > 1)
-            {
-                // 折叠 MaxHeight 动画每帧会改 ActualHeight；直接读避免 Measure 与动画态打架
-                contentH = ContentPanel.ActualHeight;
-            }
-            else
-            {
-                var contentWidth = PopupLogicalWidth - 28;
-                ContentPanel.Measure(new Windows.Foundation.Size(contentWidth, double.PositiveInfinity));
-                contentH = ContentPanel.DesiredSize.Height;
-            }
-
-            // 防止 NaN/Infinity 经 Clamp 后仍污染 Resize → 1px「闪一下消失」
-            if (double.IsNaN(contentH) || double.IsInfinity(contentH) || contentH < 0)
-                contentH = 120;
-            var h = Math.Clamp(contentH + 44 + 40 + 16, 160, 720);
+            var h = MeasureDesiredWindowLogicalHeight();
             const double w = PopupLogicalWidth;
 
-            var threshold = liveFollow ? 0.5 : 2.0;
-            if (Math.Abs(h - _lastReportedHeight) < threshold)
+            // 跟窗中阈值更小，稳态略大以合并布局抖动
+            var threshold = _sizeFollowActive ? 0.35 : 1.5;
+            if (!force && Math.Abs(h - _lastReportedHeight) < threshold)
                 return;
 
             _lastReportedHeight = h;
@@ -1500,6 +1513,49 @@ public sealed partial class MainWindow : Window
         {
             _sizeReportBusy = false;
         }
+    }
+
+    /// <summary>
+    /// 对齐 Vue <c>popupRef.offsetHeight</c>：用已排版的实际高度求和（内容驱动）。
+    /// 中间行 Auto 后 ContentPanel.ActualHeight 随 MaxHeight 动画真实变化，勿每帧强行 Measure
+    ///（会与 dependent animation 抢布局，产生终帧跳动）。
+    /// </summary>
+    private double MeasureDesiredWindowLogicalHeight()
+    {
+        var statusH = StatusBarBorder?.ActualHeight > 1
+            ? StatusBarBorder.ActualHeight
+            : 40;
+
+        // 超高内容时让 ScrollViewer 在上限内滚动，而不是把窗撑破
+        var maxBody = Math.Max(80, PopupMaxLogicalHeight - 44 - statusH - 2);
+        if (BodyScrollViewer is not null
+            && (double.IsNaN(BodyScrollViewer.MaxHeight) || Math.Abs(BodyScrollViewer.MaxHeight - maxBody) > 0.5))
+        {
+            BodyScrollViewer.MaxHeight = maxBody;
+        }
+
+        double contentH;
+        if (ContentPanel.ActualHeight > 1)
+        {
+            // 动画跟窗：读真实排版高（≈ offsetHeight 路径）
+            contentH = ContentPanel.ActualHeight;
+        }
+        else
+        {
+            // 冷启动尚未 arrange：才 Measure
+            var contentWidth = ContentPanel.ActualWidth > 1
+                ? ContentPanel.ActualWidth
+                : PopupLogicalWidth - 28;
+            ContentPanel.Measure(new Windows.Foundation.Size(contentWidth, double.PositiveInfinity));
+            contentH = ContentPanel.DesiredSize.Height;
+        }
+
+        if (double.IsNaN(contentH) || double.IsInfinity(contentH) || contentH < 1)
+            contentH = 120;
+
+        // 标题 44 + 内容 + 状态栏 + ShellBorder 上下边 1px*2
+        var h = 44 + contentH + statusH + 2;
+        return Math.Clamp(h, PopupMinLogicalHeight, PopupMaxLogicalHeight);
     }
 
     private void TryResizeLogical(double width, double height)
@@ -1520,6 +1576,11 @@ public sealed partial class MainWindow : Window
         // 物理像素上限，避免异常量测把窗口撑到不可用
         w = Math.Min(w, 2400);
         h = Math.Min(h, 2000);
+        // 物理像素高度未变则跳过，避免 DPI 下无效 Resize 闪动
+        if (h == _lastResizePhysicalH)
+            return;
+
+        _lastResizePhysicalH = h;
         _appWindow.Resize(new SizeInt32(w, h));
     }
 
@@ -1548,11 +1609,16 @@ public sealed partial class MainWindow : Window
         // 防抖：布局抖动时合并为一次 report
         if (!IsPopupVisible)
             return;
+        // 跟窗期间由 CompositionTarget 采样，禁止 SizeChanged 二次改尺寸
+        if (_sizeFollowActive)
+            return;
         _sizeDebounce?.Stop();
         _sizeDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(80) };
         _sizeDebounce.Tick += (_, _) =>
         {
             _sizeDebounce?.Stop();
+            if (_sizeFollowActive)
+                return;
             ReportContentSize();
         };
         _sizeDebounce.Start();
@@ -1870,18 +1936,18 @@ public sealed partial class MainWindow : Window
             }
             else
             {
-                bodyHost.MaxHeight = Math.Max(fullH * 2, 8000);
+                // 与 BuildResultCard 一致：大有限值，禁止 ClearValue/Infinity 污染 Measure
+                bodyHost.MaxHeight = BodyExpandedMax;
                 bodyHost.Opacity = 1;
                 bodyHost.Clip = null;
             }
 
-            // 终帧再通知宿主（动画期间只本地跟窗）
-            FollowWindowSizeDuringAnim(0);
+            FinishContentSizeFollow(notifyHost: true);
         };
         sb.Begin();
 
-        // 与卡片 150ms 动画同帧跟窗高（对齐 Vue ResizeObserver + rAF）
-        FollowWindowSizeDuringAnim(CardAnimMs);
+        // 对齐 Vue：CSS 变高 → ResizeObserver 读 offsetHeight → setSize
+        StartContentSizeFollow();
     }
 
     /// <summary>展开全文 / 收起：clip MaxHeight 插值 + chevron 180°。</summary>
@@ -1946,10 +2012,10 @@ public sealed partial class MainWindow : Window
         {
             textClip.MaxHeight = expanding ? fullH : ResultClipCollapsedPx;
             textClip.Tag = fullH;
-            FollowWindowSizeDuringAnim(0);
+            FinishContentSizeFollow(notifyHost: true);
         };
         sb.Begin();
-        FollowWindowSizeDuringAnim(CardAnimMs);
+        StartContentSizeFollow();
     }
 
     private static string ExtractTextBlockText(TextBlock? tb)
@@ -1969,40 +2035,55 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 卡片折叠/展开全文期间 ~60fps 本地跟窗高；结束再 report 宿主。
-    /// durationMs=0 表示只做终帧同步（含 notifyHost）。
+    /// 卡片 MaxHeight 动画期间：每帧量测壳层期望高并本地 Resize（对齐 Vue ResizeObserver + rAF）。
+    /// 不并行猜 Δ，避免与真实布局脱节后在终帧猛拉。
     /// </summary>
-    private void FollowWindowSizeDuringAnim(int durationMs)
+    private void StartContentSizeFollow()
     {
         _sizeDebounce?.Stop();
-        _sizeFollowTimer?.Stop();
-
-        if (durationMs <= 0)
-        {
-            ReportContentSize(notifyHost: true, liveFollow: false);
+        if (_sizeFollowActive)
             return;
+
+        _sizeFollowActive = true;
+        _sizeFollowRenderHandler ??= OnContentSizeFollowRender;
+        CompositionTarget.Rendering += _sizeFollowRenderHandler;
+        // 首帧立刻跟一次，避免等下一 Rendering
+        ReportContentSize(notifyHost: false);
+    }
+
+    private void OnContentSizeFollowRender(object? sender, object e)
+    {
+        if (!_sizeFollowActive)
+            return;
+        ReportContentSize(notifyHost: false);
+    }
+
+    /// <summary>Storyboard 结束后停跟窗，再统一 report 宿主一次。</summary>
+    private void FinishContentSizeFollow(bool notifyHost)
+    {
+        if (_sizeFollowRenderHandler is not null)
+            CompositionTarget.Rendering -= _sizeFollowRenderHandler;
+
+        _sizeDebounce?.Stop();
+
+        try
+        {
+            ShellBorder.UpdateLayout();
+            ContentPanel.UpdateLayout();
+        }
+        catch
+        {
+            // ignore
         }
 
-        const int frameMs = 16;
-        _sizeFollowRemaining = Math.Max(2, durationMs / frameMs + 3);
-        _sizeFollowTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(frameMs) };
-        _sizeFollowTimer.Tick += (_, _) =>
-        {
-            ReportContentSize(notifyHost: false, liveFollow: true);
-            if (--_sizeFollowRemaining > 0)
-                return;
-            _sizeFollowTimer?.Stop();
-            _sizeFollowTimer = null;
-            ReportContentSize(notifyHost: true, liveFollow: false);
-        };
-        _sizeFollowTimer.Start();
-        ReportContentSize(notifyHost: false, liveFollow: true);
+        // 与动画期同一测高路径；force 保证宿主拿到终态
+        ReportContentSize(notifyHost: notifyHost, force: true);
+        _sizeFollowActive = false;
     }
 
     private void ScheduleReportContentSize()
     {
-        // 动画跟窗进行中勿被 SizeChanged 防抖打断
-        if (_sizeFollowTimer is { IsEnabled: true })
+        if (_sizeFollowActive)
             return;
 
         _sizeDebounce?.Stop();
@@ -2010,6 +2091,8 @@ public sealed partial class MainWindow : Window
         _sizeDebounce.Tick += (_, _) =>
         {
             _sizeDebounce?.Stop();
+            if (_sizeFollowActive)
+                return;
             ReportContentSize();
         };
         _sizeDebounce.Start();

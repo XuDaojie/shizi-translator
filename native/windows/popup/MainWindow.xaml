@@ -24,10 +24,14 @@
                 BorderThickness="1"
                 CornerRadius="{StaticResource PopupCornerShell}"
                 Padding="0">
+            <!--
+              中间行 Auto：窗高由内容决定（对齐 WebView .popup offsetHeight），
+              勿用 * 撑满客户区，否则无法用 DesiredSize 做 size-to-content。
+            -->
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="44" />
-                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
@@ -132,8 +136,9 @@
                     </StackPanel>
                 </Grid>
 
-                <!-- ===== body pad 14 / gap 10 ===== -->
-                <ScrollViewer Grid.Row="1"
+                <!-- ===== body pad 14 / gap 10；MaxHeight 由代码按 720 上限写入 ===== -->
+                <ScrollViewer x:Name="BodyScrollViewer"
+                              Grid.Row="1"
                               VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled"
                               Padding="14,0">
@@ -339,7 +344,8 @@
                 </ScrollViewer>
 
                 <!-- ===== 状态栏 ===== -->
-                <Border Grid.Row="2"
+                <Border x:Name="StatusBarBorder"
+                        Grid.Row="2"
                         Background="Transparent"
                         BorderBrush="{StaticResource PopupBorderBrush}"
                         BorderThickness="0,1,0,0"
