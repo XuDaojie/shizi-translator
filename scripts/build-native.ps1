@@ -138,5 +138,12 @@ foreach ($d in @($DestDebug, $DestRelease)) {
     Copy-NativeTree $d
 }
 
+# Print artifact time so skip/rebuild is obvious in the log.
+if (Test-Path $Exe) {
+    $item = Get-Item $Exe
+    $mtime = $item.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss")
+    Write-Info "exe: $($item.FullName)"
+    Write-Info "exe mtime=$mtime size=$($item.Length)"
+}
 Write-Info "done ($Configuration). Tauri loads staged native hosts next to shizi.exe."
 exit 0

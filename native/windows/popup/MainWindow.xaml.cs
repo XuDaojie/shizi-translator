@@ -67,7 +67,6 @@ public sealed partial class MainWindow : Window
     private DispatcherTimer? _sizeFollowTimer;
     private int _sizeFollowRemaining;
     private Storyboard? _statusDotPulse;
-    private MicaController? _micaController;
     private SystemBackdropConfiguration? _micaConfig;
     /// <summary>卡片 loading 脉冲/光标闪烁等 Forever Storyboard；Rebuild 前必须 Stop，否则目标被拆掉会崩进程。</summary>
     private readonly List<Storyboard> _cardStoryboards = new();
@@ -77,13 +76,21 @@ public sealed partial class MainWindow : Window
     /// <summary>与 Vue components.css 卡片折叠 / 展开全文 transition 对齐（0.15s）。</summary>
     private const int CardAnimMs = 150;
     /// <summary>正文折叠上限 6.4em @ 13px line-height 1.6 → 约 4 行。</summary>
-    private const double ResultClipCollapsedPx = 21 * 4;
-    /// <summary>Mica / 回退底不透明度 80%（设计 #F4F4F4 @ ~80%）。</summary>
-    private const float MicaOpacity = 0.80f;
+    private const double ResultClipCollapsedPx = 20.8 * 4;
+    /// <summary>
+    /// 原型滑块「Mica 透明度」80% → CSS alpha=0.80。
+    /// 系统 Acrylic 比 CSS backdrop-filter 更密，Tint 略低于 0.80 才能在观感上对齐原型 80%（否则像 95~98% 实色）。
+    /// </summary>
+    private const float PrototypeMicaOpacity = 0.55f;
+    private const float PrototypeMicaLuminosity = 0.65f;
+    private DesktopAcrylicController? _acrylicController;
+    /// <summary>当前材质路径，写进托盘/钉 Tooltip，便于确认不是旧 exe。</summary>
+    private string _backdropMode = "unset";
 
     public MainWindow()
     {
         InitializeComponent();
+        ApplyUnifiedTypography();
 
         // 仅中间 DragRegion（AppTitleBar）参与拖拽；左右按钮在其外，可正常点击。
         ExtendsContentIntoTitleBar = true;
@@ -126,6 +133,66 @@ public sealed partial class MainWindow : Window
     /// <summary>弹窗逻辑宽（对齐原型 468）。</summary>
     private const double PopupLogicalWidth = 468;
 
+    /// <summary>
+    /// 统一字族/字号：原文 TextBox、标题栏、语言栏、状态栏与结果卡共用 PopupFontFamily + 13/12/11 阶梯。
+    /// 在 code-behind 赋值，避免 XAML TemplateBinding 某些组合触发 XamlCompiler 静默失败。
+    /// </summary>
+    private void ApplyUnifiedTypography()
+    {
+        var font = PopupFont();
+        var body = PopupFontSize("PopupFontSizeBody", 13);
+        var caption = PopupFontSize("PopupFontSizeCaption", 12);
+        var badge = PopupFontSize("PopupFontSizeBadge", 11);
+
+        // Grid 无 FontFamily；只设 Control/TextBlock 系
+        if (SourceTextBox is not null)
+        {
+            SourceTextBox.FontFamily = font;
+            SourceTextBox.FontSize = body;
+        }
+
+        void SetTb(TextBlock? tb, double size)
+        {
+            if (tb is null)
+                return;
+            tb.FontFamily = font;
+            tb.FontSize = size;
+        }
+
+        SetTb(SourceLangLabel, body);
+        SetTb(TargetLangLabel, body);
+        SetTb(SourceLangBadge, badge);
+        SetTb(SourceTypeBadge, badge);
+        SetTb(StatusText, caption);
+        SetTb(CharCountText, caption);
+        if (StatusActionButton is not null)
+        {
+            StatusActionButton.FontFamily = font;
+            StatusActionButton.FontSize = caption;
+        }
+
+        // 标题栏品牌字
+        if (Content is FrameworkElement)
+        {
+            // brand name / 文标在 XAML 内联，遍历 Shell 内 TextBlock 补字族（字号已对齐）
+            ApplyFontFamilyRecursive(ShellBorder, font);
+        }
+    }
+
+    private static void ApplyFontFamilyRecursive(DependencyObject? root, FontFamily font)
+    {
+        if (root is null)
+            return;
+        if (root is TextBlock tb)
+            tb.FontFamily = font;
+        else if (root is Control ctl && root is not Button) // Button 内容另有 FontIcon
+            ctl.FontFamily = font;
+
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+            ApplyFontFamilyRecursive(VisualTreeHelper.GetChild(root, i), font);
+    }
+
     /// <summary>无边框浮窗：不可改大小 / 最大化 / 最小化；自绘圆角 shell。</summary>
     private void ConfigurePopupPresenter()
     {
@@ -161,58 +228,145 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Mica 优先，不透明度约 80%（Tint/Luminosity）；不可用时 #F4F4F4@80% solid。
-    /// 使用 <see cref="MicaController"/> 以便调 TintOpacity（XAML MicaBackdrop 无法调透明度）。
+    /// 对齐原型：rgba(244,244,244,0.80) + backdrop-filter blur。
+    /// 优先 SystemBackdrop API（比手动 Controller 更不易静默失败落到实色）。
+    /// Shell 必须 Transparent，否则会盖住材质变成「实灰板」。
     /// </summary>
     private void TryApplyMicaBackdrop()
     {
+        RootGrid.Background = new SolidColorBrush(Colors.Transparent);
+        // 关键：XAML 默认 PopupMicaFallbackBrush 是实色灰；不先清掉则永远像 98% 实色
+        ShellBorder.Background = new SolidColorBrush(Colors.Transparent);
+
+        // 1) 自定义 Acrylic（可控 Tint≈原型 alpha）
+        if (TryApplyCustomAcrylic())
+        {
+            SetBackdropMode("acrylic-custom");
+            return;
+        }
+
+        // 2) 系统默认 DesktopAcrylic（保证至少有 blur/透）
+        try
+        {
+            if (DesktopAcrylicController.IsSupported())
+            {
+                SystemBackdrop = new DesktopAcrylicBackdrop();
+                SetBackdropMode("acrylic-default");
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            CrashLog.Write("DesktopAcrylicBackdrop", ex);
+        }
+
+        // 3) Mica BaseAlt
         try
         {
             if (MicaController.IsSupported())
             {
-                _micaConfig = new SystemBackdropConfiguration
-                {
-                    IsInputActive = true,
-                };
-                ApplyMicaTheme();
-
-                Activated += (_, args) =>
-                {
-                    if (_micaConfig is not null)
-                    {
-                        _micaConfig.IsInputActive =
-                            args.WindowActivationState != WindowActivationState.Deactivated;
-                    }
-                };
-                if (Content is FrameworkElement rootFe)
-                    rootFe.ActualThemeChanged += (_, _) => ApplyMicaTheme();
-
-                _micaController = new MicaController
-                {
-                    Kind = MicaKind.Base,
-                    // 80% 不透明：略透出桌面，对齐设计「#F4F4F4 @ ~80%」
-                    TintOpacity = MicaOpacity,
-                    LuminosityOpacity = MicaOpacity,
-                };
-                _micaController.AddSystemBackdropTarget(this.As<ICompositionSupportsSystemBackdrop>());
-                _micaController.SetSystemBackdropConfiguration(_micaConfig);
-
-                RootGrid.Background = new SolidColorBrush(Colors.Transparent);
-                ShellBorder.Background = new SolidColorBrush(Colors.Transparent);
+                SystemBackdrop = new MicaBackdrop { Kind = MicaKind.BaseAlt };
+                SetBackdropMode("mica-basealt");
                 return;
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // fall through
+            CrashLog.Write("MicaBackdrop", ex);
         }
 
-        RootGrid.Background = new SolidColorBrush(Colors.Transparent);
-        ShellBorder.Background = TryResourceBrush("PopupMicaFallbackBrush")
-            ?? new SolidColorBrush(Color.FromArgb(0xCC, 0xF4, 0xF4, 0xF4));
+        // 4) 最后才 solid（无 blur，观感会差）
+        var a = (byte)Math.Clamp((int)(0.80f * 255f), 0, 255);
+        ShellBorder.Background = new SolidColorBrush(Color.FromArgb(a, 0xF4, 0xF4, 0xF4));
+        SetBackdropMode("solid-fallback");
     }
 
-    private void ApplyMicaTheme()
+    private bool TryApplyCustomAcrylic()
+    {
+        try
+        {
+            if (!DesktopAcrylicController.IsSupported())
+                return false;
+
+            EnsureBackdropConfig();
+            // 先清掉可能冲突的 SystemBackdrop
+            SystemBackdrop = null;
+
+            _acrylicController?.Dispose();
+            _acrylicController = new DesktopAcrylicController
+            {
+                TintColor = Color.FromArgb(255, 0xF4, 0xF4, 0xF4),
+                // 观感对齐原型 80% 滑块（系统材质更密，Tint 取 0.55）
+                TintOpacity = PrototypeMicaOpacity,
+                LuminosityOpacity = PrototypeMicaLuminosity,
+            };
+            _acrylicController.AddSystemBackdropTarget(this.As<ICompositionSupportsSystemBackdrop>());
+            _acrylicController.SetSystemBackdropConfiguration(_micaConfig!);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            CrashLog.Write("TryApplyCustomAcrylic", ex);
+            try
+            {
+                _acrylicController?.Dispose();
+            }
+            catch
+            {
+                // ignore
+            }
+
+            _acrylicController = null;
+            return false;
+        }
+    }
+
+    private void SetBackdropMode(string mode)
+    {
+        _backdropMode = mode;
+        try
+        {
+            CrashLog.Write($"backdrop mode={mode} tint={PrototypeMicaOpacity:0.00} lum={PrototypeMicaLuminosity:0.00}");
+            // 钉按钮 Tooltip 带模式，便于确认不是旧进程
+            if (PinButton is not null)
+            {
+                ToolTipService.SetToolTip(
+                    PinButton,
+                    $"{Localization.T(_alwaysOnTop ? "popup.tooltip.unpin" : "popup.tooltip.pin")} · {mode}");
+            }
+
+            Title = $"Shizi · {mode}";
+        }
+        catch
+        {
+            // ignore
+        }
+    }
+
+    private void EnsureBackdropConfig()
+    {
+        if (_micaConfig is not null)
+            return;
+
+        // 始终 InputActive：失焦时系统会把 Acrylic/Mica 切到 inactive 极透态
+        _micaConfig = new SystemBackdropConfiguration { IsInputActive = true };
+        ApplyBackdropTheme();
+
+        Activated += OnWindowActivatedForBackdrop;
+        if (Content is FrameworkElement rootFe)
+            rootFe.ActualThemeChanged += (_, _) => ApplyBackdropTheme();
+    }
+
+    /// <summary>失焦不 hide；材质保持 active 外观。</summary>
+    private void OnWindowActivatedForBackdrop(object sender, WindowActivatedEventArgs args)
+    {
+        // 产品：丢失焦点不自动隐藏（仅关闭/最小化/截图译路径 hide）
+        if (_micaConfig is not null)
+            _micaConfig.IsInputActive = true;
+        _ = args;
+    }
+
+    private void ApplyBackdropTheme()
     {
         if (_micaConfig is null)
             return;
@@ -672,8 +826,9 @@ public sealed partial class MainWindow : Window
         var title = new TextBlock
         {
             Text = displayName,
-            FontWeight = Microsoft.UI.Text.FontWeights.Medium,
-            FontSize = 11, // 0.6875rem
+            FontFamily = PopupFont(),
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, // 对齐 .result-engine-name 600
+            FontSize = PopupFontSize("PopupFontSizeCaption", 12), // 0.75rem
             Foreground = fg2,
             VerticalAlignment = VerticalAlignment.Center,
             TextWrapping = TextWrapping.NoWrap,
@@ -709,7 +864,7 @@ public sealed partial class MainWindow : Window
         var collapseIcon = new FontIcon
         {
             Glyph = "\uE70D",
-            FontSize = 11,
+            FontSize = PopupFontSize("PopupFontSizeBadge", 11),
             Foreground = fg2,
             RenderTransformOrigin = new Windows.Foundation.Point(0.5, 0.5),
             RenderTransform = new RotateTransform { Angle = card.Collapsed ? -90 : 0 },
@@ -808,21 +963,15 @@ public sealed partial class MainWindow : Window
             body.Children.Add(new TextBlock
             {
                 Text = Localization.T(card.ErrorTitleKey ?? "popup.error.translationFailed"),
+                FontFamily = PopupFont(),
                 Foreground = danger,
-                FontSize = 12,
+                FontSize = PopupFontSize("PopupFontSizeCaption", 12),
                 FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
                 Margin = new Thickness(0, 0, 0, 4),
             });
             if (!string.IsNullOrEmpty(card.ErrorMessage))
             {
-                body.Children.Add(new TextBlock
-                {
-                    Text = card.ErrorMessage,
-                    FontSize = 13,
-                    Foreground = fg2,
-                    TextWrapping = TextWrapping.WrapWholeWords,
-                    LineHeight = 21,
-                });
+                body.Children.Add(MakeBodyTextBlock(card.ErrorMessage, fg2));
             }
         }
         else if (card.Status == CardStatus.Cancelled)
@@ -830,7 +979,8 @@ public sealed partial class MainWindow : Window
             body.Children.Add(new TextBlock
             {
                 Text = Localization.T(card.ErrorTitleKey ?? "popup.status.cancelled"),
-                FontSize = 12,
+                FontFamily = PopupFont(),
+                FontSize = PopupFontSize("PopupFontSizeCaption", 12),
                 Foreground = fg3,
                 Margin = new Thickness(0, 0, 0, 4),
             });
@@ -851,7 +1001,8 @@ public sealed partial class MainWindow : Window
             body.Children.Add(new TextBlock
             {
                 Text = "…",
-                FontSize = 13,
+                FontFamily = PopupFont(),
+                FontSize = PopupFontSize("PopupFontSizeBody", 13),
                 Foreground = fg3,
                 Opacity = 0.55,
             });
@@ -876,14 +1027,15 @@ public sealed partial class MainWindow : Window
                 Text = card.Expanded
                     ? Localization.T("popup.action.collapseFull")
                     : Localization.T("popup.action.expandFull"),
-                FontSize = 11,
+                FontFamily = PopupFont(),
+                FontSize = PopupFontSize("PopupFontSizeBadge", 11),
                 Foreground = fg2,
                 VerticalAlignment = VerticalAlignment.Center,
             };
             expandChevron = new FontIcon
             {
                 Glyph = "\uE70D",
-                FontSize = 10,
+                FontSize = PopupFontSize("PopupFontSizeMeta", 10),
                 Foreground = fg2,
                 VerticalAlignment = VerticalAlignment.Center,
                 RenderTransformOrigin = new Windows.Foundation.Point(0.5, 0.5),
@@ -982,8 +1134,8 @@ public sealed partial class MainWindow : Window
                     right.Children.Add(new TextBlock
                     {
                         Text = card.ModelName,
-                        FontSize = 10, // 0.625rem
-                        FontFamily = new FontFamily("Cascadia Mono, Consolas, Courier New"),
+                        FontSize = PopupFontSize("PopupFontSizeMeta", 10), // 0.625rem
+                        FontFamily = PopupMonoFont(),
                         Foreground = fg3,
                         VerticalAlignment = VerticalAlignment.Center,
                         MaxWidth = 150,
@@ -1026,21 +1178,11 @@ public sealed partial class MainWindow : Window
     private Border MakeClippedResultText(string text, Brush fg, bool expanded, bool showStreamCursor, Brush accent)
     {
         // 避免 InlineUIContainer + Forever Storyboard（流式高频 Rebuild 时易崩）
-        // 结构：TextBlock 正文 + 可选行内光标（同 StackPanel 横向无法折行，故光标放文末下方一条）
         UIElement bodyEl;
         if (showStreamCursor)
         {
-            var tb = new TextBlock
-            {
-                Text = text,
-                FontSize = 13,
-                Foreground = fg,
-                TextWrapping = TextWrapping.WrapWholeWords,
-                IsTextSelectionEnabled = true,
-                LineHeight = 21,
-            };
+            var tb = MakeBodyTextBlock(text, fg);
             var cursor = MakeStreamCursor(accent);
-            // 光标接在最后一行视觉后：用 Grid 叠在文末近似（简版）；正文非空时贴底
             var stack = new StackPanel { Spacing = 0 };
             stack.Children.Add(tb);
             var cursorRow = new StackPanel { Orientation = Orientation.Horizontal };
@@ -1050,15 +1192,7 @@ public sealed partial class MainWindow : Window
         }
         else
         {
-            bodyEl = new TextBlock
-            {
-                Text = text,
-                FontSize = 13,
-                Foreground = fg,
-                TextWrapping = TextWrapping.WrapWholeWords,
-                IsTextSelectionEnabled = true,
-                LineHeight = 21,
-            };
+            bodyEl = MakeBodyTextBlock(text, fg);
         }
 
         var overflow = EstimateHasOverflow(text);
@@ -1079,10 +1213,11 @@ public sealed partial class MainWindow : Window
     /// <summary>流式光标：1px 竖线 + 1s 闪烁（对齐 .stream-cursor / blink）。</summary>
     private Border MakeStreamCursor(Brush accent)
     {
+        var bodyPx = PopupFontSize("PopupFontSizeBody", 13);
         var cursor = new Border
         {
             Width = 1,
-            Height = 14,
+            Height = bodyPx + 1,
             Background = accent,
             Margin = new Thickness(1, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Bottom,
@@ -1092,24 +1227,66 @@ public sealed partial class MainWindow : Window
         return cursor;
     }
 
-    /// <summary>正文 13px / line-height 1.6；未展开时限制约 4 行。</summary>
-    private static TextBlock MakeResultTextBlock(string text, Brush fg, bool expanded)
+    /// <summary>原文/译文共用：Segoe UI Variable + 13px + line-height ~1.6。</summary>
+    private TextBlock MakeBodyTextBlock(string text, Brush fg)
     {
-        var tb = new TextBlock
+        var size = PopupFontSize("PopupFontSizeBody", 13);
+        var line = PopupFontSize("PopupLineHeightBody", size * 1.6);
+        return new TextBlock
         {
             Text = text,
-            FontSize = 13,
+            FontFamily = PopupFont(),
+            FontSize = size,
             Foreground = fg,
             TextWrapping = TextWrapping.WrapWholeWords,
             IsTextSelectionEnabled = true,
-            LineHeight = 21, // 13 * 1.6
+            LineHeight = line,
         };
-        if (!expanded && EstimateHasOverflow(text))
+    }
+
+    private static FontFamily PopupFont() =>
+        TryResourceFont("PopupFontFamily")
+        ?? new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei UI");
+
+    private static FontFamily PopupMonoFont() =>
+        TryResourceFont("PopupMonoFontFamily")
+        ?? new FontFamily("Cascadia Mono, Consolas, Courier New");
+
+    private static double PopupFontSize(string key, double fallback)
+    {
+        try
         {
-            // 6.4em ≈ 4 行
-            tb.MaxHeight = ResultClipCollapsedPx;
+            if (Application.Current?.Resources.TryGetValue(key, out var v) == true)
+            {
+                if (v is double d)
+                    return d;
+                if (v is float f)
+                    return f;
+                if (v is int i)
+                    return i;
+            }
         }
-        return tb;
+        catch
+        {
+            // ignore
+        }
+
+        return fallback;
+    }
+
+    private static FontFamily? TryResourceFont(string key)
+    {
+        try
+        {
+            if (Application.Current?.Resources.TryGetValue(key, out var v) == true && v is FontFamily ff)
+                return ff;
+        }
+        catch
+        {
+            // ignore
+        }
+
+        return null;
     }
 
     private static double EstimateFullTextHeight(string text)
@@ -1122,7 +1299,8 @@ public sealed partial class MainWindow : Window
             softLines += Math.Max(1, (int)Math.Ceiling(line.Length / 32.0));
         var hardLines = lines.Length;
         var lineCount = Math.Max(hardLines, softLines);
-        return Math.Max(ResultClipCollapsedPx, lineCount * 21.0);
+        var lineH = PopupFontSize("PopupLineHeightBody", 20.8);
+        return Math.Max(ResultClipCollapsedPx, lineCount * lineH);
     }
 
     private static bool EstimateHasOverflow(string? text)
@@ -1158,10 +1336,12 @@ public sealed partial class MainWindow : Window
             Spacing = 2,
             VerticalAlignment = VerticalAlignment.Center,
         };
+        var meta = PopupFontSize("PopupFontSizeMeta", 10);
         row.Children.Add(new TextBlock
         {
             Text = arrow,
-            FontSize = 10,
+            FontFamily = PopupFont(),
+            FontSize = meta,
             Foreground = fg3,
             Opacity = 0.55,
             VerticalAlignment = VerticalAlignment.Center,
@@ -1169,8 +1349,8 @@ public sealed partial class MainWindow : Window
         row.Children.Add(new TextBlock
         {
             Text = value.ToString(),
-            FontSize = 10,
-            FontFamily = new FontFamily("Cascadia Mono, Consolas, Courier New"),
+            FontSize = meta,
+            FontFamily = PopupMonoFont(),
             Foreground = fg3,
             VerticalAlignment = VerticalAlignment.Center,
         });
@@ -1214,7 +1394,10 @@ public sealed partial class MainWindow : Window
 
     private void UpdatePinButtonVisual()
     {
-        ToolTipService.SetToolTip(PinButton, Localization.T(_alwaysOnTop ? "popup.tooltip.unpin" : "popup.tooltip.pin"));
+        var pinTip = Localization.T(_alwaysOnTop ? "popup.tooltip.unpin" : "popup.tooltip.pin");
+        if (!string.IsNullOrEmpty(_backdropMode) && _backdropMode != "unset")
+            pinTip = $"{pinTip} · {_backdropMode}";
+        ToolTipService.SetToolTip(PinButton, pinTip);
         var accent = TryResourceBrush("PopupAccentBrush") ?? new SolidColorBrush(Color.FromArgb(255, 0xD5, 0x5A, 0x1F));
         var soft = TryResourceBrush("PopupAccentSoftBrush")
             ?? new SolidColorBrush(Color.FromArgb(0x1A, 0xD5, 0x5A, 0x1F));

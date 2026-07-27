@@ -20,9 +20,9 @@
     <SolidColorBrush x:Key="PopupDestructiveBrush" Color="#C42B1C" />
     <SolidColorBrush x:Key="PopupWarningBrush" Color="#CA5010" />
 
-    <!-- 卡表面：原型 rgba(255,255,255,0.72) 在 Mica 上偏透；略提不透明保证可读 ≈ 0.90 -->
-    <SolidColorBrush x:Key="PopupCardBgBrush" Color="#E6FFFFFF" />
-    <SolidColorBrush x:Key="PopupSoftBrush" Color="#00FFFFFF" />
+    <!-- 卡表面：winui3.css rgba(255,255,255,0.72)=#B8FFFFFF；soft 0.55=#8CFFFFFF -->
+    <SolidColorBrush x:Key="PopupCardBgBrush" Color="#B8FFFFFF" />
+    <SolidColorBrush x:Key="PopupSoftBrush" Color="#8CFFFFFF" />
     <!-- 原型 border 0.5px @ 6%；WinUI 用 1px 等价 -->
     <SolidColorBrush x:Key="PopupBorderBrush" Color="#0F000000" />
     <SolidColorBrush x:Key="PopupBorder2Brush" Color="#1F000000" />
