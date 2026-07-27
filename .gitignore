@@ -6,6 +6,18 @@ src-tauri/gen/
 frontend/node_modules/
 frontend/dist/
 node_modules/
+# WinUI 弹窗构建产物
+native/**/bin/
+native/**/obj/
+native/**/publish/
+native/**/publish-test/
+native/**/*.log
+# 打包布局（WASDK 自包含，体积大；由 scripts/copy-popup-native.ps1 或 build.rs 生成）
+# 保留占位，忽略实际产物
+src-tauri/resources/popup-native/**
+!src-tauri/resources/popup-native/.gitkeep
+src-tauri/target/**/popup-native/
+src-tauri/popup-native/
 .idea
 pot-desktop/
 .codegraph/
