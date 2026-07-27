@@ -1,3 +1,4 @@
+using System.Numerics;
 using System.Runtime.InteropServices;
 using Microsoft.UI;
 using Microsoft.UI.Composition;
@@ -69,13 +70,33 @@ public sealed partial class MainWindow : Window
     private DispatcherTimer? _sizeDebounce;
     /// <summary>卡片伸缩动画期间：屏蔽 SizeChanged，每帧按内容真实期望高跟窗（对齐 Vue ResizeObserver）。</summary>
     private bool _sizeFollowActive;
+    /// <summary>并行 body 折叠/展开动画数；全部完成后再停跟窗并 notifyHost。</summary>
+    private int _pendingBodySizeAnims;
     private EventHandler<object>? _sizeFollowRenderHandler;
     private Storyboard? _statusDotPulse;
     private SystemBackdropConfiguration? _micaConfig;
     /// <summary>卡片 loading 脉冲/光标闪烁等 Forever Storyboard；Rebuild 前必须 Stop，否则目标被拆掉会崩进程。</summary>
     private readonly List<Storyboard> _cardStoryboards = new();
+    /// <summary>结果卡视觉树缓存：结构未变时原地补丁文本/折叠，避免 delta 全量重建掐掉自动展开动画。</summary>
+    private readonly Dictionary<string, ResultCardVisual> _cardVisuals = new();
+    private List<string> _cardVisualOrder = new();
     /// <summary>合并高频 RaiseUi（delta 流）为单次 UI 刷新，降低 Clear/Storyboard 抖动。</summary>
     private bool _uiRefreshQueued;
+
+    /// <summary>单张结果卡的可补丁视觉引用。</summary>
+    private sealed class ResultCardVisual
+    {
+        public required string Id { get; init; }
+        public required Border Root { get; init; }
+        public required Border BodyHost { get; init; }
+        public required FrameworkElement Body { get; init; }
+        public required FontIcon CollapseChevron { get; init; }
+        public required Button CollapseButton { get; init; }
+        public Border? TextClip { get; set; }
+        public TextBlock? ResultText { get; set; }
+        public bool Collapsed { get; set; }
+        public string StructureKey { get; set; } = "";
+    }
 
     /// <summary>与 Vue components.css 卡片折叠 / 展开全文 transition 对齐（0.15s）。</summary>
     private const int CardAnimMs = 150;
@@ -88,6 +109,10 @@ public sealed partial class MainWindow : Window
     private const double BodyExpandedMax = 8000;
     private const double PopupMinLogicalHeight = 160;
     private const double PopupMaxLogicalHeight = 720;
+    /// <summary>共享 ThemeShadow（对齐原型 box-shadow 轻卡阴影）；Receivers 挂在壳层。</summary>
+    private ThemeShadow? _cardThemeShadow;
+    private bool _sourceCardFocused;
+    private bool _sourceCardHovered;
     /// <summary>
     /// 原型滑块「Mica 透明度」80% → CSS alpha=0.80。
     /// 系统 Acrylic 比 CSS backdrop-filter 更密，Tint 略低于 0.80 才能在观感上对齐原型 80%（否则像 95~98% 实色）。
@@ -134,6 +159,16 @@ public sealed partial class MainWindow : Window
         InitLanguageCombos();
         ApplyLocalizedChrome();
         RefreshFromBridge();
+        // 首帧布局后挂卡阴影 Receivers（需可视树就绪）
+        if (Content is FrameworkElement rootFe)
+        {
+            rootFe.Loaded += (_, _) =>
+            {
+                EnsureCardThemeShadow();
+                ApplyCardElevation(SourceCardBorder, elevated: false);
+                ApplyCardElevation(LangBarBorder, elevated: false);
+            };
+        }
 
         _bridge.UiChanged += OnBridgeUiChanged;
         _bridge.LocaleChanged += OnLocaleChanged;
@@ -146,7 +181,7 @@ public sealed partial class MainWindow : Window
     private const double PopupLogicalWidth = 468;
 
     /// <summary>
-    /// 统一字族/字号：原文 TextBox、标题栏、语言栏、状态栏与结果卡共用 PopupFontFamily + 13/12/11 阶梯。
+    /// 统一字族/字号：对齐 Open Design winui3（Segoe UI Variable + 13/12/11 阶梯）。
     /// 在 code-behind 赋值，避免 XAML TemplateBinding 某些组合触发 XamlCompiler 静默失败。
     /// </summary>
     private void ApplyUnifiedTypography()
@@ -188,6 +223,50 @@ public sealed partial class MainWindow : Window
         {
             // brand name / 文标在 XAML 内联，遍历 Shell 内 TextBlock 补字族（字号已对齐）
             ApplyFontFamilyRecursive(ShellBorder, font);
+        }
+    }
+
+    /// <summary>
+    /// 原型卡阴影：ThemeShadow + Translation.Z 近似
+    /// <c>0 1.6px 3.2px / hover 0 2px 8px</c>；描边仍由 Border 承担 ring。
+    /// </summary>
+    private void EnsureCardThemeShadow()
+    {
+        if (_cardThemeShadow is not null)
+            return;
+        try
+        {
+            _cardThemeShadow = new ThemeShadow();
+            // 阴影投射到壳与内容区背景（Receivers 必须在 elevated 元素之下）
+            if (ShellBorder is not null)
+                _cardThemeShadow.Receivers.Add(ShellBorder);
+            if (RootGrid is not null && !ReferenceEquals(RootGrid, ShellBorder))
+                _cardThemeShadow.Receivers.Add(RootGrid);
+        }
+        catch
+        {
+            _cardThemeShadow = null;
+        }
+    }
+
+    private void ApplyCardElevation(UIElement? card, bool elevated)
+    {
+        if (card is null)
+            return;
+        EnsureCardThemeShadow();
+        if (_cardThemeShadow is null)
+            return;
+        try
+        {
+            card.Shadow = _cardThemeShadow;
+            var z = elevated
+                ? PopupFontSize("PopupCardElevationHover", 28)
+                : PopupFontSize("PopupCardElevation", 12);
+            card.Translation = new Vector3(0, 0, (float)z);
+        }
+        catch
+        {
+            // ThemeShadow 在部分环境不可用时静默降级为纯描边
         }
     }
 
@@ -603,7 +682,18 @@ public sealed partial class MainWindow : Window
         try
         {
             RefreshFromBridge();
-            ReportContentSize();
+            // 全量重建/折叠后 ActualHeight 可能仍是旧值；强制 layout 再测高，避免清空原文后窗底留白
+            try
+            {
+                ContentPanel.UpdateLayout();
+                ShellBorder.UpdateLayout();
+            }
+            catch
+            {
+                // ignore
+            }
+
+            ReportContentSize(force: true);
         }
         catch (Exception ex)
         {
@@ -699,7 +789,7 @@ public sealed partial class MainWindow : Window
             SourceTypeBadgeBorder.Visibility = Visibility.Collapsed;
         }
 
-        RebuildResultCards();
+        SyncResultCards();
         RefreshStatusChrome();
         UpdateCharCount();
         UpdatePinButtonVisual();
@@ -746,18 +836,16 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void RebuildResultCards()
+    /// <summary>
+    /// 同步结果卡：结构未变则原地补丁（文本 + 折叠动画）；否则全量重建。
+    /// 对齐 Vue：collapsed class 切换走 CSS transition，而非销毁重建。
+    /// </summary>
+    private void SyncResultCards()
     {
-        // 翻译 delta 会极高频 Rebuild：先停 Forever 动画再 Clear，避免目标已出树仍被 Composition 驱动而崩进程
-        StopCardStoryboards();
-        ResultsPanel.Children.Clear();
-
-        // 快照，避免与状态机并发改动（push 已迁 UI 线程，仍防御）
-        List<string> order;
         List<CardState> cards;
         try
         {
-            order = _bridge.State.CardOrder.ToList();
+            var order = _bridge.State.CardOrder.ToList();
             cards = order
                 .Select(id => _bridge.State.Cards.TryGetValue(id, out var c) ? c : null)
                 .Where(c => c is not null)
@@ -766,21 +854,150 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            CrashLog.Write("RebuildResultCards.Snapshot", ex);
+            CrashLog.Write("SyncResultCards.Snapshot", ex);
             return;
         }
+
+        if (TryPatchResultCards(cards))
+            return;
+
+        RebuildResultCardsFull(cards);
+    }
+
+    /// <summary>body 模板种类：决定能否原地补丁（不含 collapsed，折叠走动画）。</summary>
+    private static string CardBodyKind(CardState card)
+    {
+        if (card.Status == CardStatus.Failed)
+            return "failed";
+        if (card.Status == CardStatus.Cancelled)
+            return string.IsNullOrEmpty(card.Text) ? "cancelled-empty" : "cancelled-text";
+        if (card.Status == CardStatus.Pending)
+            return "pending";
+        if (card.Status == CardStatus.Translating && string.IsNullOrEmpty(card.Text))
+            return "stream-empty";
+        // translating/finished 有正文 → 同一套 clip 模板；streaming 光标差异在补丁时处理
+        return "text";
+    }
+
+    private static string CardStructureKey(CardState card) =>
+        $"{card.ServiceInstanceId}\u001f{card.Status}\u001f{CardBodyKind(card)}\u001f{card.ShowActions}\u001f{card.Expanded}\u001f{card.ServiceName}\u001f{card.ServiceType}";
+
+    private bool TryPatchResultCards(IReadOnlyList<CardState> cards)
+    {
+        if (_cardVisualOrder.Count != cards.Count || _cardVisuals.Count != cards.Count)
+            return false;
+
+        for (var i = 0; i < cards.Count; i++)
+        {
+            if (!string.Equals(_cardVisualOrder[i], cards[i].ServiceInstanceId, StringComparison.Ordinal))
+                return false;
+            if (!_cardVisuals.TryGetValue(cards[i].ServiceInstanceId, out var vis))
+                return false;
+            if (!string.Equals(vis.StructureKey, CardStructureKey(cards[i]), StringComparison.Ordinal))
+                return false;
+        }
+
+        var needFollow = false;
+        foreach (var card in cards)
+        {
+            var vis = _cardVisuals[card.ServiceInstanceId];
+            // 正文增量
+            if (vis.ResultText is not null && card.Text != vis.ResultText.Text)
+            {
+                vis.ResultText.Text = card.Text ?? "";
+                if (vis.TextClip is not null)
+                    vis.TextClip.Tag = EstimateFullTextHeight(card.Text ?? "");
+                needFollow = true;
+            }
+
+            // 折叠态变化：自动展开/清空原文收起 → 走同一套 MaxHeight 动画
+            if (vis.Collapsed != card.Collapsed)
+            {
+                ToolTipService.SetToolTip(
+                    vis.CollapseButton,
+                    Localization.T(card.Collapsed ? "popup.tooltip.expand" : "popup.tooltip.collapse"));
+                AnimateCardBodyCollapse(vis.BodyHost, vis.Body, vis.CollapseChevron, collapsing: card.Collapsed);
+                vis.Collapsed = card.Collapsed;
+                needFollow = false; // 动画内已 StartContentSizeFollow
+            }
+        }
+
+        if (needFollow)
+        {
+            try
+            {
+                ContentPanel.UpdateLayout();
+            }
+            catch
+            {
+                // ignore
+            }
+
+            ReportContentSize(force: true);
+        }
+
+        return true;
+    }
+
+    private void RebuildResultCardsFull(IReadOnlyList<CardState> cards)
+    {
+        // 翻译 delta 会极高频 Rebuild：先停 Forever 动画再 Clear，避免目标已出树仍被 Composition 驱动而崩进程
+        StopCardStoryboards();
+        ResultsPanel.Children.Clear();
+        var prevCollapsed = _cardVisuals.ToDictionary(kv => kv.Key, kv => kv.Value.Collapsed);
+        _cardVisuals.Clear();
+        _cardVisualOrder = cards.Select(c => c.ServiceInstanceId).ToList();
+
+        var pendingExpand = new List<ResultCardVisual>();
 
         foreach (var card in cards)
         {
             try
             {
-                ResultsPanel.Children.Add(BuildResultCard(card));
+                var vis = BuildResultCardVisual(card);
+                _cardVisuals[card.ServiceInstanceId] = vis;
+                ResultsPanel.Children.Add(vis.Root);
+
+                // 结构重建时若从折叠→展开（首条 delta / finished），排队自动展开动画
+                var wasCollapsed = prevCollapsed.GetValueOrDefault(card.ServiceInstanceId, true);
+                if (wasCollapsed && !card.Collapsed)
+                {
+                    // 先以折叠态入树，下一帧再动画展开
+                    vis.BodyHost.MaxHeight = 0;
+                    vis.BodyHost.Opacity = 0;
+                    vis.BodyHost.Clip = new RectangleGeometry { Rect = new Windows.Foundation.Rect(0, 0, 0, 0) };
+                    if (vis.CollapseChevron.RenderTransform is RotateTransform rot)
+                        rot.Angle = -90;
+                    else
+                    {
+                        vis.CollapseChevron.RenderTransform = new RotateTransform { Angle = -90 };
+                        vis.CollapseChevron.RenderTransformOrigin = new Windows.Foundation.Point(0.5, 0.5);
+                    }
+
+                    vis.Collapsed = true; // 动画完成后与 card 对齐
+                    pendingExpand.Add(vis);
+                }
             }
             catch (Exception ex)
             {
                 CrashLog.Write($"RebuildResultCards.Build[{card.ServiceInstanceId}]", ex);
             }
         }
+
+        if (pendingExpand.Count == 0)
+            return;
+
+        // 等入树 arrange 后再播展开动画（否则 Measure fullH 不准）
+        _ = DispatcherQueue.TryEnqueue(() =>
+        {
+            foreach (var vis in pendingExpand)
+            {
+                if (!_bridge.State.Cards.TryGetValue(vis.Id, out var live) || live.Collapsed)
+                    continue;
+                AnimateCardBodyCollapse(vis.BodyHost, vis.Body, vis.CollapseChevron, collapsing: false);
+                vis.Collapsed = false;
+            }
+        });
     }
 
     private void StopCardStoryboards()
@@ -802,7 +1019,7 @@ public sealed partial class MainWindow : Window
 
     private void TrackCardStoryboard(Storyboard sb) => _cardStoryboards.Add(sb);
 
-    private UIElement BuildResultCard(CardState card)
+    private ResultCardVisual BuildResultCardVisual(CardState card)
     {
         // 对齐 components.css .result-card / ResultCardView
         var cardBg = TryResourceBrush("PopupCardBgBrush")
@@ -825,26 +1042,36 @@ public sealed partial class MainWindow : Window
             CornerRadius = new CornerRadius(8),
         };
 
-        // 轻阴影感：hover 时加粗描边（原型 shadow-card-h）
-        root.PointerEntered += (_, _) => root.BorderBrush = border2;
-        root.PointerExited += (_, _) => root.BorderBrush = borderBrush;
+        // 原型：box-shadow 常态/hover；另有 ::before reveal 高光（用 hover 抬升 + 描边近似）
+        ApplyCardElevation(root, elevated: false);
+        root.PointerEntered += (_, _) =>
+        {
+            root.BorderBrush = border2;
+            ApplyCardElevation(root, elevated: true);
+        };
+        root.PointerExited += (_, _) =>
+        {
+            root.BorderBrush = borderBrush;
+            ApplyCardElevation(root, elevated: false);
+        };
 
         var stack = new StackPanel { Spacing = 0 };
         var serviceId = card.ServiceInstanceId;
         var displayName = string.IsNullOrWhiteSpace(card.ServiceName) ? card.ServiceInstanceId : card.ServiceName;
 
-        // —— header: padding 6 12；icon 14 + name 11px + status + collapse 20 ——
-        var header = new Grid { Padding = new Thickness(12, 6, 8, 6) };
+        // —— header: padding 6 12；icon 14 + name 11 Medium + status + collapse 20 ——
+        var header = new Grid { Padding = new Thickness(12, 6, 12, 6) };
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        // 与设置页 ServiceIcon 同源：Assets/service-icons/{serviceType}.svg
+        // 与设置页 ServiceIcon 同源：Assets/service-icons/{serviceType}.svg；原型 14×14 r=3
         var iconHost = new Border
         {
             Width = 14,
             Height = 14,
+            CornerRadius = new CornerRadius(3),
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(0, 0, 6, 0),
             Child = ServiceIcons.Create(card.ServiceType, displayName, 14),
@@ -852,12 +1079,13 @@ public sealed partial class MainWindow : Window
         Grid.SetColumn(iconHost, 0);
         header.Children.Add(iconHost);
 
+        // 原型 .result-engine-name：0.6875rem=11px / font-weight 500
         var title = new TextBlock
         {
             Text = displayName,
             FontFamily = PopupFont(),
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, // 对齐 .result-engine-name 600
-            FontSize = PopupFontSize("PopupFontSizeCaption", 12), // 0.75rem
+            FontWeight = Microsoft.UI.Text.FontWeights.Medium,
+            FontSize = PopupFontSize("PopupFontSizeEngine", 11),
             Foreground = fg2,
             VerticalAlignment = VerticalAlignment.Center,
             TextWrapping = TextWrapping.NoWrap,
@@ -937,6 +1165,20 @@ public sealed partial class MainWindow : Window
                 : null,
         };
 
+        var visual = new ResultCardVisual
+        {
+            Id = serviceId,
+            Root = root,
+            BodyHost = bodyHost,
+            Body = body,
+            CollapseChevron = collapseIcon,
+            CollapseButton = collapseBtn,
+            TextClip = textClip,
+            ResultText = FindResultTextBlock(textClip),
+            Collapsed = card.Collapsed,
+            StructureKey = CardStructureKey(card),
+        };
+
         void ToggleCollapse()
         {
             if (!_bridge.State.Cards.TryGetValue(serviceId, out var live))
@@ -946,6 +1188,8 @@ public sealed partial class MainWindow : Window
             ToolTipService.SetToolTip(
                 collapseBtn,
                 Localization.T(collapsing ? "popup.tooltip.expand" : "popup.tooltip.collapse"));
+            if (_cardVisuals.TryGetValue(serviceId, out var v))
+                v.Collapsed = collapsing;
             AnimateCardBodyCollapse(bodyHost, body, collapseIcon, collapsing);
         }
 
@@ -960,7 +1204,33 @@ public sealed partial class MainWindow : Window
         stack.Children.Add(header);
         stack.Children.Add(bodyHost);
         root.Child = stack;
-        return root;
+        return visual;
+    }
+
+    private static TextBlock? FindResultTextBlock(Border? textClip)
+    {
+        if (textClip is null)
+            return null;
+        if (textClip.Child is TextBlock direct)
+            return direct;
+        if (textClip.Child is Panel panel)
+        {
+            foreach (var child in panel.Children)
+            {
+                if (child is TextBlock tb)
+                    return tb;
+                if (child is Panel nested)
+                {
+                    foreach (var n in nested.Children)
+                    {
+                        if (n is TextBlock ntb)
+                            return ntb;
+                    }
+                }
+            }
+        }
+
+        return null;
     }
 
     /// <summary>构建结果卡 body（始终挂载，由 bodyHost MaxHeight 控制折叠）。</summary>
@@ -1255,7 +1525,7 @@ public sealed partial class MainWindow : Window
         return cursor;
     }
 
-    /// <summary>原文/译文共用：Segoe UI Variable + 13px + line-height ~1.6。</summary>
+    /// <summary>原文/译文共用：Segoe UI Variable + 13px + line-height 1.6（原型 .result-text）。</summary>
     private TextBlock MakeBodyTextBlock(string text, Brush fg)
     {
         var size = PopupFontSize("PopupFontSizeBody", 13);
@@ -1269,12 +1539,14 @@ public sealed partial class MainWindow : Window
             TextWrapping = TextWrapping.WrapWholeWords,
             IsTextSelectionEnabled = true,
             LineHeight = line,
+            // 原型 font-feature-settings: ss01 + tnum；WinUI 侧靠 Variable 字体默认 metric
+            OpticalMarginAlignment = OpticalMarginAlignment.TrimSideBearings,
         };
     }
 
     private static FontFamily PopupFont() =>
         TryResourceFont("PopupFontFamily")
-        ?? new FontFamily("Segoe UI Variable Text, Segoe UI, Microsoft YaHei UI");
+        ?? new FontFamily("Segoe UI Variable, Segoe UI, Microsoft YaHei UI, Microsoft YaHei");
 
     private static FontFamily PopupMonoFont() =>
         TryResourceFont("PopupMonoFontFamily")
@@ -1685,19 +1957,46 @@ public sealed partial class MainWindow : Window
 
     private void SetSourceCardFocused(bool focused)
     {
+        _sourceCardFocused = focused;
+        UpdateSourceCardChrome();
+    }
+
+    private void SourceCardBorder_PointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        _sourceCardHovered = true;
+        UpdateSourceCardChrome();
+    }
+
+    private void SourceCardBorder_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        _sourceCardHovered = false;
+        UpdateSourceCardChrome();
+    }
+
+    /// <summary>
+    /// 源文卡描边 + 阴影：对齐原型 focus-within accent ring + shadow-card / shadow-card-h。
+    /// </summary>
+    private void UpdateSourceCardChrome()
+    {
         if (SourceCardBorder is null)
             return;
-        if (focused)
+
+        if (_sourceCardFocused)
         {
             SourceCardBorder.BorderBrush = TryResourceBrush("PopupAccentBrush")
                 ?? new SolidColorBrush(Color.FromArgb(255, 0xD5, 0x5A, 0x1F));
             SourceCardBorder.BorderThickness = new Thickness(1.5);
+            ApplyCardElevation(SourceCardBorder, elevated: true);
         }
         else
         {
-            SourceCardBorder.BorderBrush = TryResourceBrush("PopupBorderBrush")
-                ?? new SolidColorBrush(Color.FromArgb(0x0F, 0, 0, 0));
+            SourceCardBorder.BorderBrush = _sourceCardHovered
+                ? (TryResourceBrush("PopupBorder2Brush")
+                   ?? new SolidColorBrush(Color.FromArgb(0x1F, 0, 0, 0)))
+                : (TryResourceBrush("PopupBorderBrush")
+                   ?? new SolidColorBrush(Color.FromArgb(0x0F, 0, 0, 0)));
             SourceCardBorder.BorderThickness = new Thickness(1);
+            ApplyCardElevation(SourceCardBorder, elevated: _sourceCardHovered);
         }
     }
 
@@ -1942,8 +2241,14 @@ public sealed partial class MainWindow : Window
                 bodyHost.Clip = null;
             }
 
-            FinishContentSizeFollow(notifyHost: true);
+            if (--_pendingBodySizeAnims <= 0)
+            {
+                _pendingBodySizeAnims = 0;
+                FinishContentSizeFollow(notifyHost: true);
+            }
         };
+        // 先计数再 Begin，避免 Completed 同步触发时计数错乱
+        _pendingBodySizeAnims++;
         sb.Begin();
 
         // 对齐 Vue：CSS 变高 → ResizeObserver 读 offsetHeight → setSize
@@ -2037,12 +2342,16 @@ public sealed partial class MainWindow : Window
     /// <summary>
     /// 卡片 MaxHeight 动画期间：每帧量测壳层期望高并本地 Resize（对齐 Vue ResizeObserver + rAF）。
     /// 不并行猜 Δ，避免与真实布局脱节后在终帧猛拉。
+    /// 多卡同时动画时只挂一次 Rendering，由 _pendingBodySizeAnims 决定何时收尾。
     /// </summary>
     private void StartContentSizeFollow()
     {
         _sizeDebounce?.Stop();
         if (_sizeFollowActive)
+        {
+            ReportContentSize(notifyHost: false);
             return;
+        }
 
         _sizeFollowActive = true;
         _sizeFollowRenderHandler ??= OnContentSizeFollowRender;
@@ -2065,6 +2374,8 @@ public sealed partial class MainWindow : Window
             CompositionTarget.Rendering -= _sizeFollowRenderHandler;
 
         _sizeDebounce?.Stop();
+        _sizeFollowActive = false;
+        _pendingBodySizeAnims = 0;
 
         try
         {
@@ -2078,7 +2389,6 @@ public sealed partial class MainWindow : Window
 
         // 与动画期同一测高路径；force 保证宿主拿到终态
         ReportContentSize(notifyHost: notifyHost, force: true);
-        _sizeFollowActive = false;
     }
 
     private void ScheduleReportContentSize()

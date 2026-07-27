@@ -152,6 +152,8 @@
                                 BorderThickness="1"
                                 CornerRadius="{StaticResource PopupCornerMd}"
                                 Padding="12,10,12,8"
+                                PointerEntered="SourceCardBorder_PointerEntered"
+                                PointerExited="SourceCardBorder_PointerExited"
                                 GotFocus="SourceCard_GotFocus"
                                 LostFocus="SourceCard_LostFocus">
                             <Grid>
@@ -201,7 +203,9 @@
                                                 CornerRadius="{StaticResource PopupCornerPill}"
                                                 Padding="8,2"
                                                 Visibility="Collapsed">
-                                            <TextBlock x:Name="SourceTypeBadge" FontSize="11" FontWeight="SemiBold"
+                                            <TextBlock x:Name="SourceTypeBadge"
+                                                       FontSize="{StaticResource PopupFontSizeBadge}"
+                                                       FontWeight="SemiBold"
                                                        Foreground="{StaticResource PopupAccentBrush}" />
                                         </Border>
                                         <Border Background="{StaticResource PopupAccentSoftBrush}"
@@ -209,7 +213,7 @@
                                                 Padding="8,2">
                                             <TextBlock x:Name="SourceLangBadge"
                                                        Text="自动检测"
-                                                       FontSize="11"
+                                                       FontSize="{StaticResource PopupFontSizeBadge}"
                                                        FontWeight="SemiBold"
                                                        Foreground="{StaticResource PopupAccentBrush}"
                                                        LineHeight="16.5" />
@@ -219,8 +223,9 @@
                             </Grid>
                         </Border>
 
-                        <!-- 语言栏：一体分段 Button + Flyout（无 Combo 外框） -->
-                        <Border Background="{StaticResource PopupCardBgBrush}"
+                        <!-- 语言栏：一体分段 Button + Flyout；与卡同表面 + 轻阴影 -->
+                        <Border x:Name="LangBarBorder"
+                                Background="{StaticResource PopupCardBgBrush}"
                                 BorderBrush="{StaticResource PopupBorderBrush}"
                                 BorderThickness="1"
                                 CornerRadius="{StaticResource PopupCornerMd}">
@@ -339,7 +344,8 @@
                             </Grid>
                         </Border>
 
-                        <StackPanel x:Name="ResultsPanel" Spacing="6" />
+                        <!-- 原型 winui3.css .w3-body .results { gap: 8px } -->
+                        <StackPanel x:Name="ResultsPanel" Spacing="8" />
                     </StackPanel>
                 </ScrollViewer>
 
