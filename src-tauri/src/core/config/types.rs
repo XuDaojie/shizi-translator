@@ -255,6 +255,9 @@ pub struct AppConfig {
     pub auto_copy: bool,
     #[serde(default = "default_true")]
     pub restore_clipboard: bool,
+    /// 翻译结果是否以 Markdown 渲染（弹窗/历史结果卡）。默认开启。
+    #[serde(default = "default_true")]
+    pub markdown_render: bool,
     #[serde(default = "default_history_limit")]
     pub history_limit: usize,
     #[serde(default)]
@@ -360,6 +363,7 @@ impl AppConfig {
             default_source_lang: default_source_lang(),
             auto_copy: true,
             restore_clipboard: true,
+            markdown_render: true,
             history_limit: default_history_limit(),
             window_precreate: WindowPrecreateConfig::default(),
             collect_usage: true,
@@ -500,6 +504,17 @@ mod tests {
         assert!(!parsed.launch_at_login);
         let roundtrip = serde_json::to_value(config).unwrap();
         assert_eq!(roundtrip["launchAtLogin"], false);
+    }
+
+    #[test]
+    fn default_markdown_render_true_and_missing_field_deserializes() {
+        let config = AppConfig::default();
+        assert!(config.markdown_render);
+        let json = r#"{"targetLang":"zh-CN"}"#;
+        let parsed: AppConfig = serde_json::from_str(json).unwrap();
+        assert!(parsed.markdown_render);
+        let roundtrip = serde_json::to_value(config).unwrap();
+        assert_eq!(roundtrip["markdownRender"], true);
     }
 
     #[test]

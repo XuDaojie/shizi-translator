@@ -19,6 +19,7 @@ const baseState: AppSettings = {
     defaultTargetLang: '中文',
     autoCopy: false,
     restoreClipboard: true,
+    markdownRender: true,
     autoPaste: false,
     showPhonetic: false,
     showAlternatives: false,

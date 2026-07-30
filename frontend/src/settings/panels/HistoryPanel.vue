@@ -429,6 +429,7 @@ onBeforeUnmount(() => {
                       :output-tokens="r.outputTokens ?? 0"
                       :show-actions="r.status !== 'pending'"
                       :show-refresh="false"
+                      :markdown-render="state.translation.markdownRender"
                       @copy="copy(resultText(r))"
                       @refresh="retryResult(r)"
                       @speak="speak(resultText(r))"

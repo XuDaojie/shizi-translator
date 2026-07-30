@@ -58,6 +58,8 @@ export interface AppConfig {
   defaultSourceLang: string;
   autoCopy: boolean;
   restoreClipboard: boolean;
+  /** 翻译结果是否 Markdown 渲染；旧 config 可能缺省，按 true 处理。 */
+  markdownRender?: boolean;
   historyLimit: number;
   services: ServiceInstanceConfig[];
   ocrServices: OcrServiceInstanceConfig[];

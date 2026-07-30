@@ -32,6 +32,8 @@ interface Props {
   showActions?: boolean
   /** 失败/中断时是否在操作栏右侧显示「刷新」按钮 */
   showRefresh?: boolean
+  /** 默认 slot 是否对成功态正文做 Markdown 渲染；默认开启 */
+  markdownRender?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -48,6 +50,7 @@ const props = withDefaults(defineProps<Props>(), {
   outputTokens: 0,
   showActions: true,
   showRefresh: false,
+  markdownRender: true,
 })
 
 const emit = defineEmits<{
@@ -64,9 +67,9 @@ const autoOverflow = ref(false)
 
 const showOverflow = computed(() => props.hasOverflow || autoOverflow.value)
 const actionsVisible = computed(() => showResultActions(props.showActions, props.showRefresh, props.status))
-/** 默认 slot（历史详情）：成功且有正文时渲染 Markdown */
+/** 默认 slot（历史详情）：成功且有正文、且开启 Markdown 时渲染 */
 const defaultMarkdownHtml = computed(() => {
-  if (props.status !== 'success' || !props.text.trim()) return ''
+  if (!props.markdownRender || props.status !== 'success' || !props.text.trim()) return ''
   return renderMarkdownToHtml(props.text)
 })
 const showDefaultMarkdown = computed(() => Boolean(defaultMarkdownHtml.value))

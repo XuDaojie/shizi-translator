@@ -19,9 +19,13 @@ import { t } from '@/i18n'
 interface Props {
   card: CardState
   targetLang: string
+  /** 是否对完成态译文做 Markdown 渲染；默认开启 */
+  markdownRender?: boolean
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  markdownRender: true,
+})
 const emit = defineEmits<{ (e: 'toggle-expand', card: CardState): void }>()
 
 const textRef = ref<HTMLElement | null>(null)
@@ -39,9 +43,12 @@ const viewStatus = computed<'success' | 'loading' | 'pending' | 'error' | 'abort
 })
 const isLoading = computed(() => props.card.status === 'translating')
 const statusMeta = computed(() => resultStatusMeta(props.card.status))
-/** 流式阶段纯文本；完成后 Markdown HTML */
+/** 流式阶段纯文本；完成后按配置决定是否 Markdown HTML */
 const showMarkdown = computed(
-  () => props.card.status === 'finished' && Boolean(props.card.text.trim()),
+  () =>
+    props.markdownRender
+    && props.card.status === 'finished'
+    && Boolean(props.card.text.trim()),
 )
 const markdownHtml = computed(() =>
   showMarkdown.value ? renderMarkdownToHtml(props.card.text) : '',
@@ -106,7 +113,9 @@ watch(() => props.card.status, (s) => {
 watch(markdownHtml, () => { nextTick(detectOverflow) })
 
 const onSpeak = (): void => {
-  const text = plainTextFromMarkdown(props.card.text) || props.card.text
+  const text = props.markdownRender
+    ? (plainTextFromMarkdown(props.card.text) || props.card.text)
+    : props.card.text
   speakText(text, props.targetLang)
 }
 
@@ -174,7 +183,7 @@ const onMarkdownClick = (e: MouseEvent): void => {
       class="result-text"
       dir="auto"
     />
-    <!-- 完成：Markdown 安全 HTML -->
+    <!-- 完成：Markdown 安全 HTML（markdownRender 开启时） -->
     <div
       v-else-if="showMarkdown"
       ref="mdRef"
@@ -183,7 +192,7 @@ const onMarkdownClick = (e: MouseEvent): void => {
       @click="onMarkdownClick"
       v-html="markdownHtml"
     />
-    <!-- 失败/取消时保留已流出的片段（纯文本） -->
+    <!-- 完成但关闭 Markdown，或失败/取消时保留片段：纯文本 -->
     <div
       v-else-if="card.text"
       class="result-text"

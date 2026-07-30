@@ -59,6 +59,15 @@ const targetLanguageOptions = computed(() => TARGET_LANGUAGES.map((l) => ({ labe
         :aria-label="t('settings.field.restoreClipboard')"
       />
     </SettingRow>
+    <SettingRow
+      :title="t('settings.field.markdownRender')"
+      :description="t('settings.description.markdownRender')"
+    >
+      <SettingSwitch
+        v-model="state.translation.markdownRender"
+        :aria-label="t('settings.field.markdownRender')"
+      />
+    </SettingRow>
   </SettingGroup>
 
   <SettingGroup

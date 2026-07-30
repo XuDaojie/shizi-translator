@@ -113,6 +113,8 @@ export interface TranslationSettings {
   defaultTargetLang: string
   autoCopy: boolean
   restoreClipboard: boolean
+  /** 翻译结果是否以 Markdown 渲染（弹窗/历史）。默认开启。 */
+  markdownRender: boolean
   autoPaste: boolean
   showPhonetic: boolean
   showAlternatives: boolean

@@ -97,6 +97,8 @@ const statusInfo = ref<{ key: MessageKey; params: MessageParams; loading: boolea
 const pendingConfigRefresh = ref<AppConfig | null>(null)
 /** 程序快捷键「打开设置」；默认 Ctrl+,，随 app-config 同步。 */
 const openSettingsKeys = ref('Ctrl+,')
+/** 结果卡 Markdown 渲染；默认开启，随 app-config 同步。 */
+const markdownRender = ref(true)
 
 const popupHeight = usePopupHeight(popupRef)
 
@@ -220,6 +222,7 @@ const events = useTranslationEvents({
     if (cfg.shortcuts?.['open-settings'] !== undefined) {
       openSettingsKeys.value = cfg.shortcuts['open-settings']
     }
+    markdownRender.value = cfg.markdownRender ?? true
     refreshCardsFromConfig(cfg)
   },
   logger,
@@ -438,6 +441,7 @@ const initCards = async (): Promise<void> => {
     if (config?.shortcuts?.['open-settings'] !== undefined) {
       openSettingsKeys.value = config.shortcuts['open-settings']
     }
+    markdownRender.value = config?.markdownRender ?? true
     sessionSourceLang.value = langs?.sourceLang ?? 'auto'
     sessionTargetLang.value = langs?.targetLang ?? 'zh-CN'
     refreshCardsFromConfig(config)
@@ -513,6 +517,7 @@ onMounted(() => {
           :key="card.serviceInstanceId"
           :card="card"
           :target-lang="sessionTargetLang"
+          :markdown-render="markdownRender"
         />
       </div>
     </div>

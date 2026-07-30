@@ -172,6 +172,7 @@ const buildDefaults = (): AppSettings => {
       defaultTargetLang: 'zh-CN',
       autoCopy: true,
       restoreClipboard: true,
+      markdownRender: true,
       autoPaste: false,
       showPhonetic: true,
       showAlternatives: true,
@@ -769,6 +770,8 @@ export const useSettings = () => ({
       state.translation.autoCopy = backend.autoCopy ?? state.translation.autoCopy
       state.translation.restoreClipboard =
         backend.restoreClipboard ?? state.translation.restoreClipboard
+      state.translation.markdownRender =
+        backend.markdownRender ?? state.translation.markdownRender
       state.translation.historyLimit =
         backend.historyLimit ?? state.translation.historyLimit
       state.shortcut.bindings = mergeBackendIntoShortcuts(state.shortcut.bindings, backend.shortcuts ?? {})

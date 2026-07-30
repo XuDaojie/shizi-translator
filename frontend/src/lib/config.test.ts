@@ -40,6 +40,7 @@ const makeState = (services: ServiceInstance[]): AppSettings => ({
     defaultTargetLang: '中文',
     autoCopy: true,
     restoreClipboard: true,
+    markdownRender: true,
     autoPaste: false,
     showPhonetic: true,
     showAlternatives: true,
@@ -125,12 +126,14 @@ describe('projectToAppConfig', () => {
     state.translation.defaultSourceLang = 'en-US';
     state.translation.autoCopy = false;
     state.translation.restoreClipboard = false;
+    state.translation.markdownRender = false;
 
     const config = projectToAppConfig(state);
 
     expect(config.defaultSourceLang).toBe('en-US');
     expect(config.autoCopy).toBe(false);
     expect(config.restoreClipboard).toBe(false);
+    expect(config.markdownRender).toBe(false);
     expect(config.services[0]).toMatchObject({
       systemPrompt: '系统',
       translationPrompt: '翻译 {text}',
@@ -233,6 +236,7 @@ describe('validateConfig', () => {
     defaultSourceLang: 'auto',
     autoCopy: true,
     restoreClipboard: true,
+    markdownRender: true,
     historyLimit: 500,
     services: [],
     ocrServices: [],
