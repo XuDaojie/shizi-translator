@@ -173,6 +173,8 @@
     "popup.tooltip.pin": "창을 맨 위에 유지",
     "popup.tooltip.unpin": "항상 위 해제",
     "popup.tooltip.copySource": "원문 복사",
+    "popup.tooltip.removeBlankLines": "빈 줄 제거",
+    "popup.tooltip.removeBlankLinesOn": "빈 줄 제거(켜짐)",
     "popup.tooltip.copyResult": "번역 복사",
     "popup.tooltip.speakSource": "원문 읽기",
     "popup.tooltip.swapLanguages": "언어 교환",

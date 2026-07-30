@@ -14,7 +14,11 @@ import {
   createMainWindowReadyGate,
   doubleRaf,
 } from './composables/mainWindowReady'
-import { applyPendingSourceIfCurrent, getTauriApis } from './composables/utils'
+import {
+  applyPendingSourceIfCurrent,
+  getTauriApis,
+  prepareSourceWithRemoveBlank,
+} from './composables/utils'
 import { POPUP_MESSAGE_KEYS } from './composables/resultCardMeta'
 import { toast } from '@/lib/toast'
 import { matchShortcutKeys } from '@/lib/matchShortcut'
@@ -82,6 +86,10 @@ const pinned = ref(false)
 const sourceBadge = ref<'selectedText' | 'ocrText' | null>(null)
 const detectedLangBadge = ref('')
 const charCount = ref(0)
+/** 去除空行：开启后外部回填/下发翻译均用清洗后的原文 */
+const removeBlankActive = ref(false)
+/** 防止「清洗后重译」的 started 再次触发重译；值为期望的清洗原文 */
+let pendingStripRetranslateText: string | null = null
 type StatusAction = { key: MessageKey; params?: MessageParams; onClick: () => void }
 const statusInfo = ref<{ key: MessageKey; params: MessageParams; loading: boolean; action: StatusAction | null }>({
   key: POPUP_MESSAGE_KEYS.ready, params: {}, loading: false, action: null,
@@ -164,9 +172,32 @@ const updateBatchStatus = (): void => {
 const onStarted = (payload: TranslationEventPayload, isNewBatch: boolean): void => {
   if (isNewBatch) {
     sourceRevision += 1
-    if (payload.sourceText !== undefined) sourceText.value = payload.sourceText
-    charCount.value = sourceText.value.length
-    sourceBadge.value = payload.sourceType ?? null
+    if (payload.sourceText !== undefined) {
+      const raw = payload.sourceText
+      const { text: next, changed } = prepareSourceWithRemoveBlank(removeBlankActive.value, raw)
+      sourceText.value = next
+      charCount.value = next.length
+      // 截图/划词等已在后端用「未清洗」原文开译：开启去除空行时强制用清洗文本重开一批
+      if (
+        changed
+        && next.trim()
+        && pendingStripRetranslateText !== next
+      ) {
+        pendingStripRetranslateText = next
+        void startTranslationWithText(next, { force: true, reason: 'remove-blank' })
+      } else if (pendingStripRetranslateText !== null && raw === pendingStripRetranslateText) {
+        // 重译批次已带上清洗原文，结束挂起标记
+        pendingStripRetranslateText = null
+      }
+    } else {
+      charCount.value = sourceText.value.length
+    }
+    // 重译走 ManualText 时后端 sourceType 为 manualText；保留截图/划词角标
+    if (payload.sourceType === 'selectedText' || payload.sourceType === 'ocrText') {
+      sourceBadge.value = payload.sourceType
+    } else if (payload.sourceType === null) {
+      sourceBadge.value = null
+    }
     detectedLangBadge.value = ''
     setStatus(POPUP_MESSAGE_KEYS.translating, true, { key: POPUP_MESSAGE_KEYS.cancel, onClick: cancelTranslation })
   }
@@ -235,18 +266,50 @@ const applyPendingConfigRefresh = (): void => {
 }
 
 /* === 翻译触发 === */
-const startManualTranslation = async (): Promise<void> => {
-  if (isTranslating.value) return
-  const text = sourceText.value.trim()
-  if (!text) { toast.info(t(POPUP_MESSAGE_KEYS.emptySource)); return }
-  const apis = getTauriApis()
-  if (!apis) { toast.info(t('popup.error.tauriUnavailable')); return }
-  try {
-    await apis.invoke('start_translation', { text })
-  } catch (e) {
-    toast.error(t(POPUP_MESSAGE_KEYS.translationFailed), String(e))
-    logger.error('手动翻译失败', String(e))
+/**
+ * 用指定原文开译。`force` 时即使当前翻译中也会覆盖（后端 begin_translation_overriding）。
+ * 开启去除空行时始终再滤一遍，保证结果卡与展示原文一致。
+ */
+const startTranslationWithText = async (
+  text: string,
+  opts: { force?: boolean; reason?: string } = {},
+): Promise<void> => {
+  if (!opts.force && isTranslating.value) return
+  const prepared = prepareSourceWithRemoveBlank(removeBlankActive.value, text)
+  if (prepared.text !== sourceText.value) {
+    sourceText.value = prepared.text
+    charCount.value = prepared.text.length
   }
+  const trimmed = prepared.text.trim()
+  if (!trimmed) {
+    toast.info(t(POPUP_MESSAGE_KEYS.emptySource))
+    return
+  }
+  const apis = getTauriApis()
+  if (!apis) {
+    toast.info(t('popup.error.tauriUnavailable'))
+    return
+  }
+  try {
+    if (opts.reason) logger.info('开译', { reason: opts.reason, len: trimmed.length })
+    await apis.invoke('start_translation', { text: trimmed })
+  } catch (e) {
+    pendingStripRetranslateText = null
+    toast.error(t(POPUP_MESSAGE_KEYS.translationFailed), String(e))
+    logger.error('翻译失败', String(e))
+  }
+}
+
+const startManualTranslation = async (): Promise<void> => {
+  await startTranslationWithText(sourceText.value)
+}
+
+/** 去除空行改动原文后：强制用当前原文重译（覆盖进行中的批次） */
+const retranslateAfterRemoveBlank = async (): Promise<void> => {
+  const text = sourceText.value
+  if (!text.trim()) return
+  pendingStripRetranslateText = prepareSourceWithRemoveBlank(true, text).text
+  await startTranslationWithText(text, { force: true, reason: 'remove-blank-toggle' })
 }
 
 async function cancelTranslation(): Promise<void> {
@@ -327,11 +390,14 @@ const applyPendingSourceText = async (): Promise<void> => {
       () => apis.invoke<string | null>('take_pending_source_text'),
       () => sourceRevision,
       (text) => {
-        sourceText.value = text
-        charCount.value = text.length
+        const { text: next } = prepareSourceWithRemoveBlank(removeBlankActive.value, text)
+        sourceText.value = next
+        charCount.value = next.length
       },
     )
-    const text = applied?.trim()
+    const text = applied
+      ? prepareSourceWithRemoveBlank(removeBlankActive.value, applied).text.trim()
+      : ''
     if (text && !isTranslating.value) {
       try {
         await apis.invoke('start_translation', { text })
@@ -424,10 +490,12 @@ onMounted(() => {
     <div class="content">
       <SourceCard
         v-model="sourceText"
+        v-model:remove-blank-active="removeBlankActive"
         :lang-label="sourceLangLabel"
         :source-badge="sourceBadge"
         :detected-lang="detectedOrLabel"
         @submit="startManualTranslation"
+        @retranslate="retranslateAfterRemoveBlank"
         @input="onSourceInput"
       />
 

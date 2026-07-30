@@ -70,3 +70,33 @@ export async function copyText(text: string): Promise<boolean> {
     return false
   }
 }
+
+/**
+ * 去除仅空白（含空）行，保留非空行原有内容与顺序。
+ * 先把 \\r\\n / \\r 规范为 \\n（OCR / Windows 剪贴板常见），再按行过滤。
+ */
+export function removeBlankLines(text: string): string {
+  return text
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .split('\n')
+    .filter((line) => line.trim() !== '')
+    .join('\n')
+}
+
+/** 开启「去除空行」时对原文做过滤；关闭时原样返回。 */
+export function applyRemoveBlankIfActive(active: boolean, text: string): string {
+  return active ? removeBlankLines(text) : text
+}
+
+/**
+ * 开启去除空行时准备用于展示/下发的原文。
+ * `changed` 为 true 表示相对入参做了清洗，调用方应用清洗后的文本重译。
+ */
+export function prepareSourceWithRemoveBlank(
+  active: boolean,
+  text: string,
+): { text: string; changed: boolean } {
+  const next = applyRemoveBlankIfActive(active, text)
+  return { text: next, changed: next !== text }
+}

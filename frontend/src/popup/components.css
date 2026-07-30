@@ -61,6 +61,8 @@
 .meta-btn:focus-visible { outline: 2px solid var(--popup-accent); outline-offset: 1px; }
 .meta-btn svg { width: 12px; height: 12px; stroke-width: 1.6; }
 .meta-btn.copied { color: var(--popup-success); }
+.meta-btn.active { color: var(--popup-accent); background: var(--popup-accent-soft); }
+.meta-btn.active:hover { background: var(--popup-accent-soft); color: var(--popup-accent); }
 
 .meta-badges {
   margin-left: auto;

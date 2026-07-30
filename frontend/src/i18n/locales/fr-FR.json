@@ -173,6 +173,8 @@
     "popup.tooltip.pin": "Gardez la fenêtre en haut",
     "popup.tooltip.unpin": "Désactiver le premier plan",
     "popup.tooltip.copySource": "Copier la source",
+    "popup.tooltip.removeBlankLines": "Supprimer les lignes vides",
+    "popup.tooltip.removeBlankLinesOn": "Supprimer les lignes vides (activé)",
     "popup.tooltip.copyResult": "Copier la traduction",
     "popup.tooltip.speakSource": "Lire la source à haute voix",
     "popup.tooltip.swapLanguages": "Inverser les langues",
