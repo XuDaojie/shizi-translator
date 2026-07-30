@@ -4,6 +4,11 @@ import ServiceIcon from '@/settings/components/ServiceIcon.vue'
 import { t } from '@/i18n'
 import { showResultActions } from '../composables/resultCardMeta'
 import { clipExpandRange } from '../composables/resultTextClipHeight'
+import {
+  handleMarkdownLinkClick,
+  renderMarkdownToHtml,
+} from '../composables/renderMarkdown'
+import { getTauriApis } from '../composables/utils'
 
 type CardStatus = 'success' | 'loading' | 'error' | 'aborted' | 'pending'
 
@@ -59,6 +64,31 @@ const autoOverflow = ref(false)
 
 const showOverflow = computed(() => props.hasOverflow || autoOverflow.value)
 const actionsVisible = computed(() => showResultActions(props.showActions, props.showRefresh, props.status))
+/** 默认 slot（历史详情）：成功且有正文时渲染 Markdown */
+const defaultMarkdownHtml = computed(() => {
+  if (props.status !== 'success' || !props.text.trim()) return ''
+  return renderMarkdownToHtml(props.text)
+})
+const showDefaultMarkdown = computed(() => Boolean(defaultMarkdownHtml.value))
+
+const openMarkdownUrl = async (url: string): Promise<void> => {
+  const apis = getTauriApis()
+  if (apis) {
+    try {
+      await apis.invoke('open_url', { url })
+      return
+    } catch {
+      /* 降级 */
+    }
+  }
+  if (typeof window !== 'undefined') {
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
+}
+
+const onMarkdownClick = (e: MouseEvent): void => {
+  void handleMarkdownLinkClick(e, openMarkdownUrl)
+}
 
 /**
  * 用正文 scrollHeight 对比折叠态上限（6.4em → px），只写 CSS 变量，不改 max-height。
@@ -150,7 +180,16 @@ const showDotFinal = (): boolean => props.loading || props.status === 'loading'
       <div class="result-card-body-inner">
         <div ref="clipRef" class="result-text-clip">
           <slot>
-            <div class="result-text" dir="auto">{{ text }}<span v-if="status === 'loading'" class="stream-cursor" /></div>
+            <div
+              v-if="showDefaultMarkdown"
+              class="result-text result-md"
+              dir="auto"
+              @click="onMarkdownClick"
+              v-html="defaultMarkdownHtml"
+            />
+            <div v-else class="result-text" dir="auto">
+              {{ text }}<span v-if="status === 'loading'" class="stream-cursor" />
+            </div>
           </slot>
         </div>
         <button class="result-expand-btn" type="button" :aria-label="t(expanded ? 'popup.button.collapse' : 'popup.button.expand')" @click="onExpandClick">

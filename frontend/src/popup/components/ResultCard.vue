@@ -3,7 +3,16 @@ import { computed, nextTick, ref, watch } from 'vue'
 import ResultCardView from './ResultCardView.vue'
 import type { CardState } from '../composables/useTranslationEvents'
 import { displayModelName, POPUP_MESSAGE_KEYS, resultStatusMeta, shouldShowTokens } from '../composables/resultCardMeta'
-import { speakText, copyText, getTauriApis } from '../composables/utils'
+import {
+  speakText,
+  copyText,
+  getTauriApis,
+} from '../composables/utils'
+import {
+  handleMarkdownLinkClick,
+  plainTextFromMarkdown,
+  renderMarkdownToHtml,
+} from '../composables/renderMarkdown'
 import { toast } from '@/lib/toast'
 import { t } from '@/i18n'
 
@@ -16,6 +25,7 @@ const props = defineProps<Props>()
 const emit = defineEmits<{ (e: 'toggle-expand', card: CardState): void }>()
 
 const textRef = ref<HTMLElement | null>(null)
+const mdRef = ref<HTMLElement | null>(null)
 
 /* ResultCardView 的 status 映射：CardState.status -> 展示态。 */
 const viewStatus = computed<'success' | 'loading' | 'pending' | 'error' | 'aborted'>(() => {
@@ -29,32 +39,43 @@ const viewStatus = computed<'success' | 'loading' | 'pending' | 'error' | 'abort
 })
 const isLoading = computed(() => props.card.status === 'translating')
 const statusMeta = computed(() => resultStatusMeta(props.card.status))
+/** 流式阶段纯文本；完成后 Markdown HTML */
+const showMarkdown = computed(
+  () => props.card.status === 'finished' && Boolean(props.card.text.trim()),
+)
+const markdownHtml = computed(() =>
+  showMarkdown.value ? renderMarkdownToHtml(props.card.text) : '',
+)
 
 /* 流式渲染：watch card.text，增量 appendChild TextNode / 全量 textContent 替换，
    命令式管理光标 span（复刻旧 setStreamCursor + scrollToBottom）。flush:sync 保证不丢帧。 */
 const renderText = (newText: string, oldText: string | undefined): void => {
+  if (!isLoading.value) return
   const el = textRef.value
   if (!el) return
-  // 移除旧光标
   el.querySelector('.stream-cursor')?.remove()
   if (oldText !== undefined && newText.startsWith(oldText)) {
     el.appendChild(document.createTextNode(newText.slice(oldText.length)))
   } else {
     el.textContent = newText
   }
-  if (props.card.status === 'translating') {
-    const cursor = document.createElement('span')
-    cursor.className = 'stream-cursor'
-    el.appendChild(cursor)
-  }
+  const cursor = document.createElement('span')
+  cursor.className = 'stream-cursor'
+  el.appendChild(cursor)
   el.scrollTop = el.scrollHeight
 }
 
 watch(() => props.card.text, (newText, oldText) => renderText(newText, oldText), { flush: 'sync' })
 
-/* 挂载后若已有 text（如重试/回填），立即渲染一次。 */
+/* 进入流式时挂载层后补渲染 */
+watch(isLoading, (loading) => {
+  if (loading) {
+    nextTick(() => renderText(props.card.text, undefined))
+  }
+})
+
 nextTick(() => {
-  if (props.card.text && textRef.value && !textRef.value.textContent) {
+  if (isLoading.value && props.card.text && textRef.value) {
     renderText(props.card.text, undefined)
   }
 })
@@ -69,28 +90,29 @@ const onToggleExpand = (): void => {
   emit('toggle-expand', props.card)
 }
 
+const activeTextEl = (): HTMLElement | null => mdRef.value ?? textRef.value
+
 /* overflow 检测（复刻旧 detectOverflow）：展开按钮可见性。 */
 const detectOverflow = (): void => {
-  const el = textRef.value?.parentElement /* .result-text-clip */
-  if (!el || !textRef.value) return
-  props.card.hasOverflow = textRef.value.scrollHeight > el.clientHeight + 1
+  const textEl = activeTextEl()
+  const clip = textEl?.parentElement
+  if (!clip || !textEl) return
+  props.card.hasOverflow = textEl.scrollHeight > clip.clientHeight + 1
 }
 watch(() => props.card.text, () => { nextTick(detectOverflow) })
 watch(() => props.card.status, (s) => {
-  if (s !== 'translating') {
-    textRef.value?.querySelector('.stream-cursor')?.remove()
-  }
   if (s === 'finished') nextTick(detectOverflow)
 })
+watch(markdownHtml, () => { nextTick(detectOverflow) })
 
 const onSpeak = (): void => {
-  const text = textRef.value?.textContent ?? props.card.text
+  const text = plainTextFromMarkdown(props.card.text) || props.card.text
   speakText(text, props.targetLang)
 }
 
 const onCopy = async (): Promise<void> => {
-  const text = textRef.value?.textContent ?? props.card.text
-  const ok = await copyText(text)
+  // 复制 Markdown 源文，便于二次编辑
+  const ok = await copyText(props.card.text)
   if (ok) toast.success(t(POPUP_MESSAGE_KEYS.copySuccess))
   else toast.error(t('popup.error.copyFailed'))
 }
@@ -103,6 +125,23 @@ const onRefresh = async (): Promise<void> => {
   } catch (e) {
     toast.error(t('popup.error.retryFailed'), String(e))
   }
+}
+
+const openMarkdownUrl = async (url: string): Promise<void> => {
+  const apis = getTauriApis()
+  if (apis) {
+    try {
+      await apis.invoke('open_url', { url })
+      return
+    } catch {
+      /* 降级 */
+    }
+  }
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
+
+const onMarkdownClick = (e: MouseEvent): void => {
+  void handleMarkdownLinkClick(e, openMarkdownUrl)
 }
 </script>
 
@@ -128,7 +167,28 @@ const onRefresh = async (): Promise<void> => {
     @copy="onCopy"
     @refresh="onRefresh"
   >
-    <div ref="textRef" class="result-text" dir="auto" />
+    <!-- 流式：纯文本 + 光标 -->
+    <div
+      v-if="isLoading"
+      ref="textRef"
+      class="result-text"
+      dir="auto"
+    />
+    <!-- 完成：Markdown 安全 HTML -->
+    <div
+      v-else-if="showMarkdown"
+      ref="mdRef"
+      class="result-text result-md"
+      dir="auto"
+      @click="onMarkdownClick"
+      v-html="markdownHtml"
+    />
+    <!-- 失败/取消时保留已流出的片段（纯文本） -->
+    <div
+      v-else-if="card.text"
+      class="result-text"
+      dir="auto"
+    >{{ card.text }}</div>
     <div v-if="statusMeta && card.status !== 'translating'" class="result-text" dir="auto">
       <strong>{{ t(statusMeta.key, statusMeta.params) }}</strong>
       <span v-if="card.errorMessage">: {{ card.errorMessage }}</span>

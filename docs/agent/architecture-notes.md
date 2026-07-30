@@ -40,6 +40,7 @@
 - 启用服务保序并发；session = `{batch_id}:{service_id}`；事件带 `serviceInstanceId/serviceName/serviceType/protocol`。
 - `initCards` 预建占位；冷启动可用 pending 原文，热窗以 `Started.sourceText` 为准 + revision 防迟到覆盖。
 - 结果卡默认 `collapsed`；首非空正文 / failed / finished 展开；用户折叠本 batch 优先（`collapseUserOverride`）；`getCard` 按 `serviceInstanceId` 复用。
+- 译文展示：流式阶段纯文本；`finished` 后常用 Markdown 子集渲染（`renderMarkdown.ts` + DOMPurify）；历史详情 `ResultCardView` 同路径。复制源 Markdown，朗读为去标记纯文本。
 - 语言下拉：inline combobox（`.lang-picker`），非浮层。
 - 语种检测：`Finished.detectedSourceLang`（LLM 首行解析或 MT `detectedLanguage`）→ 前端 `.lang-badge`。
 
