@@ -36,6 +36,7 @@
 - 前端静态 `zh-CN`/`en-US`，其余内置动态 chunk；用户包 `<app_config_dir>/lang/*.json`（≤1 MiB），回退链 user → 同 locale 内置 → zh-CN。
 - 翻译语言 19 种 + 源语言 `auto`；LLM 用稳定英文语言名；Edge 严格映射，未知 code 报错。
 - 默认目标语言：`AppConfig::default` 读 OS；`normalized` 兜底 `FALLBACK_TARGET_LANG = "zh-CN"`。
+- **NSIS 安装向导**（`tauri.conf.json` → `bundle.windows.nsis`）：`languages: ["English", "SimpChinese", "TradChinese"]`，`displayLanguageSelector: false`。按 OS 语言选安装界面；不在列表时回退第一项 English。
 
 ## 批次翻译与弹窗
 

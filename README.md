@@ -182,7 +182,7 @@
 
 ### 平台
 
-- 当前面向 **Windows** 优先；安装包为 Windows NSIS。
+- 当前面向 **Windows** 优先；安装包为 Windows NSIS（向导语言：优先跟系统，含英/简中/繁中；其它系统回退英文）。
 - 部分能力依赖 Windows 系统 API（DXGI 截图、Windows OCR 等）。
 
 ### 功能限制
