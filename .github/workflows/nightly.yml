@@ -134,9 +134,10 @@ jobs:
           console.log(`nightly version -> ${nightly}`);
           NODE
 
-      - name: Build NSIS installer
+      # Nightly 仅轻量包（体积/耗时）；完整包仅正式/Beta 发版双包提供。
+      - name: Build NSIS installer (slim only)
         if: steps.decide.outputs.should_build == 'true'
-        run: npm run tauri -- build --bundles nsis
+        run: npm run tauri:build
 
       - name: List and verify nightly artifact name
         if: steps.decide.outputs.should_build == 'true'
@@ -221,6 +222,8 @@ jobs:
             | 构建日期（UTC） | `${{ steps.decide.outputs.date_utc }}` |
 
             安装包文件名形如 `Shizi_{version}_x64-setup.exe`，其中 version 含 `nightly` 段，**不会**与正式版 `Shizi_x.y.z_x64-setup.exe` 同名。
+
+            本构建为**轻量包**（与正式版 `*-setup.exe` 同类，不含 WebView2 离线完整安装器）。需要完整包请用正式版 / Beta Release 中的 `*-setup-full.exe`。
 
             **仅供尝鲜，不保证稳定。** 日常使用请下载正式版 / Beta：
             https://github.com/${{ github.repository }}/releases

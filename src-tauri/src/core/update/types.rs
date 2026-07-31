@@ -23,6 +23,12 @@ impl UpdateChannel {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct ReleaseAsset {
+    pub name: String,
+    pub browser_download_url: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct ReleaseInfo {
     pub tag_name: String,
     pub name: Option<String>,
@@ -31,13 +37,17 @@ pub struct ReleaseInfo {
     pub prerelease: bool,
     #[serde(default)]
     pub draft: bool,
+    /// GitHub Release 附件；检查更新时优先选轻量 NSIS（非 full）。
+    #[serde(default)]
+    pub assets: Vec<ReleaseAsset>,
 }
 
 #[derive(Debug, Clone)]
 pub struct SelectedRelease {
     pub version: semver::Version,
     pub name: Option<String>,
-    pub html_url: String,
+    /// 优先轻量包直链；无合适 asset 时为 release 页 html_url（或兜底列表页）。
+    pub download_url: String,
     pub is_prerelease: bool,
 }
 

@@ -59,7 +59,8 @@
 - 翻译/配置：`start_translation`、`take_pending_source_text`、`get_app_config`、`save_app_config`、`get_shortcut_conflicts`
 - Overlay：`get_capture_frame_meta` / `get_capture_frame_bytes` / `submit_capture_region` / `cancel_capture`
 - 日志：`write_frontend_log` / `export_logs`；Edge：`save_edge_translate_env`
-- 更新：`check_for_update`（可选 `channel`；缺省读 `AppConfig.updateChannel`）；启动 `spawn_startup_update_check`（`autoCheckUpdate` 时系统 dialog + `open_url`）。通道仅 `stable`/`beta`；CI 滚动 `nightly`（`.github/workflows/nightly.yml`，tag `nightly` 非 semver；包版本 `*-nightly.*`）。`evaluate_check` 对当前版本 pre 首段为 `nightly` 直接 `up_to_date`，避免 semver 误报「可升级到同号正式版」。
+- 更新：`check_for_update`（可选 `channel`；缺省读 `AppConfig.updateChannel`）；启动 `spawn_startup_update_check`（`autoCheckUpdate` 时系统 dialog + `open_url`）。通道仅 `stable`/`beta`；CI 滚动 `nightly`（`.github/workflows/nightly.yml`，tag `nightly` 非 semver；包版本 `*-nightly.*`）。`evaluate_check` 对当前版本 pre 首段为 `nightly` 直接 `up_to_date`，避免 semver 误报「可升级到同号正式版」。有可用更新时 `releaseUrl` **优先** GitHub asset 中的轻量 NSIS（`*-setup.exe` 且不含 `full`），无 asset 时回退 release 页。
+- 发版双包：轻量 `*-setup.exe`（`webviewInstallMode: downloadBootstrapper`，`tauri.conf.json`）+ 完整 `*-setup-full.exe`（`offlineInstaller`，合并 `tauri.conf.full.json`，构建后改名）。本地/CI：`npm run tauri:build:dual`（`scripts/build-nsis-dual.js`）；`.github/workflows/release.yml` 上传双包；`nightly.yml` 仅轻量。完整包装系统级 Evergreen Runtime，非 Fixed/应用私有。
 - 事件：`translation:event` → `Started` / `Delta` / `Finished` / `Failed`
 
 ## 历史与日志

@@ -16,6 +16,10 @@
       "nsis"
     ],
     "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      },
       "nsis": {
         "installerIcon": "icons/icon.ico",
         "languages": ["English", "SimpChinese", "TradChinese"],

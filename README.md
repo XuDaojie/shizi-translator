@@ -40,15 +40,25 @@
 ## 下载安装
 
 1. 打开 [Releases](https://github.com/XuDaojie/shizi-translator/releases) 页面。
-2. 下载最新 Windows 安装包（NSIS，文件名类似 `Shizi_x.y.z_x64-setup.exe`）。
+2. 下载最新 Windows 安装包（见下方「安装包选择」）。
 3. 安装后从开始菜单启动，或使用系统托盘菜单。
 
-应用内也可检查更新：设置 → 通用 →「检查更新」；有新版本时会打开对应 Release 页下载安装（不做应用内静默安装）。默认同页可关闭「自动检查更新」。
+应用内也可检查更新：设置 → 通用 →「检查更新」；有新版本时会**优先打开轻量包**下载链接（不做应用内静默安装）。默认同页可关闭「自动检查更新」。
+
+### 安装包选择
+
+| 文件名 | 说明 |
+|--------|------|
+| `Shizi_x.y.z_x64-setup.exe` | **推荐**：轻量包。安装时若本机没有 WebView2，会联网下载安装（装到系统，其它软件可共用）。 |
+| `Shizi_x.y.z_x64-setup-full.exe` | **完整包**：内嵌 WebView2 离线安装器。弱网、干净系统或轻量包装 WebView2 失败时使用。 |
+
+- 两种包版本号相同；完整包装的是**系统级** WebView2，不是嵌在应用目录里的私有 Runtime。
+- **升级**时用轻量包即可（无需再下完整包）。应用内检查更新始终指向轻量包。
 
 ### 系统要求
 
 - Windows 10 / 11（x64）
-- [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)（Windows 11 通常已预装）
+- [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)（Windows 11 通常已预装；完整安装包可在首次安装时离线补齐）
 - 截图 OCR 使用系统 Windows OCR 时，需安装对应语言的 OCR 语言包（中英混合场景尤其需要）
 
 ## 快速开始
@@ -212,7 +222,9 @@
 ```bash
 npm install                 # 安装依赖
 npm run tauri dev           # 开发模式（Vite + 后端）
-npm run tauri build         # 生成 release 安装包（NSIS）
+npm run tauri:build         # 轻量 NSIS（默认 downloadBootstrapper）
+npm run tauri:build:full    # 完整 NSIS（offlineInstaller；产物仍为 *-setup.exe，需自行改名或用 dual）
+npm run tauri:build:dual    # 双包：*-setup.exe + *-setup-full.exe
 npm run typecheck           # 前端类型检查
 npm run test                # 前端单测
 cd src-tauri && cargo test  # 后端单测
