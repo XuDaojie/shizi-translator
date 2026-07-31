@@ -176,6 +176,9 @@ impl AppState {
         Ok(())
     }
 
+    /// 只读 peek：是否有进行中的翻译批次。生产入口已改为 begin/finish 接管，
+    /// 当前仅单测使用；故 `cfg(test)`，避免 lib 编译 dead_code 警告。
+    #[cfg(test)]
     pub fn is_translation_busy(&self) -> bool {
         self.translation_busy
             .lock()
