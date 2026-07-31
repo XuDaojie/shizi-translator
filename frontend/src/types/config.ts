@@ -62,6 +62,8 @@ export interface AppConfig {
   markdownRender?: boolean;
   /** 弹窗「去除空行」偏好；旧 config 可能缺省，按 false 处理。 */
   removeBlankLines?: boolean;
+  /** 弹窗工具栏是否显示关闭按钮；旧 config 可能缺省，按 true 处理。 */
+  showCloseButton?: boolean;
   historyLimit: number;
   services: ServiceInstanceConfig[];
   ocrServices: OcrServiceInstanceConfig[];

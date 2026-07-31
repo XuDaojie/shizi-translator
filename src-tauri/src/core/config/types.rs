@@ -261,6 +261,9 @@ pub struct AppConfig {
     /// 翻译弹窗「去除空行」：开启后原文展示与下发均去掉空白行。默认关闭。
     #[serde(default)]
     pub remove_blank_lines: bool,
+    /// 翻译弹窗工具栏是否显示关闭按钮。默认开启。
+    #[serde(default = "default_true")]
+    pub show_close_button: bool,
     #[serde(default = "default_history_limit")]
     pub history_limit: usize,
     #[serde(default)]
@@ -368,6 +371,7 @@ impl AppConfig {
             restore_clipboard: true,
             markdown_render: true,
             remove_blank_lines: false,
+            show_close_button: true,
             history_limit: default_history_limit(),
             window_precreate: WindowPrecreateConfig::default(),
             collect_usage: true,
@@ -530,6 +534,17 @@ mod tests {
         assert!(!parsed.remove_blank_lines);
         let roundtrip = serde_json::to_value(config).unwrap();
         assert_eq!(roundtrip["removeBlankLines"], false);
+    }
+
+    #[test]
+    fn default_show_close_button_true_and_missing_field_deserializes() {
+        let config = AppConfig::default();
+        assert!(config.show_close_button);
+        let json = r#"{"targetLang":"zh-CN"}"#;
+        let parsed: AppConfig = serde_json::from_str(json).unwrap();
+        assert!(parsed.show_close_button);
+        let roundtrip = serde_json::to_value(config).unwrap();
+        assert_eq!(roundtrip["showCloseButton"], true);
     }
 
     #[test]

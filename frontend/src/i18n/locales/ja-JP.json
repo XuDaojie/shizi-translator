@@ -425,6 +425,12 @@
     "settings.ocr.claudeUnsupported": "このバージョンでは Claude ビジョン認識はサポートされていません。Windows Media OCR または OpenAI 互換ビジョンチャネルを使用してください。",
     "settings.toast.ocrUnsupported": "有効にできません",
     "settings.toast.ocrClaudeUnsupported": "このバージョンでは Claude ビジョン OCR はサポートされていません。",
-    "settings.toast.ocrCannotDisableLast": "文字認識サービスを少なくとも 1 つ有効のままにしてください。"
+    "settings.toast.ocrCannotDisableLast": "文字認識サービスを少なくとも 1 つ有効のままにしてください。",
+    "settings.group.popupDisplay": "ポップアップ表示",
+    "settings.description.popupDisplay": "翻訳ポップアップの UI 要素を制御します。",
+    "settings.field.showCloseButton": "閉じるボタンを表示",
+    "settings.description.showCloseButton": "オフにすると翻訳ポップアップに閉じるボタンを表示しません。閉じるとウィンドウを破棄し、次回翻訳時に再表示します。",
+    "popup.tooltip.close": "閉じる",
+    "popup.error.closeFailed": "ポップアップを閉じられませんでした"
   }
 }

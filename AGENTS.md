@@ -31,8 +31,8 @@ plugins.md         已装插件/技能清单（变更须同步）
 完整说明见 [docs/agent/architecture-notes.md](docs/agent/architecture-notes.md)。改模块前先读对应小节。
 
 - **分层**：业务在 Rust 核心；UI 仅弹窗 / 设置 / overlay，勿把核心逻辑写进前端、勿让 UI 模块互耦。
-- **托盘驻留**：关窗 = hide；托盘退出才进程结束。`main` 默认不可见，冷启动由前端 show。
-- **配置事实来源**：`config.json` 的 `services[]`；协议 `openai_chat` / `claude_messages` / `mock` / `microsoft_edge`（`provider_for_service`）。`AppConfig` 另含 `updateChannel`（`stable`/`beta`）、`autoCheckUpdate`（默认 `true`）、`launchAtLogin`（默认 `false`，Windows Run + `--autostart` 静默托盘）、`markdownRender`（默认 `true`，弹窗/历史结果 Markdown 渲染）、`removeBlankLines`（默认 `false`，弹窗「去除空行」偏好，开关切换后写入 config）。
+- **托盘驻留**：进程托盘驻留；托盘退出才进程结束。`main` 默认不可见，冷启动由前端 show。系统 `CloseRequested` 仍走 hide；工具栏「关闭」按钮 `destroy` 销毁 WebView（下次翻译 `ensure` 重建），是否显示由 `showCloseButton`（默认 `true`）控制。
+- **配置事实来源**：`config.json` 的 `services[]`；协议 `openai_chat` / `claude_messages` / `mock` / `microsoft_edge`（`provider_for_service`）。`AppConfig` 另含 `updateChannel`（`stable`/`beta`）、`autoCheckUpdate`（默认 `true`）、`launchAtLogin`（默认 `false`，Windows Run + `--autostart` 静默托盘）、`markdownRender`（默认 `true`，弹窗/历史结果 Markdown 渲染）、`removeBlankLines`（默认 `false`，弹窗「去除空行」偏好，开关切换后写入 config）、`showCloseButton`（默认 `true`，弹窗关闭按钮显隐）。
 - **配置同步**：设置页 `syncFromBackend`；`save_app_config` → `app-config:changed` 刷新弹窗卡片。
 - **批次翻译**：启用服务保序并发；事件带 `serviceInstanceId`；单服务失败不影响其他。
 - **快捷键**：`Alt+D` 划词、`Alt+S` 截图译；文字识别默认无快捷键（托盘入口）；新快捷键同步 capabilities。

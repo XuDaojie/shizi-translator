@@ -8,6 +8,8 @@ export interface TauriApis {
     setSize: (size: LogicalSize) => Promise<void>
     show: () => Promise<void>
     setFocus: () => Promise<void>
+    /** 销毁当前窗口（绕过 close→hide）；下次唤起会重建。 */
+    destroy: () => Promise<void>
   }
 }
 type UnlistenFn = () => void

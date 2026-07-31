@@ -425,6 +425,12 @@
     "settings.ocr.claudeUnsupported": "Claude-Vision wird in dieser Version nicht unterstützt. Bitte Windows Media OCR oder einen OpenAI-kompatiblen Vision-Kanal verwenden.",
     "settings.toast.ocrUnsupported": "Kann nicht aktiviert werden",
     "settings.toast.ocrClaudeUnsupported": "Claude-Vision-OCR wird in dieser Version nicht unterstützt.",
-    "settings.toast.ocrCannotDisableLast": "Mindestens einen Texterkennungsdienst aktiv lassen."
+    "settings.toast.ocrCannotDisableLast": "Mindestens einen Texterkennungsdienst aktiv lassen.",
+    "settings.group.popupDisplay": "Popup-Anzeige",
+    "settings.description.popupDisplay": "Steuert Elemente im Übersetzungs-Popup.",
+    "settings.field.showCloseButton": "Schließen-Schaltfläche anzeigen",
+    "settings.description.showCloseButton": "Wenn deaktiviert, wird die Schließen-Schaltfläche im Übersetzungs-Popup ausgeblendet. Schließen zerstört das Fenster; beim nächsten Übersetzen wird es neu geöffnet.",
+    "popup.tooltip.close": "Schließen",
+    "popup.error.closeFailed": "Popup konnte nicht geschlossen werden"
   }
 }

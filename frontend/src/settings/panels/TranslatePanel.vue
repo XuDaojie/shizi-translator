@@ -85,4 +85,19 @@ const targetLanguageOptions = computed(() => TARGET_LANGUAGES.map((l) => ({ labe
       />
     </SettingRow>
   </SettingGroup>
+
+  <SettingGroup
+    :title="t('settings.group.popupDisplay')"
+    :description="t('settings.description.popupDisplay')"
+  >
+    <SettingRow
+      :title="t('settings.field.showCloseButton')"
+      :description="t('settings.description.showCloseButton')"
+    >
+      <SettingSwitch
+        v-model="state.translation.showCloseButton"
+        :aria-label="t('settings.field.showCloseButton')"
+      />
+    </SettingRow>
+  </SettingGroup>
 </template>

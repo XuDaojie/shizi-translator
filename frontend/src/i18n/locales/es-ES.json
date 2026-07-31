@@ -425,6 +425,12 @@
     "settings.ocr.claudeUnsupported": "La visión de Claude no es compatible en esta versión. Usa Windows Media OCR o un canal de visión compatible con OpenAI.",
     "settings.toast.ocrUnsupported": "No se puede habilitar",
     "settings.toast.ocrClaudeUnsupported": "El OCR de visión de Claude no es compatible en esta versión.",
-    "settings.toast.ocrCannotDisableLast": "Mantén al menos un servicio de reconocimiento de texto habilitado."
+    "settings.toast.ocrCannotDisableLast": "Mantén al menos un servicio de reconocimiento de texto habilitado.",
+    "settings.group.popupDisplay": "Visualización del popup",
+    "settings.description.popupDisplay": "Controla los elementos del popup de traducción.",
+    "settings.field.showCloseButton": "Mostrar botón de cerrar",
+    "settings.description.showCloseButton": "Si está desactivado, el popup no muestra el botón de cerrar. Cerrar destruye la ventana; se vuelve a abrir en la siguiente traducción.",
+    "popup.tooltip.close": "Cerrar",
+    "popup.error.closeFailed": "No se pudo cerrar el popup"
   }
 }

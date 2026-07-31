@@ -65,6 +65,10 @@ body {
 .toolbar-btn:hover { background: rgba(28,25,23,0.05); color: var(--popup-fg); }
 .toolbar-btn.active { color: var(--popup-accent); }
 .toolbar-btn.active svg { fill: currentColor; }
+.toolbar-btn.close:hover {
+  background: #C42B1C;
+  color: #fff;
+}
 .toolbar-btn:focus-visible { outline: 2px solid var(--popup-accent); outline-offset: 1px; }
 .toolbar-btn svg { width: 13px; height: 13px; stroke-width: 1.6; }
 

@@ -21,6 +21,7 @@ const baseState: AppSettings = {
     restoreClipboard: true,
     markdownRender: true,
     removeBlankLines: false,
+    showCloseButton: true,
     autoPaste: false,
     showPhonetic: false,
     showAlternatives: false,

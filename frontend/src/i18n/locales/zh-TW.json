@@ -425,6 +425,12 @@
     "settings.ocr.claudeUnsupported": "本版本不支援 Claude 視覺識別，請改用 Windows 媒體 OCR 或 OpenAI 兼容視覺渠道。",
     "settings.toast.ocrUnsupported": "無法啟用",
     "settings.toast.ocrClaudeUnsupported": "本版本不支援 Claude 視覺 OCR。",
-    "settings.toast.ocrCannotDisableLast": "至少保留一項文字識別服務。"
+    "settings.toast.ocrCannotDisableLast": "至少保留一項文字識別服務。",
+    "settings.group.popupDisplay": "彈窗顯示",
+    "settings.description.popupDisplay": "控制翻譯彈窗的介面元素。",
+    "settings.field.showCloseButton": "顯示關閉按鈕",
+    "settings.description.showCloseButton": "關閉後翻譯彈窗將不顯示關閉按鈕。點擊關閉會銷毀彈窗視窗，下次翻譯時再開啟。",
+    "popup.tooltip.close": "關閉",
+    "popup.error.closeFailed": "關閉彈窗失敗"
   }
 }

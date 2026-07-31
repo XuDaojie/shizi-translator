@@ -99,6 +99,8 @@ const pendingConfigRefresh = ref<AppConfig | null>(null)
 const openSettingsKeys = ref('Ctrl+,')
 /** 结果卡 Markdown 渲染；默认开启，随 app-config 同步。 */
 const markdownRender = ref(true)
+/** 工具栏关闭按钮；默认开启，随 app-config 同步。 */
+const showCloseButton = ref(true)
 
 const popupHeight = usePopupHeight(popupRef)
 
@@ -224,6 +226,7 @@ const events = useTranslationEvents({
     }
     markdownRender.value = cfg.markdownRender ?? true
     removeBlankActive.value = cfg.removeBlankLines ?? false
+    showCloseButton.value = cfg.showCloseButton ?? true
     refreshCardsFromConfig(cfg)
   },
   logger,
@@ -462,6 +465,7 @@ const initCards = async (): Promise<void> => {
     }
     markdownRender.value = config?.markdownRender ?? true
     removeBlankActive.value = config?.removeBlankLines ?? false
+    showCloseButton.value = config?.showCloseButton ?? true
     sessionSourceLang.value = langs?.sourceLang ?? 'auto'
     sessionTargetLang.value = langs?.targetLang ?? 'zh-CN'
     refreshCardsFromConfig(config)
@@ -509,7 +513,7 @@ onMounted(() => {
 
 <template>
   <div id="popup" ref="popupRef" class="popup">
-    <PopupToolbar v-model:pinned="pinned" />
+    <PopupToolbar v-model:pinned="pinned" :show-close-button="showCloseButton" />
 
     <div class="content">
       <SourceCard

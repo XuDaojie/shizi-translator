@@ -117,6 +117,8 @@ export interface TranslationSettings {
   markdownRender: boolean
   /** 弹窗「去除空行」；默认关闭，弹窗内切换后写入 config。 */
   removeBlankLines: boolean
+  /** 翻译弹窗工具栏是否显示关闭按钮。默认开启。 */
+  showCloseButton: boolean
   autoPaste: boolean
   showPhonetic: boolean
   showAlternatives: boolean

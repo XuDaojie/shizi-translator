@@ -425,6 +425,12 @@
     "settings.ocr.claudeUnsupported": "La vision Claude n’est pas prise en charge dans cette version. Utilisez Windows Media OCR ou un canal vision compatible OpenAI.",
     "settings.toast.ocrUnsupported": "Impossible d’activer",
     "settings.toast.ocrClaudeUnsupported": "L’OCR vision Claude n’est pas pris en charge dans cette version.",
-    "settings.toast.ocrCannotDisableLast": "Conservez au moins un service de reconnaissance de texte activé."
+    "settings.toast.ocrCannotDisableLast": "Conservez au moins un service de reconnaissance de texte activé.",
+    "settings.group.popupDisplay": "Affichage de la fenêtre",
+    "settings.description.popupDisplay": "Contrôle les éléments de la fenêtre de traduction.",
+    "settings.field.showCloseButton": "Afficher le bouton de fermeture",
+    "settings.description.showCloseButton": "Si désactivé, le bouton de fermeture n’apparaît pas. La fermeture détruit la fenêtre ; elle se rouvre à la prochaine traduction.",
+    "popup.tooltip.close": "Fermer",
+    "popup.error.closeFailed": "Échec de la fermeture de la fenêtre"
   }
 }

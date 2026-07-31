@@ -425,6 +425,12 @@
     "settings.ocr.claudeUnsupported": "이 버전에서는 Claude 비전 인식을 지원하지 않습니다. Windows Media OCR 또는 OpenAI 호환 비전 채널을 사용하세요.",
     "settings.toast.ocrUnsupported": "활성화할 수 없음",
     "settings.toast.ocrClaudeUnsupported": "이 버전에서는 Claude 비전 OCR을 지원하지 않습니다.",
-    "settings.toast.ocrCannotDisableLast": "문자 인식 서비스를 최소 하나 유지하세요."
+    "settings.toast.ocrCannotDisableLast": "문자 인식 서비스를 최소 하나 유지하세요.",
+    "settings.group.popupDisplay": "팝업 표시",
+    "settings.description.popupDisplay": "번역 팝업 UI 요소를 제어합니다.",
+    "settings.field.showCloseButton": "닫기 버튼 표시",
+    "settings.description.showCloseButton": "끄면 번역 팝업에 닫기 버튼을 표시하지 않습니다. 닫으면 창을 파괴하며 다음 번역 시 다시 엽니다.",
+    "popup.tooltip.close": "닫기",
+    "popup.error.closeFailed": "팝업을 닫지 못했습니다"
   }
 }

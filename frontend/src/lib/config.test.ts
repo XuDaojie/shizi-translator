@@ -42,6 +42,7 @@ const makeState = (services: ServiceInstance[]): AppSettings => ({
     restoreClipboard: true,
     markdownRender: true,
     removeBlankLines: false,
+    showCloseButton: true,
     autoPaste: false,
     showPhonetic: true,
     showAlternatives: true,
