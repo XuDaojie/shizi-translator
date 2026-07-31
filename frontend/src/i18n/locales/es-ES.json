@@ -174,7 +174,6 @@
     "popup.tooltip.unpin": "Deja de mantener la ventana arriba",
     "popup.tooltip.copySource": "Copiar fuente",
     "popup.tooltip.removeBlankLines": "Quitar líneas en blanco",
-    "popup.tooltip.removeBlankLinesOn": "Quitar líneas en blanco (activado)",
     "popup.tooltip.copyResult": "Copiar traducción",
     "popup.tooltip.speakSource": "Leer fuente en voz alta",
     "popup.tooltip.swapLanguages": "Intercambiar idiomas",

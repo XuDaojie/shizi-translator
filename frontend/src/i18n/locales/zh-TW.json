@@ -174,7 +174,6 @@
     "popup.tooltip.unpin": "停止將視窗保持在頂部",
     "popup.tooltip.copySource": "複製原文",
     "popup.tooltip.removeBlankLines": "去除空行",
-    "popup.tooltip.removeBlankLinesOn": "去除空行（已開啟）",
     "popup.tooltip.copyResult": "複製翻譯",
     "popup.tooltip.speakSource": "朗讀原文",
     "popup.tooltip.swapLanguages": "交換語言",

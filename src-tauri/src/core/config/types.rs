@@ -258,6 +258,9 @@ pub struct AppConfig {
     /// 翻译结果是否以 Markdown 渲染（弹窗/历史结果卡）。默认开启。
     #[serde(default = "default_true")]
     pub markdown_render: bool,
+    /// 翻译弹窗「去除空行」：开启后原文展示与下发均去掉空白行。默认关闭。
+    #[serde(default)]
+    pub remove_blank_lines: bool,
     #[serde(default = "default_history_limit")]
     pub history_limit: usize,
     #[serde(default)]
@@ -364,6 +367,7 @@ impl AppConfig {
             auto_copy: true,
             restore_clipboard: true,
             markdown_render: true,
+            remove_blank_lines: false,
             history_limit: default_history_limit(),
             window_precreate: WindowPrecreateConfig::default(),
             collect_usage: true,
@@ -515,6 +519,17 @@ mod tests {
         assert!(parsed.markdown_render);
         let roundtrip = serde_json::to_value(config).unwrap();
         assert_eq!(roundtrip["markdownRender"], true);
+    }
+
+    #[test]
+    fn default_remove_blank_lines_false_and_missing_field_deserializes() {
+        let config = AppConfig::default();
+        assert!(!config.remove_blank_lines);
+        let json = r#"{"targetLang":"zh-CN"}"#;
+        let parsed: AppConfig = serde_json::from_str(json).unwrap();
+        assert!(!parsed.remove_blank_lines);
+        let roundtrip = serde_json::to_value(config).unwrap();
+        assert_eq!(roundtrip["removeBlankLines"], false);
     }
 
     #[test]

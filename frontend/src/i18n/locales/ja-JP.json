@@ -174,7 +174,6 @@
     "popup.tooltip.unpin": "最前面表示を解除",
     "popup.tooltip.copySource": "原文をコピー",
     "popup.tooltip.removeBlankLines": "空行を削除",
-    "popup.tooltip.removeBlankLinesOn": "空行を削除（オン）",
     "popup.tooltip.copyResult": "翻訳をコピーする",
     "popup.tooltip.speakSource": "原文を読み上げる",
     "popup.tooltip.swapLanguages": "言語を交換する",

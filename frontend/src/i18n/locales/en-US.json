@@ -171,7 +171,6 @@
     "popup.tooltip.collapse": "Collapse",
     "popup.tooltip.copySource": "Copy source",
     "popup.tooltip.removeBlankLines": "Remove blank lines",
-    "popup.tooltip.removeBlankLinesOn": "Remove blank lines (on)",
     "popup.tooltip.copyResult": "Copy translation",
     "popup.tooltip.speakSource": "Read source aloud",
     "popup.tooltip.speakResult": "Read translation aloud",

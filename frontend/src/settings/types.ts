@@ -115,6 +115,8 @@ export interface TranslationSettings {
   restoreClipboard: boolean
   /** 翻译结果是否以 Markdown 渲染（弹窗/历史）。默认开启。 */
   markdownRender: boolean
+  /** 弹窗「去除空行」；默认关闭，弹窗内切换后写入 config。 */
+  removeBlankLines: boolean
   autoPaste: boolean
   showPhonetic: boolean
   showAlternatives: boolean

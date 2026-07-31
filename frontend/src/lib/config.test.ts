@@ -41,6 +41,7 @@ const makeState = (services: ServiceInstance[]): AppSettings => ({
     autoCopy: true,
     restoreClipboard: true,
     markdownRender: true,
+    removeBlankLines: false,
     autoPaste: false,
     showPhonetic: true,
     showAlternatives: true,
@@ -127,6 +128,7 @@ describe('projectToAppConfig', () => {
     state.translation.autoCopy = false;
     state.translation.restoreClipboard = false;
     state.translation.markdownRender = false;
+    state.translation.removeBlankLines = true;
 
     const config = projectToAppConfig(state);
 
@@ -134,6 +136,7 @@ describe('projectToAppConfig', () => {
     expect(config.autoCopy).toBe(false);
     expect(config.restoreClipboard).toBe(false);
     expect(config.markdownRender).toBe(false);
+    expect(config.removeBlankLines).toBe(true);
     expect(config.services[0]).toMatchObject({
       systemPrompt: '系统',
       translationPrompt: '翻译 {text}',

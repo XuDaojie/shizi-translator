@@ -173,6 +173,7 @@ const buildDefaults = (): AppSettings => {
       autoCopy: true,
       restoreClipboard: true,
       markdownRender: true,
+      removeBlankLines: false,
       autoPaste: false,
       showPhonetic: true,
       showAlternatives: true,
@@ -772,6 +773,8 @@ export const useSettings = () => ({
         backend.restoreClipboard ?? state.translation.restoreClipboard
       state.translation.markdownRender =
         backend.markdownRender ?? state.translation.markdownRender
+      state.translation.removeBlankLines =
+        backend.removeBlankLines ?? state.translation.removeBlankLines
       state.translation.historyLimit =
         backend.historyLimit ?? state.translation.historyLimit
       state.shortcut.bindings = mergeBackendIntoShortcuts(state.shortcut.bindings, backend.shortcuts ?? {})

@@ -223,6 +223,7 @@ const events = useTranslationEvents({
       openSettingsKeys.value = cfg.shortcuts['open-settings']
     }
     markdownRender.value = cfg.markdownRender ?? true
+    removeBlankActive.value = cfg.removeBlankLines ?? false
     refreshCardsFromConfig(cfg)
   },
   logger,
@@ -313,6 +314,24 @@ const retranslateAfterRemoveBlank = async (): Promise<void> => {
   if (!text.trim()) return
   pendingStripRetranslateText = prepareSourceWithRemoveBlank(true, text).text
   await startTranslationWithText(text, { force: true, reason: 'remove-blank-toggle' })
+}
+
+/** 弹窗开关写入 AppConfig，重启/再次打开仍生效。 */
+const persistRemoveBlankActive = async (active: boolean): Promise<void> => {
+  const apis = getTauriApis()
+  if (!apis) return
+  try {
+    const config = await apis.invoke<AppConfig>('get_app_config')
+    if ((config.removeBlankLines ?? false) === active) return
+    await apis.invoke('save_app_config', { config: { ...config, removeBlankLines: active } })
+  } catch (e) {
+    logger.warn('保存去除空行偏好失败', String(e))
+  }
+}
+
+const onRemoveBlankActiveChange = (active: boolean): void => {
+  removeBlankActive.value = active
+  void persistRemoveBlankActive(active)
 }
 
 async function cancelTranslation(): Promise<void> {
@@ -442,6 +461,7 @@ const initCards = async (): Promise<void> => {
       openSettingsKeys.value = config.shortcuts['open-settings']
     }
     markdownRender.value = config?.markdownRender ?? true
+    removeBlankActive.value = config?.removeBlankLines ?? false
     sessionSourceLang.value = langs?.sourceLang ?? 'auto'
     sessionTargetLang.value = langs?.targetLang ?? 'zh-CN'
     refreshCardsFromConfig(config)
@@ -494,10 +514,11 @@ onMounted(() => {
     <div class="content">
       <SourceCard
         v-model="sourceText"
-        v-model:remove-blank-active="removeBlankActive"
+        :remove-blank-active="removeBlankActive"
         :lang-label="sourceLangLabel"
         :source-badge="sourceBadge"
         :detected-lang="detectedOrLabel"
+        @update:remove-blank-active="onRemoveBlankActiveChange"
         @submit="startManualTranslation"
         @retranslate="retranslateAfterRemoveBlank"
         @input="onSourceInput"

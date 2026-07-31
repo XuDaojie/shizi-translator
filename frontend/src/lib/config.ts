@@ -44,6 +44,7 @@ export function projectToAppConfig(state: AppSettings): AppConfig {
     autoCopy: state.translation.autoCopy,
     restoreClipboard: state.translation.restoreClipboard,
     markdownRender: state.translation.markdownRender,
+    removeBlankLines: state.translation.removeBlankLines,
     historyLimit: Number.isFinite(historyLimit) ? Math.max(1, Math.trunc(historyLimit)) : 500,
     services: state.services.map((service) => ({
       id: service.id,

@@ -60,6 +60,8 @@ export interface AppConfig {
   restoreClipboard: boolean;
   /** 翻译结果是否 Markdown 渲染；旧 config 可能缺省，按 true 处理。 */
   markdownRender?: boolean;
+  /** 弹窗「去除空行」偏好；旧 config 可能缺省，按 false 处理。 */
+  removeBlankLines?: boolean;
   historyLimit: number;
   services: ServiceInstanceConfig[];
   ocrServices: OcrServiceInstanceConfig[];

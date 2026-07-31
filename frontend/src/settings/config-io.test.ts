@@ -20,6 +20,7 @@ const baseState: AppSettings = {
     autoCopy: false,
     restoreClipboard: true,
     markdownRender: true,
+    removeBlankLines: false,
     autoPaste: false,
     showPhonetic: false,
     showAlternatives: false,

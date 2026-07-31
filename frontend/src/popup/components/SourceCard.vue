@@ -37,11 +37,7 @@ const sourceBadgeText = computed(() => {
   }
 })
 
-const removeBlankTooltip = computed(() =>
-  props.removeBlankActive
-    ? t('popup.tooltip.removeBlankLinesOn')
-    : t('popup.tooltip.removeBlankLines'),
-)
+const removeBlankTooltip = computed(() => t('popup.tooltip.removeBlankLines'))
 
 const autoResize = (): void => {
   const el = textareaRef.value
