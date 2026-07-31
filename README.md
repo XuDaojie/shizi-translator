@@ -39,27 +39,16 @@
 
 ## 下载安装
 
-1. 打开 [Releases](https://github.com/XuDaojie/shizi-translator/releases) 页面。
-2. 下载最新 Windows 安装包（见下方「安装包选择」）。
-3. 安装后从开始菜单启动，或使用系统托盘菜单。
+从 [Releases](https://github.com/XuDaojie/shizi-translator/releases) 下载安装包，安装后从开始菜单或托盘启动。
 
-应用内也可检查更新：设置 → 通用 →「检查更新」；有新版本时会**优先打开轻量包**下载链接（不做应用内静默安装）。默认同页可关闭「自动检查更新」。
+| 安装包 | 何时用 |
+|--------|--------|
+| `Shizi_*_x64-setup.exe` | **推荐**日常安装与升级 |
+| `Shizi_*_x64-setup-full.exe` | 轻量包装不上或网络受限时（内含 WebView2 离线安装） |
 
-### 安装包选择
+**系统要求：** Windows 10 / 11（x64）；界面依赖 [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)（Win11 通常已预装）。
 
-| 文件名 | 说明 |
-|--------|------|
-| `Shizi_x.y.z_x64-setup.exe` | **推荐**：轻量包。安装时若本机没有 WebView2，会联网下载安装（装到系统，其它软件可共用）。 |
-| `Shizi_x.y.z_x64-setup-full.exe` | **完整包**：内嵌 WebView2 离线安装器。弱网、干净系统或轻量包装 WebView2 失败时使用。 |
-
-- 两种包版本号相同；完整包装的是**系统级** WebView2，不是嵌在应用目录里的私有 Runtime。
-- **升级**时用轻量包即可（无需再下完整包）。应用内检查更新始终指向轻量包。
-
-### 系统要求
-
-- Windows 10 / 11（x64）
-- [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)（Windows 11 通常已预装；完整安装包可在首次安装时离线补齐）
-- 截图 OCR 使用系统 Windows OCR 时，需安装对应语言的 OCR 语言包（中英混合场景尤其需要）
+**OCR 语言包：** 使用系统 Windows OCR（截图翻译 / 文字识别）时，需在系统中安装对应语言的 OCR 语言包；中英混合场景尤其需要同时具备中文、英文相关语言包，否则识别会失败或结果很差。
 
 ## 快速开始
 

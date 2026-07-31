@@ -225,6 +225,12 @@ jobs:
 
             本构建为**轻量包**（与正式版 `*-setup.exe` 同类，不含 WebView2 离线完整安装器）。需要完整包请用正式版 / Beta Release 中的 `*-setup-full.exe`。
 
+            ## 系统要求
+
+            - Windows 10 / 11（x64）
+            - [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)（Windows 11 通常已预装）
+            - 截图 OCR 使用系统 Windows OCR 时，需安装对应语言的 OCR 语言包（中英混合场景尤其需要）
+
             **仅供尝鲜，不保证稳定。** 日常使用请下载正式版 / Beta：
             https://github.com/${{ github.repository }}/releases
 

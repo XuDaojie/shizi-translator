@@ -118,8 +118,13 @@ jobs:
             | `Shizi_*_x64-setup.exe` | **推荐**：轻量包。体积小；安装时若本机无 WebView2 会联网下载安装（系统共享 Runtime）。 |
             | `Shizi_*_x64-setup-full.exe` | **完整包**：内嵌 WebView2 离线安装器（约 +100MB+）。弱网 / 干净系统 / 安装轻量包失败时使用。装的是**系统级** WebView2，其它软件可共用。 |
 
-            - 应用内「检查更新」**始终**打开轻量包下载链接（更新无需再带 WebView2 安装器）。
             - 已装过 WebView2 或用过完整包的用户，之后升级用轻量包即可。
+
+            ## 系统要求
+
+            - Windows 10 / 11（x64）
+            - [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)（Windows 11 通常已预装；完整包可在首次安装时离线补齐）
+            - 截图 OCR 使用系统 Windows OCR 时，需安装对应语言的 OCR 语言包（中英混合场景尤其需要）
           files: |
             src-tauri/target/release/bundle/nsis/*-setup.exe
             src-tauri/target/release/bundle/nsis/*-setup-full.exe
