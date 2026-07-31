@@ -431,6 +431,8 @@
     "settings.field.showCloseButton": "顯示關閉按鈕",
     "settings.description.showCloseButton": "關閉後翻譯彈窗將不顯示關閉按鈕。點擊關閉會銷毀彈窗視窗，下次翻譯時再開啟。",
     "popup.tooltip.close": "關閉",
-    "popup.error.closeFailed": "關閉彈窗失敗"
+    "popup.error.closeFailed": "關閉彈窗失敗",
+    "settings.field.showInTaskbar": "在工作列顯示",
+    "settings.description.showInTaskbar": "開啟後翻譯彈窗會出現在工作列與 Alt+Tab 中。"
   }
 }

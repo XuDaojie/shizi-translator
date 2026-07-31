@@ -431,6 +431,8 @@
     "settings.field.showCloseButton": "显示关闭按钮",
     "settings.description.showCloseButton": "关闭后翻译弹窗将不显示关闭按钮。点击关闭会销毁弹窗窗口，下次翻译时再打开。",
     "popup.tooltip.close": "关闭",
-    "popup.error.closeFailed": "关闭弹窗失败"
+    "popup.error.closeFailed": "关闭弹窗失败",
+    "settings.field.showInTaskbar": "在任务栏显示",
+    "settings.description.showInTaskbar": "开启后翻译弹窗会出现在任务栏与 Alt+Tab 中。"
   }
 }

@@ -431,6 +431,8 @@
     "settings.field.showCloseButton": "Schließen-Schaltfläche anzeigen",
     "settings.description.showCloseButton": "Wenn deaktiviert, wird die Schließen-Schaltfläche im Übersetzungs-Popup ausgeblendet. Schließen zerstört das Fenster; beim nächsten Übersetzen wird es neu geöffnet.",
     "popup.tooltip.close": "Schließen",
-    "popup.error.closeFailed": "Popup konnte nicht geschlossen werden"
+    "popup.error.closeFailed": "Popup konnte nicht geschlossen werden",
+    "settings.field.showInTaskbar": "In Taskleiste anzeigen",
+    "settings.description.showInTaskbar": "Wenn aktiviert, erscheint das Übersetzungs-Popup in der Taskleiste und in Alt+Tab."
   }
 }

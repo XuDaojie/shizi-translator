@@ -431,6 +431,8 @@
     "settings.field.showCloseButton": "Show close button",
     "settings.description.showCloseButton": "When off, the translation popup hides the close button. Closing destroys the popup window; it reopens on the next translation.",
     "popup.tooltip.close": "Close",
-    "popup.error.closeFailed": "Failed to close popup"
+    "popup.error.closeFailed": "Failed to close popup",
+    "settings.field.showInTaskbar": "Show in taskbar",
+    "settings.description.showInTaskbar": "When enabled, the translation popup appears on the taskbar and in Alt+Tab."
   }
 }

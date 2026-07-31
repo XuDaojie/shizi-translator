@@ -431,6 +431,8 @@
     "settings.field.showCloseButton": "Afficher le bouton de fermeture",
     "settings.description.showCloseButton": "Si désactivé, le bouton de fermeture n’apparaît pas. La fermeture détruit la fenêtre ; elle se rouvre à la prochaine traduction.",
     "popup.tooltip.close": "Fermer",
-    "popup.error.closeFailed": "Échec de la fermeture de la fenêtre"
+    "popup.error.closeFailed": "Échec de la fermeture de la fenêtre",
+    "settings.field.showInTaskbar": "Afficher dans la barre des tâches",
+    "settings.description.showInTaskbar": "Si activé, la fenêtre de traduction apparaît dans la barre des tâches et dans Alt+Tab."
   }
 }

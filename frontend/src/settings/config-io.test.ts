@@ -22,6 +22,7 @@ const baseState: AppSettings = {
     markdownRender: true,
     removeBlankLines: false,
     showCloseButton: true,
+    showInTaskbar: false,
     autoPaste: false,
     showPhonetic: false,
     showAlternatives: false,

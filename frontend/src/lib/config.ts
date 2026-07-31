@@ -46,6 +46,7 @@ export function projectToAppConfig(state: AppSettings): AppConfig {
     markdownRender: state.translation.markdownRender,
     removeBlankLines: state.translation.removeBlankLines,
     showCloseButton: state.translation.showCloseButton,
+    showInTaskbar: state.translation.showInTaskbar,
     historyLimit: Number.isFinite(historyLimit) ? Math.max(1, Math.trunc(historyLimit)) : 500,
     services: state.services.map((service) => ({
       id: service.id,

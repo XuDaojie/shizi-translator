@@ -431,6 +431,8 @@
     "settings.field.showCloseButton": "닫기 버튼 표시",
     "settings.description.showCloseButton": "끄면 번역 팝업에 닫기 버튼을 표시하지 않습니다. 닫으면 창을 파괴하며 다음 번역 시 다시 엽니다.",
     "popup.tooltip.close": "닫기",
-    "popup.error.closeFailed": "팝업을 닫지 못했습니다"
+    "popup.error.closeFailed": "팝업을 닫지 못했습니다",
+    "settings.field.showInTaskbar": "작업 표시줄에 표시",
+    "settings.description.showInTaskbar": "켜면 번역 팝업이 작업 표시줄과 Alt+Tab에 표시됩니다."
   }
 }

@@ -64,6 +64,8 @@ export interface AppConfig {
   removeBlankLines?: boolean;
   /** 弹窗工具栏是否显示关闭按钮；旧 config 可能缺省，按 true 处理。 */
   showCloseButton?: boolean;
+  /** 翻译弹窗是否显示在任务栏；旧 config 可能缺省，按 false 处理。 */
+  showInTaskbar?: boolean;
   historyLimit: number;
   services: ServiceInstanceConfig[];
   ocrServices: OcrServiceInstanceConfig[];

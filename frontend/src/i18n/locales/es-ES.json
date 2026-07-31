@@ -431,6 +431,8 @@
     "settings.field.showCloseButton": "Mostrar botón de cerrar",
     "settings.description.showCloseButton": "Si está desactivado, el popup no muestra el botón de cerrar. Cerrar destruye la ventana; se vuelve a abrir en la siguiente traducción.",
     "popup.tooltip.close": "Cerrar",
-    "popup.error.closeFailed": "No se pudo cerrar el popup"
+    "popup.error.closeFailed": "No se pudo cerrar el popup",
+    "settings.field.showInTaskbar": "Mostrar en la barra de tareas",
+    "settings.description.showInTaskbar": "Si está activado, el popup de traducción aparece en la barra de tareas y en Alt+Tab."
   }
 }

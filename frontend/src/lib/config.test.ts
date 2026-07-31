@@ -43,6 +43,7 @@ const makeState = (services: ServiceInstance[]): AppSettings => ({
     markdownRender: true,
     removeBlankLines: false,
     showCloseButton: true,
+    showInTaskbar: false,
     autoPaste: false,
     showPhonetic: true,
     showAlternatives: true,

@@ -55,14 +55,23 @@ pub fn compute_popup_position(
     LogicalPos { x, y }
 }
 
+fn popup_show_in_taskbar(app: &tauri::AppHandle) -> bool {
+    app.try_state::<crate::app::state::AppState>()
+        .and_then(|s| s.config_store.get().ok())
+        .map(|c| c.show_in_taskbar)
+        .unwrap_or(false)
+}
+
 fn build_popup(app: &tauri::AppHandle) -> Result<WebviewWindow, String> {
+    // showInTaskbar=false → skip_taskbar（默认）；true → 出现在任务栏
+    let skip_taskbar = !popup_show_in_taskbar(app);
     let mut builder = WebviewWindowBuilder::new(app, POPUP_LABEL, WebviewUrl::App(POPUP_URL.into()))
         .title("Shizi 翻译")
         .inner_size(420.0, 360.0)
         .resizable(false)
         .decorations(false)
         .transparent(true)
-        .skip_taskbar(true)
+        .skip_taskbar(skip_taskbar)
         .center()
         .visible(false);
     // 无系统标题栏时仍写入窗口图标，避免个别场景回退到模糊默认图。
@@ -75,6 +84,15 @@ fn build_popup(app: &tauri::AppHandle) -> Result<WebviewWindow, String> {
     attach_close_to_hide(&window);
     attach_app_shortcut_focus_listener(&window, app);
     Ok(window)
+}
+
+/// 配置变更后热更新已存在弹窗的任务栏显隐（失败仅 warn）。
+pub fn apply_popup_taskbar_visibility(app: &tauri::AppHandle, show_in_taskbar: bool) {
+    if let Some(window) = app.get_webview_window(POPUP_LABEL) {
+        if let Err(error) = window.set_skip_taskbar(!show_in_taskbar) {
+            log::warn!("更新翻译弹窗任务栏显隐失败: {error}");
+        }
+    }
 }
 
 /// 确保翻译弹窗存在；不存在则创建（隐藏）。

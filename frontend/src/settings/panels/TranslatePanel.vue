@@ -99,5 +99,14 @@ const targetLanguageOptions = computed(() => TARGET_LANGUAGES.map((l) => ({ labe
         :aria-label="t('settings.field.showCloseButton')"
       />
     </SettingRow>
+    <SettingRow
+      :title="t('settings.field.showInTaskbar')"
+      :description="t('settings.description.showInTaskbar')"
+    >
+      <SettingSwitch
+        v-model="state.translation.showInTaskbar"
+        :aria-label="t('settings.field.showInTaskbar')"
+      />
+    </SettingRow>
   </SettingGroup>
 </template>

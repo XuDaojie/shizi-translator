@@ -431,6 +431,8 @@
     "settings.field.showCloseButton": "閉じるボタンを表示",
     "settings.description.showCloseButton": "オフにすると翻訳ポップアップに閉じるボタンを表示しません。閉じるとウィンドウを破棄し、次回翻訳時に再表示します。",
     "popup.tooltip.close": "閉じる",
-    "popup.error.closeFailed": "ポップアップを閉じられませんでした"
+    "popup.error.closeFailed": "ポップアップを閉じられませんでした",
+    "settings.field.showInTaskbar": "タスクバーに表示",
+    "settings.description.showInTaskbar": "有効にすると翻訳ポップアップがタスクバーと Alt+Tab に表示されます。"
   }
 }

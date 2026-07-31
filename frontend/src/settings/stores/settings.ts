@@ -175,6 +175,7 @@ const buildDefaults = (): AppSettings => {
       markdownRender: true,
       removeBlankLines: false,
       showCloseButton: true,
+      showInTaskbar: false,
       autoPaste: false,
       showPhonetic: true,
       showAlternatives: true,
@@ -778,6 +779,8 @@ export const useSettings = () => ({
         backend.removeBlankLines ?? state.translation.removeBlankLines
       state.translation.showCloseButton =
         backend.showCloseButton ?? state.translation.showCloseButton
+      state.translation.showInTaskbar =
+        backend.showInTaskbar ?? state.translation.showInTaskbar
       state.translation.historyLimit =
         backend.historyLimit ?? state.translation.historyLimit
       state.shortcut.bindings = mergeBackendIntoShortcuts(state.shortcut.bindings, backend.shortcuts ?? {})

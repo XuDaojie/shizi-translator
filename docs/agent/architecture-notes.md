@@ -22,8 +22,9 @@
 
 - 事实来源：`config.json` 的 `services[]`（`protocol` / `endpoint` / `model` / `apiKey` / `enabled`）。旧单 provider 路径已废弃。
 - 协议 id：`openai_chat` / `claude_messages` / `mock` / `microsoft_edge`。映射在 `core/translation/protocol.rs` 的 `provider_for_service`；未知协议报错。`microsoft_edge` 经 `BatchTranslateProvider` + `StreamingAdapter` 适配流式。
-- `AppConfig` 另含 `updateChannel`（`stable`/`beta`）、`autoCheckUpdate`（默认 `true`）、`launchAtLogin`（默认 `false`）、`markdownRender`（默认 `true`，控制弹窗/历史结果 Markdown 渲染）、`removeBlankLines`（默认 `false`，弹窗「去除空行」偏好）、`showCloseButton`（默认 `true`，弹窗工具栏关闭按钮）；前后端经 `projectToAppConfig` / `syncFromBackend` 同步。
+- `AppConfig` 另含 `updateChannel`（`stable`/`beta`）、`autoCheckUpdate`（默认 `true`）、`launchAtLogin`（默认 `false`）、`markdownRender`（默认 `true`，控制弹窗/历史结果 Markdown 渲染）、`removeBlankLines`（默认 `false`，弹窗「去除空行」偏好）、`showCloseButton`（默认 `true`，弹窗工具栏关闭按钮）、`showInTaskbar`（默认 `false`，弹窗任务栏/Alt+Tab 显隐）；前后端经 `projectToAppConfig` / `syncFromBackend` 同步。
 - 翻译弹窗工具栏「关闭」：`destroy` 销毁 WebView（非 hide）；设置项 `showCloseButton` 控制显隐。系统 CloseRequested 仍经 `attach_close_to_hide` 改为 hide（无系统标题栏时主要影响程序化 close）。
+- 弹窗任务栏：`build_popup` 用 `skip_taskbar(!show_in_taskbar)`；`save_app_config` 调用 `apply_popup_taskbar_visibility` 热更新已存在窗口。
 - 开机自启：`launchAtLogin` → `app/autostart.rs` 写 HKCU `...\Run\Shizi`（命令带 `--autostart`）；`save_app_config` 与启动 setup 均同步；托盘/关窗 hide 为硬编码产品行为，设置页不再提供「最小化启动 / 托盘显隐 / 关闭行为」开关。
 - 设置页挂载 `settings.syncFromBackend()`：后端 `services` 空 → 前端 `projectToAppConfig` 覆盖写回；非空 → `mergeBackendIntoServices` 按 id 合并（后端覆盖 enabled/apiKey/endpoint/model/protocol；前端保留 prompts/keyStatus/chainOfThought/pulledModels/note）。
 - `save_app_config` 后广播 `app-config:changed`；弹窗同步卡片（翻译中不新增未参与批次的服务卡）。

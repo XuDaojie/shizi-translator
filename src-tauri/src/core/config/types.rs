@@ -264,6 +264,9 @@ pub struct AppConfig {
     /// 翻译弹窗工具栏是否显示关闭按钮。默认开启。
     #[serde(default = "default_true")]
     pub show_close_button: bool,
+    /// 翻译弹窗是否出现在任务栏 / Alt+Tab。默认关闭（skip_taskbar）。
+    #[serde(default)]
+    pub show_in_taskbar: bool,
     #[serde(default = "default_history_limit")]
     pub history_limit: usize,
     #[serde(default)]
@@ -372,6 +375,7 @@ impl AppConfig {
             markdown_render: true,
             remove_blank_lines: false,
             show_close_button: true,
+            show_in_taskbar: false,
             history_limit: default_history_limit(),
             window_precreate: WindowPrecreateConfig::default(),
             collect_usage: true,
@@ -545,6 +549,17 @@ mod tests {
         assert!(parsed.show_close_button);
         let roundtrip = serde_json::to_value(config).unwrap();
         assert_eq!(roundtrip["showCloseButton"], true);
+    }
+
+    #[test]
+    fn default_show_in_taskbar_false_and_missing_field_deserializes() {
+        let config = AppConfig::default();
+        assert!(!config.show_in_taskbar);
+        let json = r#"{"targetLang":"zh-CN"}"#;
+        let parsed: AppConfig = serde_json::from_str(json).unwrap();
+        assert!(!parsed.show_in_taskbar);
+        let roundtrip = serde_json::to_value(config).unwrap();
+        assert_eq!(roundtrip["showInTaskbar"], false);
     }
 
     #[test]

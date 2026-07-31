@@ -119,6 +119,8 @@ export interface TranslationSettings {
   removeBlankLines: boolean
   /** 翻译弹窗工具栏是否显示关闭按钮。默认开启。 */
   showCloseButton: boolean
+  /** 翻译弹窗是否显示在任务栏 / Alt+Tab。默认关闭。 */
+  showInTaskbar: boolean
   autoPaste: boolean
   showPhonetic: boolean
   showAlternatives: boolean
