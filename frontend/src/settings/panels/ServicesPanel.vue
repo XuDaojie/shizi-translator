@@ -17,7 +17,6 @@ import {
   KeyRound,
   ChevronDown,
   Globe,
-  Languages,
 } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -1348,14 +1347,15 @@ const onDragEnd = (): void => {
           <p class="mt-0.5 text-[11px] leading-snug text-muted-foreground">
             {{ activeService.description }}
           </p>
+          <!-- 微软详情仅保留状态条 + 删除，不展示长说明 / 能力卡 -->
           <p
-            v-if="activeService.detail"
+            v-if="activeService.id !== 'microsoft' && activeService.detail"
             class="mt-2 rounded-md border border-border bg-background/40 p-2.5 text-[11px] leading-relaxed text-muted-foreground"
           >
             {{ activeService.detail }}
           </p>
           <div
-            v-if="activeService.docsUrl || activeService.apiKeyUrl"
+            v-if="activeService.id !== 'microsoft' && (activeService.docsUrl || activeService.apiKeyUrl)"
             class="mt-2 flex flex-wrap items-center gap-1.5"
           >
             <button
@@ -1382,36 +1382,8 @@ const onDragEnd = (): void => {
         </div>
       </header>
 
-      <!-- 微软翻译：能力三栏 + 状态条（无 Key 表单） -->
+      <!-- 微软翻译：仅状态提示条（无 Key / 能力卡 / 长说明） -->
       <template v-if="activeService.id === 'microsoft'">
-        <SettingGroup
-          :title="t('settings.field.capabilities')"
-          :description="t(msgKey('settings.description.serviceCapabilities'))"
-        >
-          <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div class="rounded-md border border-border bg-background/40 p-3">
-              <div class="flex items-center gap-1.5">
-                <Sparkles class="h-3 w-3 text-primary" />
-                <h4 class="text-xs font-medium text-foreground">{{ t(msgKey('settings.ms.coverageTitle')) }}</h4>
-              </div>
-              <p class="mt-1.5 text-[11px] leading-relaxed text-muted-foreground whitespace-pre-line">{{ t(msgKey('settings.ms.coverageBody')) }}</p>
-            </div>
-            <div class="rounded-md border border-border bg-background/40 p-3">
-              <div class="flex items-center gap-1.5">
-                <CircleAlert class="h-3 w-3 text-amber-600 dark:text-amber-400" />
-                <h4 class="text-xs font-medium text-foreground">{{ t(msgKey('settings.ms.limitsTitle')) }}</h4>
-              </div>
-              <p class="mt-1.5 text-[11px] leading-relaxed text-muted-foreground whitespace-pre-line">{{ t(msgKey('settings.ms.limitsBody')) }}</p>
-            </div>
-            <div class="rounded-md border border-border bg-background/40 p-3">
-              <div class="flex items-center gap-1.5">
-                <Languages class="h-3 w-3 text-primary" />
-                <h4 class="text-xs font-medium text-foreground">{{ t(msgKey('settings.ms.useCasesTitle')) }}</h4>
-              </div>
-              <p class="mt-1.5 text-[11px] leading-relaxed text-muted-foreground whitespace-pre-line">{{ t(msgKey('settings.ms.useCasesBody')) }}</p>
-            </div>
-          </div>
-        </SettingGroup>
         <div
           class="flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200"
         >

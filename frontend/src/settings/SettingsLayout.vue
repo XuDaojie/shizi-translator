@@ -20,7 +20,7 @@ const isServices = computed(() => props.active === 'services')
 </script>
 
 <template>
-  <div class="flex h-full min-h-0">
+  <div class="flex h-full min-h-0 bg-background">
     <SettingsSidebar
       :model-value="active"
       @update:model-value="(v) => emit('update:active', v)"

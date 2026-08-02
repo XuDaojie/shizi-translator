@@ -7,6 +7,9 @@ import { initializeI18n } from '@/i18n'
 import { createLogger } from '@public/logger.js'
 import { dismissBootSplash } from '@/shared/bootSplash'
 
+/** 标记设置窗口根节点，启用 15px 基准字号等与原型对齐的样式 */
+document.documentElement.classList.add('settings-app')
+
 const logger = createLogger('settings')
 
 let initializationTimer: ReturnType<typeof setTimeout> | undefined

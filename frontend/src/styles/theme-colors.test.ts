@@ -15,4 +15,8 @@ describe('theme color tokens', () => {
     expect(css).toContain('html.accent-blue')
     expect(css).toMatch(/html\.accent-blue[\s\S]*--primary:\s*222 70% 48%;/)
   })
+
+  it('keeps sidebar token white to match prototype nav (bg-card/40)', () => {
+    expect(css).toMatch(/--sidebar:\s*0\s+0%\s+100%;/)
+  })
 })
