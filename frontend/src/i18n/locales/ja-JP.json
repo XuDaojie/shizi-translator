@@ -369,6 +369,8 @@
     "settings.ocr.footer": "Windowsシステムが提供する・ いつでも利用可能 · インターネット不要 · 即時認識",
     "settings.description.protocol": "サービス通信プロトコルを選択します。",
     "settings.description.endpoint": "OpenAI互換性契約の全文を。",
+    "settings.description.endpointDefault": "Default {url}",
+    "settings.description.endpointPresets": "Uses the first path by default (pay-as-you-go). Other paths:\n{lines}",
     "settings.description.apiKey": "は{name}を呼び出すために使われ、ローカルに保存されます。",
     "settings.description.model": "ドロップダウンを開いてモデルを取得するか、直接入力できます。",
     "settings.description.defaultModel": "呼び出し時に一時的に上書きされることがあります。",

@@ -369,6 +369,8 @@
     "settings.ocr.footer": "Proporcionado por el sistema Windows · Siempre disponible · No requiere red · Reconocimiento instantáneo",
     "settings.description.protocol": "Seleccione el protocolo de comunicación del servicio. ",
     "settings.description.endpoint": "La dirección completa del protocolo compatible con OpenAI. ",
+    "settings.description.endpointDefault": "Default {url}",
+    "settings.description.endpointPresets": "Uses the first path by default (pay-as-you-go). Other paths:\n{lines}",
     "settings.description.apiKey": "Se utiliza para llamar a {name}, solo se almacena localmente. ",
     "settings.description.model": "Abra el modelo desplegable o ingréselo directamente. ",
     "settings.description.defaultModel": "Se puede anular temporalmente cuando se llama. ",

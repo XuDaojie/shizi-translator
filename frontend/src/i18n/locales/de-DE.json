@@ -369,6 +369,8 @@
     "settings.ocr.footer": "Bereitgestellt vom Windows-System · Immer verfügbar · Kein Netzwerk erforderlich · Sofortige Erkennung",
     "settings.description.protocol": "Wählen Sie das Dienstkommunikationsprotokoll aus. ",
     "settings.description.endpoint": "Die vollständige Adresse des OpenAI-kompatiblen Protokolls. ",
+    "settings.description.endpointDefault": "Default {url}",
+    "settings.description.endpointPresets": "Uses the first path by default (pay-as-you-go). Other paths:\n{lines}",
     "settings.description.apiKey": "Wird zum Aufrufen von {name} verwendet, nur lokal gespeichert. ",
     "settings.description.model": "Öffnen Sie das Dropdown-Modell oder geben Sie es direkt ein. ",
     "settings.description.defaultModel": "Kann beim Aufruf vorübergehend überschrieben werden. ",

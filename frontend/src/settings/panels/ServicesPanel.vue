@@ -186,6 +186,49 @@ const matchedEndpointPresetId = computed(() => {
   return matchEndpointPreset(inst.endpoint, activeEndpointPresets.value)?.id ?? ''
 })
 
+/** 当前实例协议展示名（标题旁协议徽标 / 单协议文案）。 */
+const activeProtocolLabel = computed(() => {
+  const meta = activeService.value
+  const inst = activeInstance.value
+  if (!meta?.protocols?.length || !inst) return ''
+  const matched = meta.protocols.find((p) => p.id === inst.protocol)
+  return matched?.label ?? meta.protocols[0]?.label ?? ''
+})
+
+/**
+ * 「接口地址」说明（对齐原型）：
+ * - 多路径：列出全部 Base URL，默认首条（按量）
+ * - 单路径：显示协议默认地址
+ * - 否则通用提示
+ */
+const endpointFieldDescription = computed(() => {
+  const meta = activeService.value
+  if (!meta) return ''
+  if (meta.endpointPresets?.length) {
+    const lines = meta.endpointPresets.map((p) => `${p.label}：${p.endpoint}`)
+    return t(msgKey('settings.description.endpointPresets'), {
+      lines: lines.join('\n'),
+    })
+  }
+  const defaultEp =
+    meta.protocols.find((p) => p.id === activeInstance.value?.protocol)?.defaultEndpoint ??
+    meta.protocols[0]?.defaultEndpoint
+  if (defaultEp) {
+    return t(msgKey('settings.description.endpointDefault'), { url: defaultEp })
+  }
+  return t('settings.description.endpoint')
+})
+
+const showEndpointField = computed(() => {
+  const meta = activeService.value
+  if (!meta) return false
+  return (
+    meta.category === 'llm' ||
+    Boolean(meta.needsEndpoint) ||
+    (meta.protocols?.length ?? 0) > 0
+  )
+})
+
 const onEndpointPresetChange = (presetId: string): void => {
   const inst = activeInstance.value
   if (!inst || !presetId) return
@@ -1392,7 +1435,8 @@ const onDragEnd = (): void => {
         </div>
       </template>
 
-      <!-- 需配置渠道：单组「基础配置」+ 高级折叠（多协议/接入路径嵌回） -->
+      <!-- 需配置渠道：单组「基础配置」+ 高级折叠（对齐原型；多协议/接入路径嵌回） -->
+      <!-- Google 翻译（内置免 Key、protocols 空）与未对接 ML 同走此分支，保持现状结构 -->
       <template v-else>
         <div
           v-if="activeService.protocols.length === 0"
@@ -1403,25 +1447,21 @@ const onDragEnd = (): void => {
         </div>
 
         <SettingGroup :title="t(msgKey('settings.group.basicConfig'))" bare>
+          <!-- 多协议：下拉选择；单协议不单独成行，贴在「接口地址」标题旁 -->
           <SettingRow
-            v-if="activeService?.protocols?.length"
+            v-if="(activeService.protocols?.length ?? 0) > 1"
             :title="t('settings.field.protocol')"
             :description="t('settings.description.protocol')"
             vertical
           >
-            <template v-if="(activeService?.protocols?.length ?? 0) > 1">
-              <select
-                v-model="activeInstance.protocol"
-                class="flex h-9 w-full rounded-md border border-input bg-background px-3 text-xs"
-              >
-                <option v-for="p in activeService?.protocols" :key="p.id" :value="p.id">
-                  {{ p.label }}
-                </option>
-              </select>
-            </template>
-            <span v-else class="text-xs text-foreground">
-              {{ activeService?.protocols?.[0]?.label ?? '—' }}
-            </span>
+            <select
+              v-model="activeInstance.protocol"
+              class="flex h-9 w-full rounded-md border border-input bg-background px-3 text-xs"
+            >
+              <option v-for="p in activeService.protocols" :key="p.id" :value="p.id">
+                {{ p.label }}
+              </option>
+            </select>
           </SettingRow>
           <SettingRow
             v-if="activeEndpointPresets.length > 0"
@@ -1447,19 +1487,31 @@ const onDragEnd = (): void => {
             </select>
           </SettingRow>
           <SettingRow
-            v-if="activeService.category === 'llm' || activeService.needsEndpoint || activeService.protocols.length > 0"
+            v-if="showEndpointField"
             :title="t('settings.field.endpoint')"
-            :description="t('settings.description.endpoint')"
+            :description="endpointFieldDescription"
             vertical
           >
+            <template v-if="activeProtocolLabel" #title-end>
+              <span
+                class="inline-flex items-center gap-0.5 text-[10px] font-normal text-muted-foreground/50"
+                :title="activeProtocolLabel"
+              >
+                {{ activeProtocolLabel }}
+              </span>
+            </template>
             <SettingInput
               v-model="activeInstance.endpoint"
-              :placeholder="activeService.protocols?.[0]?.defaultEndpoint || 'https://api.example.com/v1'"
+              :placeholder="
+                activeEndpointPresets[0]?.endpoint ||
+                activeService.protocols?.[0]?.defaultEndpoint ||
+                'https://api.example.com/v1'
+              "
             />
           </SettingRow>
           <SettingRow
             v-if="activeService.keyRequired !== false"
-            title="API Key"
+            :title="t('settings.field.apiKey')"
             :description="t('settings.description.apiKey', { name: activeService.name })"
             vertical
           >
@@ -1587,21 +1639,20 @@ const onDragEnd = (): void => {
       </SettingGroup>
 
       <div
-        v-if="activeService.id !== 'microsoft' && !activeInstance.apiKey"
+        v-if="activeService.keyRequired !== false && !activeInstance.apiKey"
         class="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
       >
-        <CircleAlert class="h-3.5 w-3.5 mt-0.5 shrink-0" />
-        <span class="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
-          <span>{{ t('settings.warning.missingApiKey') }}</span>
+        <CircleAlert class="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <span class="min-w-0">
+          {{ t('settings.warning.missingApiKey') }}
           <button
             v-if="activeService.apiKeyUrl"
             type="button"
-            class="inline-flex items-center gap-1 underline-offset-2 hover:underline"
+            class="ml-1 inline-flex items-center gap-0.5 font-medium underline underline-offset-2 hover:opacity-90"
             @click="openExternal(activeService.apiKeyUrl!)"
           >
-            <KeyRound class="h-3 w-3" />
             {{ t(msgKey('settings.button.applyApiKey')) }}
-            <ExternalLink class="h-2.5 w-2.5 opacity-60" />
+            <ExternalLink class="h-3 w-3" />
           </button>
         </span>
       </div>

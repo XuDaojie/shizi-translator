@@ -9,9 +9,14 @@ import type {
 } from './types'
 
 // ── 协议元数据 ────────────────────────────────────────────
-const OPENAI_CHAT = (defaultEndpoint: string, defaultModel: string) => ({
+/** label 用于详情页标题旁协议徽标 / 多协议下拉；与原型展示名对齐。 */
+const OPENAI_CHAT = (
+  defaultEndpoint: string,
+  defaultModel: string,
+  label = 'OpenAI 兼容协议 (Chat Completions)',
+) => ({
   id: 'openai_chat' as const,
-  label: 'OpenAI Chat',
+  label,
   defaultEndpoint,
   defaultModel,
   editableEndpoint: true,
@@ -20,7 +25,7 @@ const OPENAI_CHAT = (defaultEndpoint: string, defaultModel: string) => ({
 
 const CLAUDE_MESSAGES = {
   id: 'claude_messages' as const,
-  label: 'Claude Messages',
+  label: 'Anthropic Messages API',
   defaultEndpoint: 'https://api.anthropic.com',
   defaultModel: 'claude-haiku-4-5',
   editableEndpoint: true,
@@ -129,6 +134,7 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
       OPENAI_CHAT(
         'https://generativelanguage.googleapis.com/v1beta/openai',
         'gemini-1.5-flash',
+        'Google Generative Language API',
       ),
     ],
     docsUrl: 'https://ai.google.dev/docs',
@@ -144,6 +150,8 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     category: 'ml',
     keyRequired: true,
     protocols: [],
+    docsUrl: 'https://developers.deepl.com/docs',
+    apiKeyUrl: 'https://www.deepl.com/pro-api',
   },
   {
     id: 'google',
@@ -166,6 +174,8 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     category: 'ml',
     keyRequired: true,
     protocols: [],
+    docsUrl: 'https://fanyi-api.baidu.com/doc/21',
+    apiKeyUrl: 'https://fanyi-api.baidu.com/manage/developer',
   },
   {
     id: 'youdao',
@@ -176,6 +186,8 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     category: 'ml',
     keyRequired: true,
     protocols: [],
+    docsUrl: 'https://ai.youdao.com/doc.s',
+    apiKeyUrl: 'https://ai.youdao.com/console',
   },
   {
     id: 'tencent',
@@ -186,12 +198,14 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     category: 'ml',
     keyRequired: true,
     protocols: [],
+    docsUrl: 'https://cloud.tencent.com/document/product/551',
+    apiKeyUrl: 'https://console.cloud.tencent.com/cam/capi',
   },
   {
     id: 'volcengine',
     name: '火山引擎',
     description:
-      '字节跳动火山方舟 OpenAI 兼容。按量走 /api/v3（模型常为接入点 ep-xxx）；Coding Plan 走 /api/coding/v3；Agent Plan 走 /api/plan/v3。勿混用不同套餐的 Key 与 Base URL。',
+      '字节跳动火山方舟,豆包大模型;支持按量 / Coding Plan / Agent Plan 多路径接入。',
     builtin: true,
     defaultModel: 'doubao-seed-1-6-250615',
     models: [
@@ -205,7 +219,13 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     category: 'llm',
     keyRequired: true,
     // 默认按量方舟 API；Coding / Agent Plan 用 endpointPresets 切换（协议同为 openai_chat）。
-    protocols: [OPENAI_CHAT('https://ark.cn-beijing.volces.com/api/v3', 'doubao-seed-1-6-250615')],
+    protocols: [
+      OPENAI_CHAT(
+        'https://ark.cn-beijing.volces.com/api/v3',
+        'doubao-seed-1-6-250615',
+        'OpenAI 兼容协议 (火山方舟)',
+      ),
+    ],
     endpointPresets: [
       {
         id: 'ark-api',
@@ -238,6 +258,8 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     category: 'ml',
     keyRequired: true,
     protocols: [],
+    docsUrl: 'https://www.xfyun.cn/doc/nlp/xftrans/API.html',
+    apiKeyUrl: 'https://console.xfyun.cn/services/its',
   },
   {
     id: 'zhipu',
@@ -249,7 +271,13 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     hasModelApi: true,
     category: 'llm',
     keyRequired: true,
-    protocols: [OPENAI_CHAT('https://open.bigmodel.cn/api/paas/v4', 'glm-4-flash')],
+    protocols: [
+      OPENAI_CHAT(
+        'https://open.bigmodel.cn/api/paas/v4',
+        'glm-4-flash',
+        'OpenAI 兼容协议 (智谱 BigModel)',
+      ),
+    ],
     docsUrl: 'https://open.bigmodel.cn/dev/api',
     apiKeyUrl: 'https://open.bigmodel.cn/usercenter/apikeys',
   },
@@ -264,7 +292,13 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     iconifyId: 'simple-icons:moonshotai',
     category: 'llm',
     keyRequired: true,
-    protocols: [OPENAI_CHAT('https://api.moonshot.cn/v1', 'moonshot-v1-128k')],
+    protocols: [
+      OPENAI_CHAT(
+        'https://api.moonshot.cn/v1',
+        'moonshot-v1-128k',
+        'OpenAI 兼容协议 (Kimi)',
+      ),
+    ],
     docsUrl: 'https://platform.moonshot.cn/docs',
     apiKeyUrl: 'https://platform.moonshot.cn/console/api-keys',
   },
@@ -286,7 +320,13 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     hasModelApi: true,
     category: 'llm',
     keyRequired: true,
-    protocols: [OPENAI_CHAT('https://api.siliconflow.cn/v1', 'Qwen/Qwen2.5-7B-Instruct')],
+    protocols: [
+      OPENAI_CHAT(
+        'https://api.siliconflow.cn/v1',
+        'Qwen/Qwen2.5-7B-Instruct',
+        'OpenAI 兼容协议',
+      ),
+    ],
     docsUrl: 'https://docs.siliconflow.cn',
     apiKeyUrl: 'https://cloud.siliconflow.cn/account/ak',
   },
@@ -301,7 +341,7 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     category: 'llm',
     keyRequired: true,
     // 与 openai/deepseek/zhipu 共用 openai_chat 后端路径，用户自填 endpoint/model/key。
-    protocols: [OPENAI_CHAT('http://localhost:11434/v1', '')],
+    protocols: [OPENAI_CHAT('http://localhost:11434/v1', '', 'OpenAI 兼容协议')],
     docsUrl: 'https://developers.openai.com/api/docs',
   },
 ]
