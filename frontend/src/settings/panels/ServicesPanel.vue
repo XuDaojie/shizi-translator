@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { toast } from '@/lib/toast'
 import {
   Plus,
@@ -16,6 +16,8 @@ import {
   ExternalLink,
   KeyRound,
   ChevronDown,
+  Globe,
+  Languages,
 } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -95,6 +97,57 @@ const ocrPickerOpen = ref(false)
 const pullingId = ref<string | null>(null)
 const keyStatusById = ref<Record<string, ServiceInstance['keyStatus']>>({})
 const tab = ref<'translate' | 'ocr'>('translate')
+
+/** 模块 tab 指示器：只滑动下划线，内容区无动画 */
+const tabBarRef = ref<HTMLElement | null>(null)
+const tabItemRefs = ref<Record<string, HTMLElement | null>>({})
+const tabIndicatorReady = ref(false)
+const tabIndicatorStyle = ref({ left: '0px', width: '0px' })
+
+const setTabItemRef = (id: string, el: unknown): void => {
+  tabItemRefs.value[id] = (el as HTMLElement | null) ?? null
+}
+
+const updateTabIndicator = (): void => {
+  const bar = tabBarRef.value
+  const item = tabItemRefs.value[tab.value]
+  if (!bar || !item) return
+  const barRect = bar.getBoundingClientRect()
+  const itemRect = item.getBoundingClientRect()
+  tabIndicatorStyle.value = {
+    left: `${itemRect.left - barRect.left + bar.scrollLeft}px`,
+    width: `${itemRect.width}px`,
+  }
+  tabIndicatorReady.value = true
+}
+
+let tabResizeObserver: ResizeObserver | null = null
+
+onMounted(() => {
+  nextTick(updateTabIndicator)
+  if (typeof ResizeObserver !== 'undefined' && tabBarRef.value) {
+    tabResizeObserver = new ResizeObserver(() => updateTabIndicator())
+    tabResizeObserver.observe(tabBarRef.value)
+  }
+  window.addEventListener('resize', updateTabIndicator)
+})
+
+onBeforeUnmount(() => {
+  tabResizeObserver?.disconnect()
+  tabResizeObserver = null
+  window.removeEventListener('resize', updateTabIndicator)
+})
+
+watch(tab, () => {
+  nextTick(updateTabIndicator)
+})
+
+watch(
+  () => [props.state.services.length, props.state.ocrServices.length] as const,
+  () => {
+    nextTick(updateTabIndicator)
+  },
+)
 
 // 内置 + 用户自定义渠道的合并视图
 const mergedServices = computed(() => settings.getMergedServices())
@@ -577,42 +630,51 @@ const onDragEnd = (): void => {
   <div class="grid h-full min-h-0 grid-cols-[220px_minmax(0,1fr)] grid-rows-[minmax(0,1fr)] gap-2.5 overflow-hidden">
     <!-- 左侧:服务实例列表(固定高度,内部独立滚动,不随外层/右侧滚动) -->
     <aside class="flex h-full min-h-0 flex-col gap-2.5 overflow-hidden self-stretch">
-      <!-- Tab 栏:翻译服务 / 文字识别 -->
-      <div class="flex shrink-0 items-center gap-1 border-b border-border">
+      <!-- Tab 栏:翻译服务 / 文字识别（指示器滑动，内容无动画） -->
+      <div
+        ref="tabBarRef"
+        class="relative flex shrink-0 items-center gap-1 border-b border-border"
+        role="tablist"
+        :aria-label="t('settings.group.services')"
+      >
         <button
           type="button"
+          role="tab"
+          :ref="(el) => setTabItemRef('translate', el)"
+          :aria-selected="tab === 'translate'"
           :class="[
-            'relative px-2.5 pb-1.5 pt-0.5 text-xs font-medium transition-colors',
+            'module-tab-item relative z-[1] px-2.5 pb-1.5 pt-0.5 text-xs font-medium',
             tab === 'translate'
               ? 'text-foreground'
               : 'text-muted-foreground hover:text-foreground',
           ]"
           @click="tab = 'translate'"
         >
-            {{ t('settings.group.services') }}
+          {{ t('settings.group.services') }}
           <span class="ml-1 text-[10px] text-muted-foreground">{{ props.state.services.length }}</span>
-          <span
-            v-if="tab === 'translate'"
-            class="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-primary"
-          />
         </button>
         <button
           type="button"
+          role="tab"
+          :ref="(el) => setTabItemRef('ocr', el)"
+          :aria-selected="tab === 'ocr'"
           :class="[
-            'relative flex items-center gap-1.5 px-2.5 pb-1.5 pt-0.5 text-xs font-medium transition-colors',
+            'module-tab-item relative z-[1] flex items-center gap-1.5 px-2.5 pb-1.5 pt-0.5 text-xs font-medium',
             tab === 'ocr'
               ? 'text-foreground'
               : 'text-muted-foreground hover:text-foreground',
           ]"
           @click="tab = 'ocr'"
         >
-            {{ t('settings.group.ocr') }}
+          {{ t('settings.group.ocr') }}
           <span class="text-[10px] text-muted-foreground">{{ props.state.ocrServices.length }}</span>
-          <span
-            v-if="tab === 'ocr'"
-            class="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-primary"
-          />
         </button>
+        <span
+          aria-hidden="true"
+          class="module-tab-indicator pointer-events-none absolute -bottom-px z-0 h-0.5 rounded-full bg-primary"
+          :class="tabIndicatorReady ? 'module-tab-indicator--ready' : 'opacity-0'"
+          :style="tabIndicatorStyle"
+        />
       </div>
 
       <!-- 翻译服务 Tab -->
@@ -1286,6 +1348,12 @@ const onDragEnd = (): void => {
           <p class="mt-0.5 text-[11px] leading-snug text-muted-foreground">
             {{ activeService.description }}
           </p>
+          <p
+            v-if="activeService.detail"
+            class="mt-2 rounded-md border border-border bg-background/40 p-2.5 text-[11px] leading-relaxed text-muted-foreground"
+          >
+            {{ activeService.detail }}
+          </p>
           <div
             v-if="activeService.docsUrl || activeService.apiKeyUrl"
             class="mt-2 flex flex-wrap items-center gap-1.5"
@@ -1314,193 +1382,224 @@ const onDragEnd = (): void => {
         </div>
       </header>
 
-      <template v-if="activeService.id !== 'microsoft'">
-      <div
-        v-if="activeService.protocols.length === 0"
-        class="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
-      >
-        <CircleAlert class="mt-0.5 h-3.5 w-3.5 shrink-0" />
-        <span>{{ t('settings.tooltip.developing') }}</span>
-      </div>
-
-      <SettingGroup :title="t('settings.group.endpoint')" bare>
-        <SettingRow
-          v-if="activeService?.protocols?.length"
-          :title="t('settings.field.protocol')"
-          :description="t('settings.description.protocol')"
-          vertical
+      <!-- 微软翻译：能力三栏 + 状态条（无 Key 表单） -->
+      <template v-if="activeService.id === 'microsoft'">
+        <SettingGroup
+          :title="t('settings.field.capabilities')"
+          :description="t(msgKey('settings.description.serviceCapabilities'))"
         >
-          <template v-if="(activeService?.protocols?.length ?? 0) > 1">
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div class="rounded-md border border-border bg-background/40 p-3">
+              <div class="flex items-center gap-1.5">
+                <Sparkles class="h-3 w-3 text-primary" />
+                <h4 class="text-xs font-medium text-foreground">{{ t(msgKey('settings.ms.coverageTitle')) }}</h4>
+              </div>
+              <p class="mt-1.5 text-[11px] leading-relaxed text-muted-foreground whitespace-pre-line">{{ t(msgKey('settings.ms.coverageBody')) }}</p>
+            </div>
+            <div class="rounded-md border border-border bg-background/40 p-3">
+              <div class="flex items-center gap-1.5">
+                <CircleAlert class="h-3 w-3 text-amber-600 dark:text-amber-400" />
+                <h4 class="text-xs font-medium text-foreground">{{ t(msgKey('settings.ms.limitsTitle')) }}</h4>
+              </div>
+              <p class="mt-1.5 text-[11px] leading-relaxed text-muted-foreground whitespace-pre-line">{{ t(msgKey('settings.ms.limitsBody')) }}</p>
+            </div>
+            <div class="rounded-md border border-border bg-background/40 p-3">
+              <div class="flex items-center gap-1.5">
+                <Languages class="h-3 w-3 text-primary" />
+                <h4 class="text-xs font-medium text-foreground">{{ t(msgKey('settings.ms.useCasesTitle')) }}</h4>
+              </div>
+              <p class="mt-1.5 text-[11px] leading-relaxed text-muted-foreground whitespace-pre-line">{{ t(msgKey('settings.ms.useCasesBody')) }}</p>
+            </div>
+          </div>
+        </SettingGroup>
+        <div
+          class="flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200"
+        >
+          <Globe class="h-3.5 w-3.5 shrink-0" />
+          <span>{{ t(msgKey('settings.ms.footer')) }}</span>
+        </div>
+      </template>
+
+      <!-- 需配置渠道：单组「基础配置」+ 高级折叠（多协议/接入路径嵌回） -->
+      <template v-else>
+        <div
+          v-if="activeService.protocols.length === 0"
+          class="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+        >
+          <CircleAlert class="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>{{ t('settings.tooltip.developing') }}</span>
+        </div>
+
+        <SettingGroup :title="t(msgKey('settings.group.basicConfig'))" bare>
+          <SettingRow
+            v-if="activeService?.protocols?.length"
+            :title="t('settings.field.protocol')"
+            :description="t('settings.description.protocol')"
+            vertical
+          >
+            <template v-if="(activeService?.protocols?.length ?? 0) > 1">
+              <select
+                v-model="activeInstance.protocol"
+                class="flex h-9 w-full rounded-md border border-input bg-background px-3 text-xs"
+              >
+                <option v-for="p in activeService?.protocols" :key="p.id" :value="p.id">
+                  {{ p.label }}
+                </option>
+              </select>
+            </template>
+            <span v-else class="text-xs text-foreground">
+              {{ activeService?.protocols?.[0]?.label ?? '—' }}
+            </span>
+          </SettingRow>
+          <SettingRow
+            v-if="activeEndpointPresets.length > 0"
+            :title="t(msgKey('settings.field.endpointPath'))"
+            :description="t(msgKey('settings.description.endpointPath'))"
+            vertical
+          >
             <select
-              v-model="activeInstance.protocol"
               class="flex h-9 w-full rounded-md border border-input bg-background px-3 text-xs"
+              :value="matchedEndpointPresetId"
+              @change="onEndpointPresetChange(($event.target as HTMLSelectElement).value)"
             >
-              <option v-for="p in activeService?.protocols" :key="p.id" :value="p.id">
+              <option v-if="!matchedEndpointPresetId" value="" disabled>
+                {{ t(msgKey('settings.option.customEndpoint')) }}
+              </option>
+              <option
+                v-for="p in activeEndpointPresets"
+                :key="p.id"
+                :value="p.id"
+              >
                 {{ p.label }}
               </option>
             </select>
-          </template>
-          <span v-else class="text-xs text-foreground">
-            {{ activeService?.protocols?.[0]?.label ?? '—' }}
-          </span>
-        </SettingRow>
-        <SettingRow
-          v-if="activeEndpointPresets.length > 0"
-          title="接入路径"
-          description="方舟按量 / Coding Plan / Agent Plan 使用不同 Base URL，请与控制台套餐一致；混用 Key 可能扣错额度。"
-          vertical
-        >
-          <select
-            class="flex h-9 w-full rounded-md border border-input bg-background px-3 text-xs"
-            :value="matchedEndpointPresetId"
-            @change="onEndpointPresetChange(($event.target as HTMLSelectElement).value)"
+          </SettingRow>
+          <SettingRow
+            v-if="activeService.category === 'llm' || activeService.needsEndpoint || activeService.protocols.length > 0"
+            :title="t('settings.field.endpoint')"
+            :description="t('settings.description.endpoint')"
+            vertical
           >
-            <option v-if="!matchedEndpointPresetId" value="" disabled>
-              自定义（下方可改 Endpoint）
-            </option>
-            <option
-              v-for="p in activeEndpointPresets"
-              :key="p.id"
-              :value="p.id"
-            >
-              {{ p.label }}
-            </option>
-          </select>
-        </SettingRow>
-        <SettingRow
-          title="API Endpoint"
-          :description="t('settings.description.endpoint')"
-          vertical
-        >
-          <SettingInput
-            v-model="activeInstance.endpoint"
-            placeholder="https://api.openai.com/v1"
-          />
-        </SettingRow>
-      </SettingGroup>
-
-      <SettingGroup :title="t('settings.group.credentials')" bare>
-        <SettingRow
-          title="API Key"
-          :description="t('settings.description.apiKey', { name: activeService.name })"
-          vertical
-        >
-          <ApiKeyInput
+            <SettingInput
+              v-model="activeInstance.endpoint"
+              :placeholder="activeService.protocols?.[0]?.defaultEndpoint || 'https://api.example.com/v1'"
+            />
+          </SettingRow>
+          <SettingRow
+            v-if="activeService.keyRequired !== false"
+            title="API Key"
+            :description="t('settings.description.apiKey', { name: activeService.name })"
+            vertical
+          >
+            <ApiKeyInput
               v-model="activeInstance.apiKey"
               :status="keyStatusFor(activeInstance.id)"
               @validate="onKeyValidate"
             />
-        </SettingRow>
-      </SettingGroup>
-
-      <SettingGroup
-        :title="t('settings.group.model')"
-        :description="t('settings.description.model')"
-        bare
-      >
-        <SettingRow
-          :title="t('settings.field.defaultModel')"
-          :description="t('settings.description.defaultModel')"
-          vertical
-        >
-          <ModelCombobox
-            :model-value="activeInstance.model"
-            :models="modelOptions"
-            :loading="pullingId === activeInstance.id"
-            :placeholder="t('settings.placeholder.model')"
-            @update:model-value="(v) => (activeInstance!.model = v)"
-            @open="() => onPullModels(activeInstance!.id)"
-          />
-        </SettingRow>
-      </SettingGroup>
-
-      <!-- 高级：思维链 + 提示词 + custom 备注，默认折叠 -->
-      <div
-        v-if="activeService.category === 'llm' || activeService.id === 'custom'"
-        class="rounded-lg border border-border"
-      >
-        <button
-          type="button"
-          class="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left transition-colors hover:bg-accent/30"
-          :aria-expanded="advancedOpen"
-          @click="advancedOpen = !advancedOpen"
-        >
-          <span class="flex min-w-0 items-center gap-2">
-            <ChevronDown
-              :class="[
-                'h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform',
-                advancedOpen ? 'rotate-0' : '-rotate-90',
-              ]"
-            />
-            <span class="text-xs font-medium text-foreground">{{ t(msgKey('settings.group.advancedPrompts')) }}</span>
-            <span class="truncate text-[11px] text-muted-foreground">{{ advancedSummary }}</span>
-          </span>
-        </button>
-        <div v-if="advancedOpen" class="space-y-3 border-t border-border px-3 py-3">
+          </SettingRow>
           <SettingRow
-            v-if="activeService.category === 'llm'"
-            :title="t('settings.field.chainOfThought')"
-            :description="t('settings.description.chainOfThought')"
+            :title="t('settings.field.defaultModel')"
+            :description="t('settings.description.defaultModel')"
             vertical
           >
-            <SettingSelect
-              :model-value="activeInstance.chainOfThought"
-              :options="chainOfThoughtOptions"
-              @update:model-value="(v) => (activeInstance!.chainOfThought = v as typeof activeInstance.chainOfThought)"
+            <ModelCombobox
+              :model-value="activeInstance.model"
+              :models="modelOptions"
+              :loading="pullingId === activeInstance.id"
+              :placeholder="t('settings.placeholder.model')"
+              @update:model-value="(v) => (activeInstance!.model = v)"
+              @open="() => onPullModels(activeInstance!.id)"
             />
           </SettingRow>
+        </SettingGroup>
 
-          <SettingTextarea
-            v-if="activeService.category === 'llm'"
-            :title="t('settings.field.systemPrompt')"
-            :description="t('settings.description.systemPrompt')"
-            :model-value="activeInstance.systemPrompt"
-            :default-value="DEFAULT_PROMPTS.system"
-            @update:model-value="(v) => (activeInstance!.systemPrompt = v)"
-          />
-          <SettingTextarea
-            v-if="activeService.category === 'llm'"
-            :title="t('settings.field.translationPrompt')"
-            :description="t('settings.description.translationPrompt')"
-            :variables="['{source_lang}', '{target_lang}', '{text}']"
-            :model-value="activeInstance.translationPrompt"
-            :default-value="DEFAULT_PROMPTS.translation"
-            @update:model-value="(v) => (activeInstance!.translationPrompt = v)"
-          />
-          <DevOnly>
+        <!-- 高级：思维链 + 提示词 + custom 备注，默认折叠 -->
+        <div
+          v-if="activeService.category === 'llm' || activeService.id === 'custom'"
+          class="rounded-lg border border-border"
+        >
+          <button
+            type="button"
+            class="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left transition-colors hover:bg-accent/30"
+            :aria-expanded="advancedOpen"
+            @click="advancedOpen = !advancedOpen"
+          >
+            <span class="flex min-w-0 items-center gap-2">
+              <ChevronDown
+                :class="[
+                  'h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform',
+                  advancedOpen ? 'rotate-0' : '-rotate-90',
+                ]"
+              />
+              <span class="text-xs font-medium text-foreground">{{ t(msgKey('settings.group.advancedPrompts')) }}</span>
+              <span class="truncate text-[11px] text-muted-foreground">{{ advancedSummary }}</span>
+            </span>
+          </button>
+          <div v-if="advancedOpen" class="space-y-3 border-t border-border px-3 py-3">
+            <SettingRow
+              v-if="activeService.category === 'llm'"
+              :title="t('settings.field.chainOfThought')"
+              :description="t('settings.description.chainOfThought')"
+              vertical
+            >
+              <SettingSelect
+                :model-value="activeInstance.chainOfThought"
+                :options="chainOfThoughtOptions"
+                @update:model-value="(v) => (activeInstance!.chainOfThought = v as typeof activeInstance.chainOfThought)"
+              />
+            </SettingRow>
+
             <SettingTextarea
               v-if="activeService.category === 'llm'"
-              :title="t('settings.field.reflectionPrompt')"
-              :description="t('settings.description.reflectionPrompt')"
-              status="wip"
-              :model-value="activeInstance.reflectionPrompt"
-              :default-value="DEFAULT_PROMPTS.reflection"
-              :collapsed="!activeInstance.reflectionEnabled"
-              :collapsed-hint="t(msgKey('settings.prompt.reflectionCollapsed'))"
-              @update:model-value="(v) => (activeInstance!.reflectionPrompt = v)"
-            >
-              <template #header-end>
-                <SettingSwitch
-                  :model-value="activeInstance.reflectionEnabled"
-                  @update:model-value="(v) => (activeInstance!.reflectionEnabled = v)"
-                />
-              </template>
-            </SettingTextarea>
-          </DevOnly>
-
-          <SettingRow
-            v-if="activeService.id === 'custom'"
-            :title="t('settings.field.note')"
-            :description="t('settings.description.note')"
-            vertical
-          >
-            <SettingInput
-              v-model="activeInstance.note"
-              :placeholder="t('settings.placeholder.note')"
+              :title="t('settings.field.systemPrompt')"
+              :description="t('settings.description.systemPrompt')"
+              :model-value="activeInstance.systemPrompt"
+              :default-value="DEFAULT_PROMPTS.system"
+              @update:model-value="(v) => (activeInstance!.systemPrompt = v)"
             />
-          </SettingRow>
+            <SettingTextarea
+              v-if="activeService.category === 'llm'"
+              :title="t('settings.field.translationPrompt')"
+              :description="t('settings.description.translationPrompt')"
+              :variables="['{source_lang}', '{target_lang}', '{text}']"
+              :model-value="activeInstance.translationPrompt"
+              :default-value="DEFAULT_PROMPTS.translation"
+              @update:model-value="(v) => (activeInstance!.translationPrompt = v)"
+            />
+            <DevOnly>
+              <SettingTextarea
+                v-if="activeService.category === 'llm'"
+                :title="t('settings.field.reflectionPrompt')"
+                :description="t('settings.description.reflectionPrompt')"
+                status="wip"
+                :model-value="activeInstance.reflectionPrompt"
+                :default-value="DEFAULT_PROMPTS.reflection"
+                :collapsed="!activeInstance.reflectionEnabled"
+                :collapsed-hint="t(msgKey('settings.prompt.reflectionCollapsed'))"
+                @update:model-value="(v) => (activeInstance!.reflectionPrompt = v)"
+              >
+                <template #header-end>
+                  <SettingSwitch
+                    :model-value="activeInstance.reflectionEnabled"
+                    @update:model-value="(v) => (activeInstance!.reflectionEnabled = v)"
+                  />
+                </template>
+              </SettingTextarea>
+            </DevOnly>
+
+            <SettingRow
+              v-if="activeService.id === 'custom'"
+              :title="t('settings.field.note')"
+              :description="t('settings.description.note')"
+              vertical
+            >
+              <SettingInput
+                v-model="activeInstance.note"
+                :placeholder="t('settings.placeholder.note')"
+              />
+            </SettingRow>
+          </div>
         </div>
-      </div>
       </template>
 
       <SettingGroup :title="t('settings.group.danger')" bare>
@@ -1538,3 +1637,28 @@ const onDragEnd = (): void => {
     </div>
   </div>
 </template>
+
+<style scoped>
+/* 模块 tab 下划线：与侧栏同级缓动，仅指示器滑动 */
+.module-tab-indicator {
+  transition:
+    left 280ms cubic-bezier(0.16, 1, 0.3, 1),
+    width 280ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 160ms ease;
+}
+
+.module-tab-indicator--ready {
+  opacity: 1;
+}
+
+.module-tab-item {
+  transition: color 180ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .module-tab-indicator,
+  .module-tab-item {
+    transition: none !important;
+  }
+}
+</style>

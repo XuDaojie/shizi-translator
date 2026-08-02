@@ -103,6 +103,8 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     id: 'microsoft',
     name: '微软翻译',
     description: 'Edge 浏览器默认翻译引擎，免 Key，复用浏览器环境信息调用。',
+    detail:
+      '微软翻译(Microsoft Translator)是 Microsoft Edge 浏览器的默认翻译引擎,深度集成于 Windows 平台。它依托微软的全球神经网络翻译服务,对中英互译及多语种混合场景表现稳定,且随系统更新自动获得最新语言支持。作为内置渠道,你无需申请或填写任何 API Key,选中即可直接使用。',
     builtin: true,
     defaultModel: '',
     iconifyId: 'simple-icons:microsofttranslator',
