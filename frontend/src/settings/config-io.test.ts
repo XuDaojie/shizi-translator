@@ -6,6 +6,7 @@ const baseState: AppSettings = {
   general: {
     launchAtLogin: true,
     theme: 'system',
+    accentTheme: 'orange',
     language: 'zh-CN',
     updateChannel: 'stable',
     autoCheckUpdate: true,

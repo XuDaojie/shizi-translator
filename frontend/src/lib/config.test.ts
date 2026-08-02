@@ -27,6 +27,7 @@ const makeState = (services: ServiceInstance[]): AppSettings => ({
   general: {
     launchAtLogin: false,
     theme: 'light',
+    accentTheme: 'orange',
     language: 'auto',
     updateChannel: 'stable',
     autoCheckUpdate: true,

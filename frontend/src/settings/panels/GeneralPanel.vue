@@ -31,6 +31,10 @@ const themeOptions = computed(() => [
   { label: t('settings.option.dark'), value: 'dark' },
   { label: t('settings.option.system'), value: 'system' },
 ])
+const accentOptions = computed(() => [
+  { label: t('settings.option.accentOrange'), value: 'orange' },
+  { label: t('settings.option.accentBlue'), value: 'blue' },
+])
 const languageOptions = computed(() => [
   { label: t('language.auto'), value: 'auto' },
   ...interfaceLanguages.value.map(({ locale, name }) => ({ label: name, value: locale })),
@@ -139,6 +143,12 @@ const openDirectory = async () => {
         <SettingSelect v-model="state.general.theme" :options="themeOptions" />
       </SettingRow>
     </DevOnly>
+    <SettingRow
+      :title="t('settings.field.accentTheme')"
+      :description="t('settings.description.accentTheme')"
+    >
+      <SettingSelect v-model="state.general.accentTheme" :options="accentOptions" />
+    </SettingRow>
     <SettingRow :title="t('settings.field.interfaceLanguage')" :description="t('settings.description.interfaceLanguage')">
       <div class="flex items-center gap-1">
         <SettingSelect :model-value="state.general.language" :options="languageOptions" @update:model-value="setInterfaceLanguage" />

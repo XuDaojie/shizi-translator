@@ -9,4 +9,10 @@ describe('theme color tokens', () => {
     expect(css).toContain('--color-popover: hsl(var(--popover));')
     expect(css).toContain('--color-popover-foreground: hsl(var(--popover-foreground));')
   })
+
+  it('defaults brand primary to orange and supports accent-blue override', () => {
+    expect(css).toContain('--primary: 20 74% 48%;')
+    expect(css).toContain('html.accent-blue')
+    expect(css).toMatch(/html\.accent-blue[\s\S]*--primary:\s*222 70% 48%;/)
+  })
 })

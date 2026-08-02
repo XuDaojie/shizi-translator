@@ -159,6 +159,7 @@ const buildDefaults = (): AppSettings => {
     general: {
       launchAtLogin: false,
       theme: 'system',
+      accentTheme: 'orange',
       language: 'auto',
       updateChannel: 'stable',
       autoCheckUpdate: true,
@@ -457,6 +458,7 @@ const loadFromStorage = (): AppSettings => {
       general: {
         launchAtLogin: Boolean(g.launchAtLogin),
         theme: g.theme ?? defaults.general.theme,
+        accentTheme: g.accentTheme === 'blue' ? 'blue' : 'orange',
         language: g.language ?? defaults.general.language,
         updateChannel: g.updateChannel === 'beta' ? 'beta' : 'stable',
         autoCheckUpdate: g.autoCheckUpdate ?? defaults.general.autoCheckUpdate,
@@ -648,9 +650,15 @@ const applyTheme = (): void => {
   const resolved =
     state.general.theme === 'system' ? (prefersDark ? 'dark' : 'light') : state.general.theme
   root.classList.toggle('dark', resolved === 'dark')
+  // 默认橙色：不挂 class；蓝色时挂 accent-blue
+  root.classList.toggle('accent-blue', state.general.accentTheme === 'blue')
 }
 
-watch(() => state.general.theme, applyTheme, { immediate: true })
+watch(
+  [() => state.general.theme, () => state.general.accentTheme],
+  applyTheme,
+  { immediate: true },
+)
 watch(() => state.advanced.logLevel, (v) => logger.setLevel(v))
 
 /** 在指定 type 下生成下一个默认 name:`OpenAI`、`OpenAI 2`、`OpenAI 3` ... */
