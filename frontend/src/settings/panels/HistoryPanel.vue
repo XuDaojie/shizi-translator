@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch, watchEffect } from 'vue'
+import { computed, nextTick, onActivated, onBeforeUnmount, onMounted, reactive, ref, watch, watchEffect } from 'vue'
 import { History as HistoryIcon, Trash2, Camera, ScanText, MousePointerSquareDashed, PencilLine, Layers } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import Dialog from '@/components/ui/dialog/Dialog.vue'
@@ -21,6 +21,9 @@ import {
 } from '../history'
 import { displayModelName, shouldShowTokens } from '@/popup/composables/resultCardMeta'
 import { formatDateTime, t } from '@/i18n'
+
+/** keep-alive 缓存名（SettingsPage 使用） */
+defineOptions({ name: 'HistoryPanel' })
 
 interface Props {
   state: AppSettings
@@ -72,31 +75,86 @@ const updateFilterIndicator = (): void => {
 }
 
 let filterResizeObserver: ResizeObserver | null = null
+
+const ensureFilterIndicatorObserver = (): void => {
+  nextTick(() => {
+    updateFilterIndicator()
+    if (typeof ResizeObserver === 'undefined' || !filterBarRef.value) return
+    if (!filterResizeObserver) {
+      filterResizeObserver = new ResizeObserver(() => updateFilterIndicator())
+    }
+    filterResizeObserver.observe(filterBarRef.value)
+  })
+}
+
+/** 初始即 loading，避免挂载瞬间 sessions=[] 误闪空态。 */
 const sessions = ref<HistorySession[]>([])
-const loading = ref(false)
+const loading = ref(true)
 const loadError = ref('')
 const clearing = ref(false)
+/**
+ * 详情区（Source/Result 卡 + Markdown）比左侧列表重得多。
+ * 先画列表，idle 后再挂详情，避免一次提交 ~90 条 + 多卡 Markdown 堵死主线程。
+ */
+const detailReady = ref(false)
 let isMounted = false
 let refreshRequestId = 0
+let detailIdleHandle: number | null = null
 
-const refreshHistory = async (): Promise<void> => {
+const cancelDetailSchedule = (): void => {
+  if (detailIdleHandle == null) return
+  if (typeof cancelIdleCallback === 'function') {
+    cancelIdleCallback(detailIdleHandle)
+  } else {
+    window.clearTimeout(detailIdleHandle)
+  }
+  detailIdleHandle = null
+}
+
+/** 列表已提交后再挂详情；timeout 保证低负载时也不会一直不渲染。 */
+const scheduleDetailReady = (requestId: number): void => {
+  cancelDetailSchedule()
+  detailReady.value = false
+  const run = (): void => {
+    detailIdleHandle = null
+    if (!isMounted || requestId !== refreshRequestId) return
+    detailReady.value = true
+  }
+  if (typeof requestIdleCallback === 'function') {
+    detailIdleHandle = requestIdleCallback(run, { timeout: 160 }) as unknown as number
+  } else {
+    detailIdleHandle = window.setTimeout(run, 48)
+  }
+}
+
+const refreshHistory = async (opts?: { silent?: boolean }): Promise<void> => {
   const requestId = ++refreshRequestId
-  if (isMounted) {
+  const silent = opts?.silent === true && sessions.value.length > 0
+  if (isMounted && !silent) {
     loading.value = true
     loadError.value = ''
+    detailReady.value = false
   }
   try {
     const nextSessions = await loadHistory(props.state.translation.historyLimit)
     if (!isMounted || requestId !== refreshRequestId) return
+
     sessions.value = nextSessions
+    // 等列表 VDOM/DOM 提交后再调度详情
+    await nextTick()
+    if (!isMounted || requestId !== refreshRequestId) return
+    scheduleDetailReady(requestId)
   } catch (err) {
     if (!isMounted || requestId !== refreshRequestId) return
-    sessions.value = []
+    if (!silent) {
+      sessions.value = []
+      detailReady.value = false
+    }
     loadError.value = err instanceof Error ? err.message : String(err)
     toast.error(t('history.loadFailed'), loadError.value)
   } finally {
     if (!isMounted || requestId !== refreshRequestId) return
-    loading.value = false
+    if (!silent) loading.value = false
   }
 }
 
@@ -255,60 +313,30 @@ const cardStatus = (r: HistoryResult): 'success' | 'loading' | 'pending' | 'erro
 const resultText = (r: HistoryResult): string =>
   r.status === 'error' ? (r.errorMessage || r.translation) : r.translation
 
-/* === 滚动布局测高（复刻原型 updateScrollMetrics） === */
-const rootRef = ref<HTMLElement>()
-const headerRef = ref<HTMLElement>()
-let metricsObserver: ResizeObserver | null = null
-
-const findScroller = (el: HTMLElement | null): HTMLElement | null => {
-  let node = el
-  while (node) {
-    const oy = getComputedStyle(node).overflowY
-    if (oy === 'auto' || oy === 'scroll') return node
-    node = node.parentElement
-  }
-  return null
-}
-
-const updateScrollMetrics = (): void => {
-  const root = rootRef.value
-  const header = headerRef.value
-  if (!root || !header) return
-  const scroller = findScroller(root.parentElement)
-  if (!scroller) return
-  const clientH = scroller.clientHeight
-  const padTop = parseFloat(getComputedStyle(scroller).paddingTop) || 0
-  const padBottom = parseFloat(getComputedStyle(scroller).paddingBottom) || 0
-  const contentH = clientH - padTop - padBottom
-  const headerH = header.offsetHeight
-  const GAP = 12
-  const asideTop = headerH + GAP
-  root.style.setProperty('--history-header-h', `${headerH}px`)
-  root.style.setProperty('--history-aside-top', `${asideTop}px`)
-  root.style.setProperty('--history-aside-h', `${Math.max(contentH - asideTop - 8, 0)}px`)
-}
+/** 筛选栏在 DOM 中：非 loading/error/空历史时展示 */
+const showFilterChrome = computed(
+  () => !loading.value && !loadError.value && !isEmpty.value,
+)
 
 onMounted(() => {
   isMounted = true
   void refreshHistory()
-  updateScrollMetrics()
-  metricsObserver = new ResizeObserver(updateScrollMetrics)
-  const scroller = findScroller(rootRef.value?.parentElement ?? null)
-  if (scroller) metricsObserver.observe(scroller)
-  if (headerRef.value) metricsObserver.observe(headerRef.value)
-
-  nextTick(updateFilterIndicator)
-  if (typeof ResizeObserver !== 'undefined' && filterBarRef.value) {
-    filterResizeObserver = new ResizeObserver(() => updateFilterIndicator())
-    filterResizeObserver.observe(filterBarRef.value)
-  }
   window.addEventListener('resize', updateFilterIndicator)
+})
+
+// keep-alive 再次进入：静默刷新，不闪 loading、不堵导航动画
+// 注意：首次挂载也会触发 onActivated，此时 loading 中由 onMounted 负责，勿重复全量拉
+onActivated(() => {
+  if (loading.value && sessions.value.length === 0) return
+  if (sessions.value.length > 0) {
+    detailReady.value = true
+    void refreshHistory({ silent: true })
+  }
 })
 
 onBeforeUnmount(() => {
   isMounted = false
-  metricsObserver?.disconnect()
-  metricsObserver = null
+  cancelDetailSchedule()
   filterResizeObserver?.disconnect()
   filterResizeObserver = null
   window.removeEventListener('resize', updateFilterIndicator)
@@ -317,25 +345,44 @@ onBeforeUnmount(() => {
 watch(activeFilter, () => {
   nextTick(updateFilterIndicator)
 })
+
+// 加载完成、筛选栏挂载后定位 pill（默认「全部」）
+watch(showFilterChrome, (visible) => {
+  if (visible) {
+    ensureFilterIndicatorObserver()
+  } else {
+    filterIndicatorReady.value = false
+  }
+})
 </script>
 
 <template>
-  <div ref="rootRef" class="flex flex-col gap-3">
-    <div v-if="loading" class="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border py-16 text-center text-muted-foreground">
+  <!-- 自管高度：与服务页一致，左右分栏各自独立滚动 -->
+  <div class="flex h-full min-h-0 flex-col gap-3 overflow-hidden">
+    <div
+      v-if="loading"
+      class="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border py-16 text-center text-muted-foreground"
+    >
       <HistoryIcon class="h-5 w-5" />
-        <p class="text-sm">{{ t('history.loading') }}</p>
+      <p class="text-sm">{{ t('history.loading') }}</p>
     </div>
 
-    <div v-else-if="loadError" class="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-destructive/40 py-16 text-center">
+    <div
+      v-else-if="loadError"
+      class="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-destructive/40 py-16 text-center"
+    >
       <HistoryIcon class="h-5 w-5 text-destructive" />
       <div class="flex flex-col gap-1">
         <p class="text-sm font-medium text-foreground">{{ t('history.loadFailed') }}</p>
         <p class="text-[12px] text-muted-foreground">{{ loadError }}</p>
       </div>
-        <Button variant="outline" size="sm" @click="refreshHistory">{{ t('common.retry') }}</Button>
+      <Button variant="outline" size="sm" @click="refreshHistory">{{ t('common.retry') }}</Button>
     </div>
 
-    <div v-else-if="isEmpty" class="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border py-16 text-center">
+    <div
+      v-else-if="isEmpty"
+      class="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border py-16 text-center"
+    >
       <div class="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
         <HistoryIcon class="h-5 w-5" />
       </div>
@@ -346,9 +393,8 @@ watch(activeFilter, () => {
     </div>
 
     <template v-else>
-      <!-- 触发方式筛选（sticky 置顶，与原型对齐；清空作为筛选栏右侧次要操作） -->
-      <div ref="headerRef" class="sticky top-0 z-30 shrink-0 bg-background pb-4">
-        <div class="-mt-[10px] h-[10px] bg-background" aria-hidden="true" />
+      <!-- 触发方式筛选（固定顶栏；清空作为筛选栏右侧次要操作） -->
+      <div class="shrink-0">
         <div
           ref="filterBarRef"
           class="relative flex items-center gap-1 rounded-md border border-border bg-card p-1 text-[12px]"
@@ -370,7 +416,9 @@ watch(activeFilter, () => {
             :title="f.label"
             :aria-selected="activeFilter === f.id"
             class="module-seg-item relative z-[1] flex h-7 items-center gap-1.5 rounded px-2.5"
-            :class="activeFilter === f.id ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'"
+            :class="activeFilter === f.id
+              ? (filterIndicatorReady ? 'text-foreground' : 'rounded bg-accent text-foreground')
+              : 'text-muted-foreground hover:text-foreground'"
             @click="activeFilter = f.id"
           >
             <component :is="f.icon" class="h-3.5 w-3.5" />
@@ -389,10 +437,10 @@ watch(activeFilter, () => {
         </div>
       </div>
 
-      <!-- 筛选无结果 → 保留筛选栏，替换左右网格（与原型对齐） -->
+      <!-- 筛选无结果 → 保留筛选栏，替换左右网格 -->
       <div
         v-if="isFilterEmpty"
-        class="flex flex-1 flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border py-16 text-center"
+        class="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border py-16 text-center"
       >
         <div class="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
           <component :is="FILTERS.find((f) => f.id === activeFilter)?.icon ?? HistoryIcon" class="h-5 w-5" />
@@ -403,10 +451,10 @@ watch(activeFilter, () => {
         </div>
       </div>
 
-      <!-- 左右布局 -->
-      <div v-else class="flex gap-4">
-        <!-- 左:列表（独立滚动） -->
-        <aside class="w-[240px] shrink-0 self-start sticky top-[var(--history-aside-top)] max-h-[var(--history-aside-h)] flex min-h-0 flex-col gap-3 overflow-y-auto scrollbar-thin">
+      <!-- 左右独立滚动 -->
+      <div v-else class="flex min-h-0 flex-1 gap-4 overflow-hidden">
+        <!-- 左:列表 -->
+        <aside class="flex w-[240px] shrink-0 flex-col gap-3 overflow-y-auto overscroll-contain scrollbar-thin">
           <template v-for="bucket in filteredGrouped" :key="bucket.label">
             <header class="flex items-center gap-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               <span>{{ bucket.label }}</span>
@@ -417,7 +465,7 @@ watch(activeFilter, () => {
               <li
                 v-for="s in bucket.entries"
                 :key="s.id"
-                class="flex cursor-pointer flex-col gap-1.5 rounded-md border border-transparent p-2 transition-colors hover:bg-accent/40"
+                class="history-list-item flex cursor-pointer flex-col gap-1.5 rounded-md border border-transparent p-2 transition-colors hover:bg-accent/40"
                 :class="activeId === s.id ? 'border-primary/40 bg-accent' : ''"
                 @click="activeId = s.id"
               >
@@ -426,18 +474,18 @@ watch(activeFilter, () => {
                   <span class="flex items-center rounded border border-border bg-background/60 px-1 py-0.5" :title="TRIGGER_META[s.trigger]?.label">
                     <component :is="triggerIcon(s.trigger)" class="h-3 w-3" />
                   </span>
-                    <span class="inline-flex items-center gap-0.5 rounded border border-border bg-background/60 px-1 py-0.5 font-mono tabular-nums" :title="t('history.resultCount', { count: s.results.length })">
+                  <span class="inline-flex items-center gap-0.5 rounded border border-border bg-background/60 px-1 py-0.5 font-mono tabular-nums" :title="t('history.resultCount', { count: s.results.length })">
                     <Layers class="h-2.5 w-2.5" />
                     {{ s.results.length }}
                   </span>
                   <span class="ml-auto flex items-center gap-1">
                     <template v-if="s.results.some((r) => r.status === 'pending')">
-                    <span class="inline-flex items-center gap-0.5 rounded border border-accent/40 bg-accent/10 px-1 py-0.5 text-accent" :title="t('popup.status.translating')">
+                      <span class="inline-flex items-center gap-0.5 rounded border border-accent/40 bg-accent/10 px-1 py-0.5 text-accent" :title="t('popup.status.translating')">
                         <span class="h-1.5 w-1.5 rounded-full bg-accent" />
                       </span>
                     </template>
                     <template v-if="s.results.some((r) => r.status !== 'success') && !s.results.some((r) => r.status === 'pending')">
-                    <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-destructive" :title="t('history.errorCount', { count: s.results.filter((r) => r.status !== 'success').length })" />
+                      <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-destructive" :title="t('history.errorCount', { count: s.results.filter((r) => r.status !== 'success').length })" />
                     </template>
                   </span>
                 </div>
@@ -448,7 +496,7 @@ watch(activeFilter, () => {
         </aside>
 
         <!-- 右:详情 -->
-        <section class="flex min-w-0 flex-1 flex-col">
+        <section class="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overscroll-contain scrollbar-thin">
           <div v-if="!activeSession" class="flex flex-1 flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border py-16 text-center text-muted-foreground">
             <HistoryIcon class="h-6 w-6" />
             <p class="text-sm">{{ t('history.selectSession') }}</p>
@@ -461,7 +509,11 @@ watch(activeFilter, () => {
               <span class="ml-auto text-[11px] leading-none font-mono tabular-nums text-muted-foreground/50">{{ formatDetailTime(activeSession.timestamp) }}</span>
             </header>
 
-            <div class="flex flex-col gap-1.5">
+            <!-- 详情卡延后挂载：列表先出，Markdown 结果卡 idle 后再渲 -->
+            <div v-if="!detailReady" class="flex flex-col gap-2 py-6 text-center text-[12px] text-muted-foreground">
+              {{ t('history.loading') }}
+            </div>
+            <div v-else class="flex flex-col gap-1.5 pb-2">
               <SourceCardView
                 :text="activeSession.source"
                 :lang-label="langLabel(activeSession.sourceLang)"
@@ -531,6 +583,12 @@ watch(activeFilter, () => {
 
 .module-seg-item {
   transition: color 180ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 长列表跳过屏外布局/绘制，减轻切入时主线程压力 */
+.history-list-item {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 72px;
 }
 
 @media (prefers-reduced-motion: reduce) {

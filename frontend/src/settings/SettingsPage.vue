@@ -22,11 +22,26 @@ const props = withDefaults(defineProps<Props>(), {
   initialCategory: 'general',
 })
 
+/** 侧栏高亮（立即更新，驱动指示器动画）。 */
 const active = ref<string>(props.initialCategory)
+/**
+ * 主区实际渲染的分类。历史首屏较重（列表 + ResultCard Markdown），
+ * 首次切入时略晚于侧栏，避免与 280ms 导航指示器动画抢主线程。
+ */
+const contentActive = ref<string>(props.initialCategory)
+/** 历史是否已挂载过（再次进入可立即切换，配合 keep-alive）。 */
+let historyMountedOnce = props.initialCategory === 'history'
+let contentSwitchSeq = 0
+/** 与 SettingsSidebar 指示器 transition 对齐，略短以免内容空窗过长。 */
+const HISTORY_NAV_SETTLE_MS = 240
+
 watch(
   () => props.initialCategory,
   (value) => {
-    if (value) active.value = value
+    if (!value) return
+    active.value = value
+    contentActive.value = value
+    if (value === 'history') historyMountedOnce = true
   },
 )
 
@@ -37,6 +52,17 @@ const onUpdateActive = (value: string): void => {
     url.hash = value
     window.history.replaceState({}, '', url)
   }
+
+  const seq = ++contentSwitchSeq
+  if (value === 'history' && !historyMountedOnce) {
+    window.setTimeout(() => {
+      if (seq !== contentSwitchSeq) return
+      contentActive.value = value
+      historyMountedOnce = true
+    }, HISTORY_NAV_SETTLE_MS)
+    return
+  }
+  contentActive.value = value
 }
 
 const settings = useSettings()
@@ -117,15 +143,19 @@ onBeforeUnmount(() => {
   <SettingsLayout
     class="h-full min-h-0"
     :active="active"
+    :content-active="contentActive"
     @update:active="onUpdateActive"
   >
     <template #default="{ state }">
-      <GeneralPanel v-if="active === 'general'" :state="state" />
-      <TranslatePanel v-else-if="active === 'translate'" :state="state" />
-      <ShortcutPanel v-else-if="active === 'shortcut'" :state="state" />
-      <ServicesPanel v-else-if="active === 'services'" :state="state" />
-      <HistoryPanel v-else-if="active === 'history'" :state="state" />
-      <AdvancedPanel v-else :state="state" />
+      <GeneralPanel v-if="contentActive === 'general'" :state="state" />
+      <TranslatePanel v-else-if="contentActive === 'translate'" :state="state" />
+      <ShortcutPanel v-else-if="contentActive === 'shortcut'" :state="state" />
+      <ServicesPanel v-else-if="contentActive === 'services'" :state="state" />
+      <AdvancedPanel v-else-if="contentActive === 'advanced'" :state="state" />
+      <!-- keep-alive 须常挂：二次进入历史免整树重挂载；勿接入上方 v-else 链 -->
+      <keep-alive>
+        <HistoryPanel v-if="contentActive === 'history'" :state="state" />
+      </keep-alive>
     </template>
   </SettingsLayout>
 </template>
