@@ -30,7 +30,8 @@ const isServices = computed(() => props.active === 'services')
       <div
         :class="[
           'min-h-0 flex-1 p-2.5 scrollbar-thin',
-          isServices ? 'flex flex-col overflow-hidden' : 'overflow-y-auto',
+          // 稳定预留纵向滚动条槽，避免历史长短内容切换时 scrollbar 显隐导致整栏横向抖动
+          isServices ? 'flex flex-col overflow-hidden' : 'overflow-y-auto [scrollbar-gutter:stable]',
         ]"
       >
         <div
