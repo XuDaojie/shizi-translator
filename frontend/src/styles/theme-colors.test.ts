@@ -10,10 +10,10 @@ describe('theme color tokens', () => {
     expect(css).toContain('--color-popover-foreground: hsl(var(--popover-foreground));')
   })
 
-  it('defaults brand primary to orange and supports accent-blue override', () => {
+  it('uses fixed orange brand primary (no blue accent override)', () => {
     expect(css).toContain('--primary: 20 74% 48%;')
-    expect(css).toContain('html.accent-blue')
-    expect(css).toMatch(/html\.accent-blue[\s\S]*--primary:\s*222 70% 48%;/)
+    expect(css).not.toContain('accent-blue')
+    expect(css).not.toMatch(/--primary:\s*222 70% 48%;/)
   })
 
   it('keeps sidebar token white to match prototype nav (bg-card/40)', () => {

@@ -35,7 +35,6 @@ import {
 import { toast } from '@/lib/toast'
 import { createLogger } from '@public/logger.js'
 import { t } from '@/i18n'
-
 const STORAGE_KEY = 'app:settings:v1'
 const logger = createLogger('settings')
 /** 旧版本 key,首次启动时如有残留则迁移到新 key,确保用户数据不丢。 */
@@ -159,7 +158,6 @@ const buildDefaults = (): AppSettings => {
     general: {
       launchAtLogin: false,
       theme: 'system',
-      accentTheme: 'orange',
       language: 'auto',
       updateChannel: 'stable',
       autoCheckUpdate: true,
@@ -457,8 +455,9 @@ const loadFromStorage = (): AppSettings => {
       // 只保留当前 GeneralSettings 字段，丢掉历史死开关（startMinimized 等）
       general: {
         launchAtLogin: Boolean(g.launchAtLogin),
-        theme: g.theme ?? defaults.general.theme,
-        accentTheme: g.accentTheme === 'blue' ? 'blue' : 'orange',
+        theme: g.theme === 'light' || g.theme === 'dark' || g.theme === 'system'
+          ? g.theme
+          : defaults.general.theme,
         language: g.language ?? defaults.general.language,
         updateChannel: g.updateChannel === 'beta' ? 'beta' : 'stable',
         autoCheckUpdate: g.autoCheckUpdate ?? defaults.general.autoCheckUpdate,
@@ -650,15 +649,11 @@ const applyTheme = (): void => {
   const resolved =
     state.general.theme === 'system' ? (prefersDark ? 'dark' : 'light') : state.general.theme
   root.classList.toggle('dark', resolved === 'dark')
-  // 默认橙色：不挂 class；蓝色时挂 accent-blue
-  root.classList.toggle('accent-blue', state.general.accentTheme === 'blue')
+  // 品牌强调色固定橙色；清掉历史 accent-blue
+  root.classList.remove('accent-blue')
 }
 
-watch(
-  [() => state.general.theme, () => state.general.accentTheme],
-  applyTheme,
-  { immediate: true },
-)
+watch(() => state.general.theme, applyTheme, { immediate: true })
 watch(() => state.advanced.logLevel, (v) => logger.setLevel(v))
 
 /** 在指定 type 下生成下一个默认 name:`OpenAI`、`OpenAI 2`、`OpenAI 3` ... */

@@ -1,10 +1,12 @@
-# 设置页高保真原型同步（导航动效 · 服务详情 · 主题色）
+# 设置页高保真原型同步（导航动效 · 服务详情 · 主题）
 
 > 日期：2026-08-02  
-> 状态：已实现  
+> 状态：已实现（2026-08-03 再对齐：主题与主题色合并）  
 > 规模：M  
 > 原型源：`C:\Users\xdj\IdeaProjects\LLM\OpenDesignProjects\shizi\src`  
-> 策略：视觉与交互对齐原型；产品业务字段嵌回，不回退；主题色仅前端预览持久化
+> 策略：视觉与交互对齐原型；产品业务字段嵌回，不回退  
+>
+> **2026-08-03 原型再对齐：** 移除蓝色主题色与「主题色」选项；外观区仅保留「主题」（浅色/深色/跟随系统）；品牌强调色固定橙色；删除 `accentTheme` / `accent-blue` / `shared/accent-theme`。
 
 ## 1. 背景与目标
 
@@ -23,13 +25,11 @@
 |----|------|
 | 规模 | M：本对话确认后实现，不默认写 formal plan / 不跨对话 L 交接 |
 | 服务详情同步策略 | **尽量整页照搬原型版式**；多协议、接入路径、真实 Key 校验、i18n、`openExternal` 等产品能力 **嵌回** 骨架，禁止功能回退 |
-| 主题色默认 | **橙色**（与原型 `accent-orange` HSL 一致） |
-| 主题色选项 | **橙色** / **蓝色**（文案不用「柿子橙 / 默认蓝」） |
-| 主题色 UI | 通用 → 外观 → 「主题色」一行；**不**包在 DevOnly |
-| 主题色持久化 | 仅前端 `general.accentTheme`；走现有 settings store；**不进** Rust `AppConfig` |
+| 品牌强调色 | **固定橙色**（与原型 `accent-orange` HSL 一致）；**无**主题色切换 |
+| 主题 UI | 通用 → 外观 → 仅「主题」一行（浅色 / 深色 / 跟随系统）；**不**包在 DevOnly；**无**「主题色」 |
+| 主题持久化 | 仅前端 `general.theme`；走现有 settings store；**不进** Rust `AppConfig` |
 | 分类页切换 | 右侧内容 **无** 切换动画（与原型「点即到」一致）；动画仅限侧栏指示器 + 模块内 Tab/分段 |
 | OCR 详情 | 本轮以 Tab 指示器动画为主；OCR 内容区不强制大改 |
-| 浅色/深色主题 | 保持现网（DevOnly / wip），本轮不产品化 |
 
 ## 3. 范围
 
@@ -57,15 +57,15 @@
    - 折叠 **高级 · 提示词与推理**  
    - 危险操作、缺 Key 警告  
 
-5. **主题色**  
-   - `types`：`AccentTheme = 'orange' | 'blue'`，`GeneralSettings.accentTheme`，默认 `'orange'`  
-   - `main.css`：默认 primary/ring/accent 走橙色；蓝色用 class（如 `accent-blue`）覆盖；深色模式对称定义  
-   - store：`applyTheme` 同步 `dark` 与 accent class；watch `theme` + `accentTheme`  
-   - `GeneralPanel`：外观组增加主题色 `SettingSelect`  
-   - i18n：字段/描述/选项文案  
+5. **主题（外观）**  
+   - `types`：`ThemeMode = 'light' | 'dark' | 'system'`；**无** `AccentTheme` / `accentTheme`  
+   - `main.css`：primary/ring/accent **固定橙色**；深色模式对称提亮；**无** `accent-blue`  
+   - store：`applyTheme` 仅同步 `dark` class，并 `remove('accent-blue')` 清理历史  
+   - `GeneralPanel`：外观组仅「主题」`SettingSelect`  
+   - i18n：主题相关文案；已删除主题色键  
 
 6. **测试**  
-   - 主题 token / accent 默认与 class 切换（扩展现有 `theme-colors.test.ts` 或 store 单测）  
+   - 主题 token 断言固定橙色、不含蓝色覆盖（`theme-colors.test.ts`）  
    - 必要时补充 types/defaults 相关断言  
 
 ### 不做（YAGNI）
@@ -127,12 +127,11 @@ LLM / custom
 
 「整页照搬」= 上述版式与组件外观；**字段集合以产品 `ServiceMeta` / 实例为准**。
 
-### 4.5 主题色 CSS
+### 4.5 主题 CSS（固定橙色）
 
-浅色默认（橙色）：
+浅色（橙色，写入 `:root`）：
 
 ```css
-/* 写入 :root 主色，替换当前蓝系 primary */
 --primary: 20 74% 48%;
 --primary-foreground: 0 0% 100%;
 --ring: 20 74% 48%;
@@ -141,51 +140,41 @@ LLM / custom
 /* sidebar-primary / sidebar-accent / chart-1 等同主色族对齐 */
 ```
 
-蓝色覆盖（`html.accent-blue` 或 `html:not(...)` 策略二选一，实现时固定一种并写清）：
-
-```css
-html.accent-blue {
-  --primary: 222 70% 48%;
-  /* 对称覆盖 primary-foreground / ring / accent / sidebar-* */
-}
-```
-
-深色：默认橙提亮（对齐原型 `.dark.accent-orange` 量级）；`accent-blue` 深色用现网蓝系暗色值。
+深色：橙提亮（对齐原型 `.dark.accent-orange` 量级）。**无**蓝色覆盖 class。
 
 应用：
 
 ```ts
 root.classList.toggle('dark', resolved === 'dark')
-root.classList.toggle('accent-blue', state.general.accentTheme === 'blue')
-// 默认 orange：不挂 accent-blue 即可
+root.classList.remove('accent-blue') // 清理历史选择
 ```
 
 ## 5. 数据模型
 
 ```ts
-export type AccentTheme = 'orange' | 'blue'
+export type ThemeMode = 'light' | 'dark' | 'system'
 
 export interface GeneralSettings {
   // ...existing
-  /** 品牌强调色；仅前端，默认 orange */
-  accentTheme: AccentTheme
+  /** 浅色/深色/跟随系统；仅前端；品牌色固定橙 */
+  theme: ThemeMode
 }
 ```
 
-- 默认值：`accentTheme: 'orange'`  
-- 从持久化恢复：未知/缺省 → `'orange'`  
+- 默认值：`theme: 'system'`  
+- 从持久化恢复：未知/缺省 → `'system'`  
 - **不** 写入 `projectToAppConfig` / 后端  
+- **已移除** `accentTheme` / `AccentTheme`  
 
-## 6. i18n（最低集合）
+## 6. i18n（主题相关）
 
-中文（其它语言包同步键）：
+| key | 说明 |
+|-----|------|
+| `settings.field.theme` | 主题 |
+| `settings.description.theme` | 决定主窗口与设置页的色彩风格 |
+| `settings.option.light` / `dark` / `system` | 浅色 / 深色 / 跟随系统 |
 
-| key | 建议文案 |
-|-----|----------|
-| `settings.field.accentTheme` | 主题色 |
-| `settings.description.accentTheme` | 设置页与主界面的品牌强调色。 |
-| `settings.option.accentOrange` | 橙色 |
-| `settings.option.accentBlue` | 蓝色 |
+**已删除** `settings.field.accentTheme`、`settings.description.accentTheme`、`settings.option.accentOrange`、`settings.option.accentBlue`。
 
 服务详情若新增/改写分组标题（如「基础配置」），复用或新增 `settings.group.*` 键，避免硬编码中文（与现网 i18n 规范一致）。
 
@@ -204,8 +193,8 @@ export interface GeneralSettings {
 3. 历史筛选 Tab：分段 pill 滑动，列表即时切换  
 4. 打开 LLM 服务详情：版式接近原型单组基础配置 + 折叠高级；多协议/接入路径仍可用  
 5. 打开微软翻译：三栏能力 + 绿条，无 Key 表单  
-6. 默认主题色为橙色（primary 按钮、侧栏选中图标、Tab 下划线等）  
-7. 外观 → 主题色 可切蓝色并即时生效；重启设置页后选择仍在（前端持久化）  
+6. 品牌强调色固定为橙色（primary 按钮、侧栏选中图标、Tab 下划线等）；**无**蓝色主题色  
+7. 外观 → 仅「主题」可选浅色/深色/跟随系统；**无**「主题色」；重启设置页后主题选择仍在（前端持久化）  
 8. `prefers-reduced-motion: reduce` 下指示器无过渡动画  
 9. 前端 typecheck / 相关 vitest 通过  
 
@@ -224,10 +213,10 @@ export interface GeneralSettings {
 | `frontend/src/settings/SettingsSidebar.vue` | 滑动指示器 + 样式 |
 | `frontend/src/settings/panels/ServicesPanel.vue` | Tab 指示器 + 翻译详情版式 |
 | `frontend/src/settings/panels/HistoryPanel.vue` | 筛选分段指示器 |
-| `frontend/src/settings/panels/GeneralPanel.vue` | 主题色行 |
-| `frontend/src/settings/types.ts` | `AccentTheme` |
+| `frontend/src/settings/panels/GeneralPanel.vue` | 仅「主题」行 |
+| `frontend/src/settings/types.ts` | `ThemeMode`（无 accent） |
 | `frontend/src/settings/stores/settings.ts` | 默认值、恢复、applyTheme |
-| `frontend/src/styles/main.css` | 橙默认 + 蓝 class + 深色 |
+| `frontend/src/styles/main.css` | 固定橙 + 深色 |
 | `frontend/src/i18n/locales/*` | 文案键 |
 | `frontend/src/styles/theme-colors.test.ts` 等 | 断言 |
 

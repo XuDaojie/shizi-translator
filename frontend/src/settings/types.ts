@@ -1,8 +1,6 @@
 import type { ServiceProtocolId, WindowPrecreateConfig } from '@/types/config';
 
 export type ThemeMode = 'light' | 'dark' | 'system'
-/** 品牌强调色；仅前端持久化，默认 orange。 */
-export type AccentTheme = 'orange' | 'blue'
 export type UILanguage = 'auto' | 'zh-CN' | 'zh-TW' | 'en-US' | 'ja-JP' | 'ko-KR' | 'fr-FR' | 'de-DE' | 'es-ES' | (string & {})
 export type UpdateChannel = 'stable' | 'beta'
 export type LogLevel = 'error' | 'warn' | 'info' | 'debug'
@@ -10,9 +8,8 @@ export type LogLevel = 'error' | 'warn' | 'info' | 'debug'
 export interface GeneralSettings {
   /** 开机自启（已接后端 launchAtLogin → Windows Run）。 */
   launchAtLogin: boolean
+  /** 浅色 / 深色 / 跟随系统；品牌强调色固定橙色（与原型一致，无主题色选项）。 */
   theme: ThemeMode
-  /** 品牌强调色（设置页即时预览；不进 Rust AppConfig）。 */
-  accentTheme: AccentTheme
   language: UILanguage
   updateChannel: UpdateChannel
   autoCheckUpdate: boolean

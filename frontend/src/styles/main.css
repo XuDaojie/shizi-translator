@@ -6,7 +6,7 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* 默认品牌强调色：橙色（与 OpenDesign accent-orange 对齐）。蓝色见 html.accent-blue。 */
+/* 品牌强调色固定橙色（与 OpenDesign accent-orange / 原型一致）。 */
 :root {
   --background: 0 0% 100%;
   --foreground: 220 18% 18%;
@@ -44,21 +44,6 @@
   --sidebar-ring: 20 74% 48%;
   --sidebar-width: 188px;
   --content-max-width: 608px;
-}
-
-/* 浅色 · 蓝色 accent（可选主题色） */
-html.accent-blue {
-  --primary: 222 70% 48%;
-  --primary-foreground: 0 0% 100%;
-  --ring: 222 70% 48%;
-  --accent: 222 60% 96%;
-  --accent-foreground: 222 70% 38%;
-  --chart-1: 222 70% 48%;
-  --sidebar-primary: 222 70% 48%;
-  --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 222 60% 96%;
-  --sidebar-accent-foreground: 222 70% 38%;
-  --sidebar-ring: 222 70% 48%;
 }
 
 @theme inline {
@@ -140,22 +125,6 @@ html.accent-blue {
   --sidebar-accent-foreground: 20 90% 75%;
   --sidebar-border: 222 14% 20%;
   --sidebar-ring: 20 90% 60%;
-}
-
-/* 深色 · 蓝色 accent */
-html.dark.accent-blue,
-html.accent-blue.dark {
-  --primary: 222 80% 64%;
-  --primary-foreground: 222 30% 10%;
-  --ring: 222 80% 64%;
-  --accent: 222 24% 22%;
-  --accent-foreground: 222 80% 80%;
-  --chart-1: 222 80% 64%;
-  --sidebar-primary: 222 80% 64%;
-  --sidebar-primary-foreground: 222 30% 10%;
-  --sidebar-accent: 222 24% 22%;
-  --sidebar-accent-foreground: 222 80% 80%;
-  --sidebar-ring: 222 80% 64%;
 }
 
 @layer base {

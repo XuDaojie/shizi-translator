@@ -1,7 +1,6 @@
-/* 翻译弹窗设计 tokens：暖米白 / 灰文字 / 蓝 accent。
+/* 翻译弹窗设计 tokens：暖米白 / 灰文字 / 品牌橙色 accent。
    作用域：全局 :root，被 src/popup 组件 + src/settings/panels/HistoryPanel.vue 共同消费。
-   变量值与旧 frontend/public/translate.css 的 :root 一致（1:1 迁移），仅加 --popup- 前缀，
-   避免与 styles/main.css 的 shadcn HSL 变量（如 --border）冲突。 */
+   品牌强调色固定橙色（与设置页/原型一致，无主题色切换）。 */
 
 :root {
   --popup-bg-popup:      #F5F2EC;
@@ -16,9 +15,9 @@
   --popup-border:        #E6E2D8;
   --popup-border-2:      #D8D3C5;
 
-  --popup-accent:        #0078D4;
-  --popup-accent-hover:  #106EBE;
-  --popup-accent-soft:   rgba(0, 120, 212, 0.08);
+  --popup-accent:        #D55A1F;
+  --popup-accent-hover:  #B84A14;
+  --popup-accent-soft:   rgba(213, 90, 31, 0.10);
   --popup-success:       #107C10;
   --popup-warning:       #CA5010;
   --popup-danger:        #b42318;
@@ -32,4 +31,11 @@
   --popup-shadow-popup:  0 8px 24px rgba(28, 25, 23, 0.10), 0 1px 2px rgba(28, 25, 23, 0.04);
   --popup-shadow-card:   0 1px 2px rgba(28, 25, 23, 0.04);
   --popup-shadow-card-h: 0 2px 8px rgba(28, 25, 23, 0.07);
+}
+
+/* 深色 · 橙 accent */
+html.dark {
+  --popup-accent:        #FF8550;
+  --popup-accent-hover:  #FFA070;
+  --popup-accent-soft:   rgba(255, 133, 80, 0.18);
 }
