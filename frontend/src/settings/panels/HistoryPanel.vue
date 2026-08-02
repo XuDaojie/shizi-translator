@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watchEffect } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch, watchEffect } from 'vue'
 import { History as HistoryIcon, Trash2, Camera, ScanText, MousePointerSquareDashed, PencilLine, Layers } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import Dialog from '@/components/ui/dialog/Dialog.vue'
@@ -45,6 +45,33 @@ const FILTERS = computed(() => [
 const activeFilter = ref<'all' | HistoryTrigger>('all')
 const activeId = ref<string>('')
 const showClearConfirm = ref(false)
+
+/** 历史筛选分段 pill 指示器 */
+const filterBarRef = ref<HTMLElement | null>(null)
+const filterItemRefs = ref<Record<string, HTMLElement | null>>({})
+const filterIndicatorReady = ref(false)
+const filterIndicatorStyle = ref({ left: '0px', width: '0px', height: '0px', top: '0px' })
+
+const setFilterItemRef = (id: string, el: unknown): void => {
+  filterItemRefs.value[id] = (el as HTMLElement | null) ?? null
+}
+
+const updateFilterIndicator = (): void => {
+  const bar = filterBarRef.value
+  const item = filterItemRefs.value[activeFilter.value]
+  if (!bar || !item) return
+  const barRect = bar.getBoundingClientRect()
+  const itemRect = item.getBoundingClientRect()
+  filterIndicatorStyle.value = {
+    left: `${itemRect.left - barRect.left + bar.scrollLeft}px`,
+    top: `${itemRect.top - barRect.top + bar.scrollTop}px`,
+    width: `${itemRect.width}px`,
+    height: `${itemRect.height}px`,
+  }
+  filterIndicatorReady.value = true
+}
+
+let filterResizeObserver: ResizeObserver | null = null
 const sessions = ref<HistorySession[]>([])
 const loading = ref(false)
 const loadError = ref('')
@@ -269,12 +296,26 @@ onMounted(() => {
   const scroller = findScroller(rootRef.value?.parentElement ?? null)
   if (scroller) metricsObserver.observe(scroller)
   if (headerRef.value) metricsObserver.observe(headerRef.value)
+
+  nextTick(updateFilterIndicator)
+  if (typeof ResizeObserver !== 'undefined' && filterBarRef.value) {
+    filterResizeObserver = new ResizeObserver(() => updateFilterIndicator())
+    filterResizeObserver.observe(filterBarRef.value)
+  }
+  window.addEventListener('resize', updateFilterIndicator)
 })
 
 onBeforeUnmount(() => {
   isMounted = false
   metricsObserver?.disconnect()
   metricsObserver = null
+  filterResizeObserver?.disconnect()
+  filterResizeObserver = null
+  window.removeEventListener('resize', updateFilterIndicator)
+})
+
+watch(activeFilter, () => {
+  nextTick(updateFilterIndicator)
 })
 </script>
 
@@ -308,13 +349,28 @@ onBeforeUnmount(() => {
       <!-- 触发方式筛选（sticky 置顶，与原型对齐；清空作为筛选栏右侧次要操作） -->
       <div ref="headerRef" class="sticky top-0 z-30 shrink-0 bg-background pb-4">
         <div class="-mt-[10px] h-[10px] bg-background" aria-hidden="true" />
-        <div class="flex items-center gap-1 rounded-md border border-border bg-card p-1 text-[12px]">
+        <div
+          ref="filterBarRef"
+          class="relative flex items-center gap-1 rounded-md border border-border bg-card p-1 text-[12px]"
+          role="tablist"
+          :aria-label="t('history.filter.all')"
+        >
+          <span
+            aria-hidden="true"
+            class="module-seg-indicator pointer-events-none absolute z-0 rounded bg-accent"
+            :class="filterIndicatorReady ? 'module-seg-indicator--ready' : 'opacity-0'"
+            :style="filterIndicatorStyle"
+          />
           <button
             v-for="f in FILTERS"
             :key="f.id"
+            type="button"
+            role="tab"
+            :ref="(el) => setFilterItemRef(f.id, el)"
             :title="f.label"
-            class="flex h-7 items-center gap-1.5 rounded px-2.5 transition-colors"
-            :class="activeFilter === f.id ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'"
+            :aria-selected="activeFilter === f.id"
+            class="module-seg-item relative z-[1] flex h-7 items-center gap-1.5 rounded px-2.5"
+            :class="activeFilter === f.id ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'"
             @click="activeFilter = f.id"
           >
             <component :is="f.icon" class="h-3.5 w-3.5" />
@@ -322,13 +378,13 @@ onBeforeUnmount(() => {
           </button>
           <button
             type="button"
-          :title="t('settings.button.clearHistory')"
-            class="ml-auto flex h-7 items-center gap-1.5 rounded px-2.5 text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
+            :title="t('settings.button.clearHistory')"
+            class="relative z-[1] ml-auto flex h-7 items-center gap-1.5 rounded px-2.5 text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
             :disabled="clearing"
             @click="showClearConfirm = true"
           >
             <Trash2 class="h-3.5 w-3.5" />
-          <span class="whitespace-nowrap">{{ t('settings.button.clearHistory') }}</span>
+            <span class="whitespace-nowrap">{{ t('settings.button.clearHistory') }}</span>
           </button>
         </div>
       </div>
@@ -457,3 +513,30 @@ onBeforeUnmount(() => {
     </Dialog>
   </div>
 </template>
+
+<style scoped>
+/* 历史筛选分段 pill：只动指示器，列表瞬时切换 */
+.module-seg-indicator {
+  transition:
+    left 280ms cubic-bezier(0.16, 1, 0.3, 1),
+    top 280ms cubic-bezier(0.16, 1, 0.3, 1),
+    width 280ms cubic-bezier(0.16, 1, 0.3, 1),
+    height 280ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 160ms ease;
+}
+
+.module-seg-indicator--ready {
+  opacity: 1;
+}
+
+.module-seg-item {
+  transition: color 180ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .module-seg-indicator,
+  .module-seg-item {
+    transition: none !important;
+  }
+}
+</style>
