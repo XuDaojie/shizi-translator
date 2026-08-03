@@ -67,8 +67,8 @@ const contentClasses = cn(
     <SelectTrigger :class="triggerClasses">
       <SelectValue v-if="selectedLabel" :placeholder="placeholder">{{ selectedLabel }}</SelectValue>
       <SelectValue v-else :placeholder="placeholder" />
-      <SelectIcon class="ml-2 h-4 w-4 opacity-60">
-        <ChevronDown />
+      <SelectIcon class="ml-1.5 shrink-0 opacity-60">
+        <ChevronDown :size="14" />
       </SelectIcon>
     </SelectTrigger>
     <SelectPortal>
