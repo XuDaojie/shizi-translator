@@ -3,8 +3,9 @@
 ///
 /// 按行持续处理（不仅处理「头部」）：
 /// - 识别并吞掉 `【源语言：xxx】` 标记行（含行内嵌套）
-/// - 丢弃说明复读行、元标签行、原文回显行
+/// - 丢弃说明复读行、元标签行、原文回显行、恒等/专有名词译注
 /// - 其余行作为译文输出
+/// - 流结束时若无任何译文、但见过原文回显或恒等译注：保留一次原文（如 Windows）
 ///
 /// 这样即使模型在译文后又复读说明，也不会把垃圾拼进卡片。
 pub struct AutoLangHeaderParser {
@@ -13,6 +14,10 @@ pub struct AutoLangHeaderParser {
     source_text: Option<String>,
     /// 是否已输出过至少一行译文。
     emitted_content: bool,
+    /// 是否见过与原文完全相同的正文行（被当作回显丢弃）。
+    saw_source_echo: bool,
+    /// 是否见过「专有名词/无需翻译」类译注（暗示恒等译文）。
+    saw_identity_note: bool,
     /// 上一行已输出的非空译文（用于去掉模型反复粘贴的同一行；中间空行不打断去重）。
     last_content_line: Option<String>,
     /// 是否有待输出的段落空行（遇到下一个不同正文时再落成 `\n\n`）。
@@ -26,6 +31,8 @@ impl AutoLangHeaderParser {
             detected: None,
             source_text: None,
             emitted_content: false,
+            saw_source_echo: false,
+            saw_identity_note: false,
             last_content_line: None,
             pending_blank: false,
         }
@@ -47,9 +54,23 @@ impl AutoLangHeaderParser {
         self.drain_lines(false)
     }
 
-    /// 流结束：冲刷最后一行；返回检测到的语言。
+    /// 流结束：冲刷最后一行；若仅有原文回显/恒等译注则回退为恒等译文；返回检测到的语言。
     pub fn finish(&mut self) -> (Vec<String>, Option<String>) {
-        let pieces = self.drain_lines(true);
+        let mut pieces = self.drain_lines(true);
+        // 清洗后无译文，但见过回显或恒等译注：专有名词/无需改写，保留一次
+        if !self.emitted_content && (self.saw_source_echo || self.saw_identity_note) {
+            if let Some(identity) = self
+                .source_text
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+            {
+                self.emitted_content = true;
+                self.last_content_line = Some(identity.clone());
+                pieces.push(identity);
+            }
+        }
         (pieces, self.detected.clone())
     }
 
@@ -58,6 +79,26 @@ impl AutoLangHeaderParser {
             return false;
         };
         line.trim() == src.trim()
+    }
+
+    /// 若是原文回显则记标记并返回 true。
+    fn note_source_echo(&mut self, line: &str) -> bool {
+        if self.is_source_echo(line) {
+            self.saw_source_echo = true;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// 若是恒等/专有名词译注则记标记并返回 true。
+    fn note_identity_translator_note(&mut self, line: &str) -> bool {
+        if is_identity_translator_note(line) {
+            self.saw_identity_note = true;
+            true
+        } else {
+            false
+        }
     }
 
     fn drain_lines(&mut self, finalize: bool) -> Vec<String> {
@@ -132,26 +173,36 @@ impl AutoLangHeaderParser {
                 self.detected = Some(lang);
             }
             // 整行是说明复读：只记语言，不输出
-            if is_instruction_echo(trimmed) || is_meta_label(trimmed) {
+            if is_instruction_echo(trimmed)
+                || is_meta_label(trimmed)
+                || self.note_identity_translator_note(trimmed)
+            {
                 return None;
             }
             let rest = rest.trim();
             if rest.is_empty() {
                 return None;
             }
-            if is_instruction_echo(rest) || is_meta_label(rest) || self.is_source_echo(rest) {
+            if is_instruction_echo(rest)
+                || is_meta_label(rest)
+                || self.note_source_echo(rest)
+                || self.note_identity_translator_note(rest)
+            {
                 return None;
             }
             return Some(rest.to_string());
         }
 
-        // 说明复读 / 元标签（无嵌套标记）
-        if is_instruction_echo(trimmed) || is_meta_label(trimmed) {
+        // 说明复读 / 元标签 / 恒等译注（无嵌套标记）
+        if is_instruction_echo(trimmed)
+            || is_meta_label(trimmed)
+            || self.note_identity_translator_note(trimmed)
+        {
             return None;
         }
 
-        // 原文回显
-        if self.is_source_echo(trimmed) {
+        // 原文回显（finish 时若无其他译文会回退为恒等译文）
+        if self.note_source_echo(trimmed) {
             return None;
         }
 
@@ -211,6 +262,41 @@ fn is_meta_label(line: &str) -> bool {
             return true;
         }
     }
+    false
+}
+
+/// 模型对专有名词/无需改写内容的旁白译注（不是译文本身）。
+/// 例如：（在中文中保留了专有名词 "Windows"，后面无其他内容需要翻译，因此只包含该专有名词）
+fn is_identity_translator_note(line: &str) -> bool {
+    let t = line.trim();
+    if t.is_empty() {
+        return false;
+    }
+
+    const STRONG: &[&str] = &[
+        "保留了专有名词",
+        "保留专有名词",
+        "无其他内容需要翻译",
+        "只包含该专有名词",
+        "因此只包含",
+        "原样保留",
+        "保留原文",
+        "保持原文",
+        "不作翻译",
+        "无需翻译",
+        "不需要翻译",
+    ];
+    if STRONG.iter().any(|p| t.contains(p)) {
+        return true;
+    }
+
+    // 括号包裹且提及专有名词/不翻译：多为译注旁白
+    let paren = (t.starts_with('（') && t.ends_with('）'))
+        || (t.starts_with('(') && t.ends_with(')'));
+    if paren && (t.contains("专有名词") || t.contains("不翻译") || t.contains("无需译")) {
+        return true;
+    }
+
     false
 }
 
@@ -499,19 +585,66 @@ hello
     }
 
     #[test]
-    fn marker_then_source_only_body_emits_nothing() {
+    fn marker_then_source_only_body_keeps_identity() {
+        // 专有名词/恒等译文：清洗后若只剩原文，应保留一次，避免卡片空白
         let mut p = AutoLangHeaderParser::with_source("hello");
         let (text, detected) = feed_all(&mut p, "【源语言：英语】\nhello");
-        assert_eq!(text, "");
+        assert_eq!(text, "hello");
         assert_eq!(detected, Some("英语".to_string()));
     }
 
     #[test]
-    fn pure_source_echo_without_translation_emits_nothing() {
+    fn pure_source_echo_keeps_identity_translation() {
         let mut p = AutoLangHeaderParser::with_source("yes");
         let (text, detected) = feed_all(&mut p, "yes");
-        assert_eq!(text, "");
+        assert_eq!(text, "yes");
         assert_eq!(detected, None);
+    }
+
+    #[test]
+    fn windows_proper_noun_identity_not_empty() {
+        // 用户复现：原文 Windows + auto，模型常原样输出，不得清空卡片
+        let mut p = AutoLangHeaderParser::with_source("Windows");
+        let (text, detected) = feed_all(&mut p, "【源语言：英语】\nWindows");
+        assert_eq!(text, "Windows");
+        assert_eq!(detected, Some("英语".to_string()));
+    }
+
+    #[test]
+    fn windows_echo_plus_identity_note_keeps_only_windows() {
+        // 用户复现：先回显原文，再跟「保留专有名词」说明 → 不得把说明当译文
+        let mut p = AutoLangHeaderParser::with_source("Windows");
+        let input = "【源语言：英语】\nWindows\n（在中文中保留了专有名词 \"Windows\"，后面无其他内容需要翻译，因此只包含该专有名词）";
+        let (text, detected) = feed_all(&mut p, input);
+        assert_eq!(text, "Windows");
+        assert_eq!(detected, Some("英语".to_string()));
+        assert!(!text.contains("专有名词"), "不得含译注: {text}");
+    }
+
+    #[test]
+    fn identity_translator_note_only_keeps_source() {
+        // 模型只输出括号说明、不输出原文行：仍应回退为原文
+        let mut p = AutoLangHeaderParser::with_source("Windows");
+        let input = "【源语言：英语】\n（在中文中保留了专有名词 \"Windows\"，后面无其他内容需要翻译，因此只包含该专有名词）";
+        let (text, detected) = feed_all(&mut p, input);
+        assert_eq!(text, "Windows");
+        assert_eq!(detected, Some("英语".to_string()));
+    }
+
+    #[test]
+    fn real_translation_strips_trailing_identity_note() {
+        let mut p = AutoLangHeaderParser::with_source("hello world");
+        let input = "【源语言：英语】\n你好世界\n（专有名词保留原文，无需翻译）";
+        let (text, _) = feed_all(&mut p, input);
+        assert_eq!(text, "你好世界");
+    }
+
+    #[test]
+    fn legitimate_text_mentioning_proper_noun_is_kept() {
+        // 正文里出现「专有名词」四字不应被误杀
+        let mut p = AutoLangHeaderParser::with_source("x");
+        let (text, _) = feed_all(&mut p, "【源语言：英语】\n这是关于专有名词的研究");
+        assert_eq!(text, "这是关于专有名词的研究");
     }
 
     #[test]
@@ -527,5 +660,14 @@ hello
         let mut p = AutoLangHeaderParser::with_source("hi");
         let (text, _) = feed_all(&mut p, "【源语言：英语】\n第一段\n\n第二段");
         assert_eq!(text, "第一段\n\n第二段");
+    }
+
+    #[test]
+    fn marker_only_without_body_still_empty() {
+        // 仅有源语言标记、无正文：不应伪造译文
+        let mut p = AutoLangHeaderParser::with_source("Windows");
+        let (text, detected) = feed_all(&mut p, "【源语言：英语】");
+        assert_eq!(text, "");
+        assert_eq!(detected, Some("英语".to_string()));
     }
 }
