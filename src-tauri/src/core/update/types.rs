@@ -3,13 +3,14 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UpdateChannel {
     Stable,
-    Beta,
+    Nightly,
 }
 
 impl UpdateChannel {
     pub fn parse(s: &str) -> Self {
         match s.trim() {
-            "beta" => Self::Beta,
+            // 历史配置 `beta` 迁移为每日构建通道
+            "nightly" | "beta" => Self::Nightly,
             _ => Self::Stable,
         }
     }
@@ -17,7 +18,7 @@ impl UpdateChannel {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Stable => "stable",
-            Self::Beta => "beta",
+            Self::Nightly => "nightly",
         }
     }
 }

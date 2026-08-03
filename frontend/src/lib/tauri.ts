@@ -154,6 +154,8 @@ export interface CheckUpdateResult {
 }
 
 /** channel 缺省时后端读 AppConfig.updateChannel */
-export async function invokeCheckForUpdate(channel?: 'stable' | 'beta'): Promise<CheckUpdateResult> {
+export async function invokeCheckForUpdate(
+  channel?: 'stable' | 'nightly',
+): Promise<CheckUpdateResult> {
   return requireInvoke()<CheckUpdateResult>('check_for_update', channel ? { channel } : {})
 }

@@ -38,7 +38,7 @@ const languageOptions = computed(() => [
 
 const updateChannelOptions = computed(() => [
   { label: t('settings.option.stable'), value: 'stable' },
-  { label: 'Beta', value: 'beta' },
+  { label: t('settings.option.nightly'), value: 'nightly' },
 ])
 
 const checking = ref(false)

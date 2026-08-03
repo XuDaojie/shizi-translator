@@ -2,7 +2,7 @@ import type { ServiceProtocolId, WindowPrecreateConfig } from '@/types/config';
 
 export type ThemeMode = 'light' | 'dark' | 'system'
 export type UILanguage = 'auto' | 'zh-CN' | 'zh-TW' | 'en-US' | 'ja-JP' | 'ko-KR' | 'fr-FR' | 'de-DE' | 'es-ES' | (string & {})
-export type UpdateChannel = 'stable' | 'beta'
+export type UpdateChannel = 'stable' | 'nightly'
 export type LogLevel = 'error' | 'warn' | 'info' | 'debug'
 
 export interface GeneralSettings {

@@ -54,7 +54,8 @@ fn default_update_channel() -> String {
 
 fn normalize_update_channel(value: String) -> String {
     match value.trim() {
-        "beta" => "beta".to_string(),
+        // 历史 `beta` 迁移为每日构建通道
+        "nightly" | "beta" => "nightly".to_string(),
         _ => "stable".to_string(),
     }
 }
@@ -1201,9 +1202,19 @@ mod tests {
     }
 
     #[test]
-    fn app_config_normalized_rejects_invalid_update_channel() {
+    fn app_config_normalized_accepts_nightly_and_migrates_beta() {
         let mut config = AppConfig::default();
         config.update_channel = "nightly".into();
+        assert_eq!(config.clone().normalized().update_channel, "nightly");
+
+        config.update_channel = "beta".into();
+        assert_eq!(config.normalized().update_channel, "nightly");
+    }
+
+    #[test]
+    fn app_config_normalized_rejects_invalid_update_channel() {
+        let mut config = AppConfig::default();
+        config.update_channel = "canary".into();
         let config = config.normalized();
         assert_eq!(config.update_channel, "stable");
     }

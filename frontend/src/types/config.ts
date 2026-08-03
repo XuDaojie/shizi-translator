@@ -72,7 +72,7 @@ export interface AppConfig {
   windowPrecreate: WindowPrecreateConfig;
   collectUsage: boolean;
   logLevel: LogLevel;
-  updateChannel: 'stable' | 'beta';
+  updateChannel: 'stable' | 'nightly';
   autoCheckUpdate: boolean;
   /** 登录系统后自动启动（Windows Run 键）。旧 config 可能缺省。 */
   launchAtLogin?: boolean;

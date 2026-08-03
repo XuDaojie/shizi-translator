@@ -101,9 +101,9 @@ jobs:
             console.error(`无法从 tauri.conf.json 解析基础版本: ${conf.version}`);
             process.exit(1);
           }
-          // 版本串首段 pre 必须为 nightly（应用内 is_nightly_build 依赖此约定）。
-          // 仍挂在当前 base 上：`0.7.0-nightly.*`；检查更新侧会跳过 Nightly，
-          // 避免 semver 下 pre < 同号正式版 的误报。
+          // 版本串首段 pre 必须为 nightly（应用内 is_nightly_build / 每日构建通道依赖此约定）。
+          // 仍挂在当前 base 上：`0.7.0-nightly.*`。stable 通道下运行 nightly 包时不会误报升同号正式版；
+          // nightly 通道从滚动 tag 资产名解析本版本并比较。
           const nightly = `${base}-nightly.${process.env.DATE_COMPACT}.${process.env.SHORT_SHA}`;
           conf.version = nightly;
           fs.writeFileSync(confPath, `${JSON.stringify(conf, null, 2)}\n`);
@@ -223,7 +223,7 @@ jobs:
 
             安装包文件名形如 `Shizi_{version}_x64-setup.exe`，其中 version 含 `nightly` 段，**不会**与正式版 `Shizi_x.y.z_x64-setup.exe` 同名。
 
-            本构建为**轻量包**（与正式版 `*-setup.exe` 同类，不含 WebView2 离线完整安装器）。需要完整包请用正式版 / Beta Release 中的 `*-setup-full.exe`。
+            本构建为**轻量包**（与正式版 `*-setup.exe` 同类，不含 WebView2 离线完整安装器）。需要完整包请用正式版 Release 中的 `*-setup-full.exe`。
 
             ## 系统要求
 
@@ -231,10 +231,10 @@ jobs:
             - [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)（Windows 11 通常已预装）
             - 截图 OCR 使用系统 Windows OCR 时，需安装对应语言的 OCR 语言包（中英混合场景尤其需要）
 
-            **仅供尝鲜，不保证稳定。** 日常使用请下载正式版 / Beta：
+            **仅供尝鲜，不保证稳定。** 日常使用请下载正式版：
             https://github.com/${{ github.repository }}/releases
 
-            应用内「检查更新」**不会**提示本包（固定 tag `nightly` 非 semver，且 stable/beta 通道均不会选中它）。
+            应用内将更新通道设为「每日构建」（`nightly`）后，「检查更新」会识别本滚动 Release（从安装包文件名解析 `*-nightly.*` 版本）。
           files: src-tauri/target/release/bundle/nsis/*-setup.exe
           fail_on_unmatched_files: true
         env:

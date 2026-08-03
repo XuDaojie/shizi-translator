@@ -22,7 +22,7 @@
 
 - 事实来源：`config.json` 的 `services[]`（`protocol` / `endpoint` / `model` / `apiKey` / `enabled`）。旧单 provider 路径已废弃。
 - 协议 id：`openai_chat` / `claude_messages` / `mock` / `microsoft_edge`。映射在 `core/translation/protocol.rs` 的 `provider_for_service`；未知协议报错。`microsoft_edge` 经 `BatchTranslateProvider` + `StreamingAdapter` 适配流式。
-- `AppConfig` 另含 `updateChannel`（`stable`/`beta`）、`autoCheckUpdate`（默认 `true`）、`launchAtLogin`（默认 `false`）、`markdownRender`（默认 `true`，控制弹窗/历史结果 Markdown 渲染）、`removeBlankLines`（默认 `false`，弹窗「去除空行」偏好）、`showCloseButton`（默认 `true`，弹窗工具栏关闭按钮）、`showInTaskbar`（默认 `false`，弹窗任务栏/Alt+Tab 显隐）；前后端经 `projectToAppConfig` / `syncFromBackend` 同步。
+- `AppConfig` 另含 `updateChannel`（`stable`/`nightly`；历史 `beta` 迁移为 `nightly`）、`autoCheckUpdate`（默认 `true`）、`launchAtLogin`（默认 `false`）、`markdownRender`（默认 `true`，控制弹窗/历史结果 Markdown 渲染）、`removeBlankLines`（默认 `false`，弹窗「去除空行」偏好）、`showCloseButton`（默认 `true`，弹窗工具栏关闭按钮）、`showInTaskbar`（默认 `false`，弹窗任务栏/Alt+Tab 显隐）；前后端经 `projectToAppConfig` / `syncFromBackend` 同步。
 - 翻译弹窗工具栏「关闭」：`destroy` 销毁 WebView（非 hide）；设置项 `showCloseButton` 控制显隐。系统 CloseRequested 仍经 `attach_close_to_hide` 改为 hide（无系统标题栏时主要影响程序化 close）。
 - 弹窗任务栏：`build_popup` 用 `skip_taskbar(!show_in_taskbar)`；`save_app_config` 调用 `apply_popup_taskbar_visibility` 热更新已存在窗口。
 - 开机自启：`launchAtLogin` → `app/autostart.rs` 写 HKCU `...\Run\Shizi`（命令带 `--autostart`）；`save_app_config` 与启动 setup 均同步；托盘/关窗 hide 为硬编码产品行为，设置页不再提供「最小化启动 / 托盘显隐 / 关闭行为」开关。
@@ -60,7 +60,10 @@
 - 翻译/配置：`start_translation`、`take_pending_source_text`、`get_app_config`、`save_app_config`、`get_shortcut_conflicts`
 - Overlay：`get_capture_frame_meta` / `get_capture_frame_bytes` / `submit_capture_region` / `cancel_capture`
 - 日志：`write_frontend_log` / `export_logs`；Edge：`save_edge_translate_env`
-- 更新：`check_for_update`（可选 `channel`；缺省读 `AppConfig.updateChannel`）；启动 `spawn_startup_update_check`（`autoCheckUpdate` 时系统 dialog + `open_url`）。通道仅 `stable`/`beta`；CI 滚动 `nightly`（`.github/workflows/nightly.yml`，tag `nightly` 非 semver；包版本 `*-nightly.*`）。`evaluate_check` 对当前版本 pre 首段为 `nightly` 直接 `up_to_date`，避免 semver 误报「可升级到同号正式版」。有可用更新时 `releaseUrl` **优先** GitHub asset 中的轻量 NSIS（`*-setup.exe` 且不含 `full`），无 asset 时回退 release 页。
+- 更新：`check_for_update`（可选 `channel`；缺省读 `AppConfig.updateChannel`）；启动 `spawn_startup_update_check`（`autoCheckUpdate` 时系统 dialog + `open_url`）。通道仅 **`stable` / `nightly`（UI：正式版 / 每日构建）**；无独立 Beta 通道（历史配置 `beta` → `nightly`）。  
+  - **stable**：只选无 pre、非 GitHub prerelease 的正式 Release。当前已是 `*-nightly.*` 时不提示「升到同号正式版」（semver 会误报）。  
+  - **nightly**：只选每日构建——滚动 tag `nightly`（版本从资产名 `Shizi_{version}_…-setup.exe` 解析）或 tag 本身为 `*-nightly.*`；**不含** beta/正式。当前为正式版而通道为 nightly 时，即使 semver 上 nightly < 同号正式版也会提示切换。当前为 nightly 时按 semver 比新旧。  
+  - CI：`.github/workflows/nightly.yml`，tag `nightly` 非 semver，包版本 `*-nightly.*`。有可用更新时 `releaseUrl` **优先** 轻量 NSIS（`*-setup.exe` 且不含 `full`），无 asset 时回退 release 页。
 - 发版双包：轻量 `*-setup.exe`（`webviewInstallMode: downloadBootstrapper`，`tauri.conf.json`）+ 完整 `*-setup-full.exe`（`offlineInstaller`，合并 `tauri.conf.full.json`，构建后改名）。本地/CI：`npm run tauri:build:dual`（`scripts/build-nsis-dual.js`）；`.github/workflows/release.yml` 上传双包；`nightly.yml` 仅轻量。完整包装系统级 Evergreen Runtime，非 Fixed/应用私有。
 - 事件：`translation:event` → `Started` / `Delta` / `Finished` / `Failed` / `Cancelled` / `OcrStarted`（截图译识别中）
 - 取消：`cancel_translation`（翻译中）/ `cancel_ocr`（截图译识别中）

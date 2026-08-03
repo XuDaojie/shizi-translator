@@ -9,6 +9,7 @@ import type {
   ServiceId,
   ServiceInstance,
   ServiceMeta,
+  UpdateChannel,
 } from '../types'
 import type { AppConfig, OcrServiceInstanceConfig, ServiceInstanceConfig } from '@/types/config'
 import {
@@ -37,6 +38,12 @@ import { createLogger } from '@public/logger.js'
 import { t } from '@/i18n'
 const STORAGE_KEY = 'app:settings:v1'
 const logger = createLogger('settings')
+
+/** 配置通道：`nightly`；历史 `beta` 迁到每日构建。 */
+function normalizeUpdateChannel(value: unknown): UpdateChannel {
+  return value === 'nightly' || value === 'beta' ? 'nightly' : 'stable'
+}
+
 /** 旧版本 key,首次启动时如有残留则迁移到新 key,确保用户数据不丢。 */
 const LEGACY_STORAGE_KEYS = ['shizi:settings:v1']
 
@@ -459,7 +466,7 @@ const loadFromStorage = (): AppSettings => {
           ? g.theme
           : defaults.general.theme,
         language: g.language ?? defaults.general.language,
-        updateChannel: g.updateChannel === 'beta' ? 'beta' : 'stable',
+        updateChannel: normalizeUpdateChannel(g.updateChannel),
         autoCheckUpdate: g.autoCheckUpdate ?? defaults.general.autoCheckUpdate,
       },
       windowPrecreate: parsed.windowPrecreate ?? defaults.windowPrecreate,
@@ -759,8 +766,7 @@ export const useSettings = () => ({
         backend.ocrServices ?? [],
       )
       state.general.language = backend.interfaceLanguage
-      state.general.updateChannel =
-        backend.updateChannel === 'beta' ? 'beta' : 'stable'
+      state.general.updateChannel = normalizeUpdateChannel(backend.updateChannel)
       state.general.autoCheckUpdate =
         backend.autoCheckUpdate ?? state.general.autoCheckUpdate
       state.general.launchAtLogin =

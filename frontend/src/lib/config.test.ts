@@ -220,10 +220,10 @@ describe('projectToAppConfig', () => {
 
   it('投影 updateChannel 与 autoCheckUpdate', () => {
     const state = makeState([]);
-    state.general.updateChannel = 'beta';
+    state.general.updateChannel = 'nightly';
     state.general.autoCheckUpdate = false;
     const config = projectToAppConfig(state);
-    expect(config.updateChannel).toBe('beta');
+    expect(config.updateChannel).toBe('nightly');
     expect(config.autoCheckUpdate).toBe(false);
   });
 

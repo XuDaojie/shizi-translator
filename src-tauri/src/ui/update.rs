@@ -94,7 +94,7 @@ pub fn spawn_startup_update_check(app: tauri::AppHandle) {
         let pre = result.is_prerelease.unwrap_or(false);
         let body = if pre {
             format!(
-                "发现新版本 {latest}（预发布）。\n当前版本 {}。\n是否前往下载页？",
+                "发现新版本 {latest}（每日构建）。\n当前版本 {}。\n是否前往下载页？",
                 result.current_version
             )
         } else {
