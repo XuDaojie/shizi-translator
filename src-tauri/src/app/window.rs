@@ -10,12 +10,25 @@ pub const SETTINGS_INITIAL_VISIBLE: bool = false;
 
 /// 仅用于高频/托盘驻留窗（`main`）：关窗改为 hide，不销毁 WebView。
 /// 设置页与文字识别等低频窗不要挂此钩子，关闭即销毁。
+/// hide / destroy 时取消进行中的截图翻译 OCR（识别中关窗不写回结果）。
 pub(crate) fn attach_close_to_hide(window: &WebviewWindow) {
     let window_to_hide = window.clone();
+    let app = window.app_handle().clone();
     window.on_window_event(move |event| {
-        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-            api.prevent_close();
-            let _ = window_to_hide.hide();
+        match event {
+            tauri::WindowEvent::CloseRequested { api, .. } => {
+                api.prevent_close();
+                if let Some(state) = app.try_state::<crate::app::state::AppState>() {
+                    let _ = state.cancel_current_ocr();
+                }
+                let _ = window_to_hide.hide();
+            }
+            tauri::WindowEvent::Destroyed => {
+                if let Some(state) = app.try_state::<crate::app::state::AppState>() {
+                    let _ = state.cancel_current_ocr();
+                }
+            }
+            _ => {}
         }
     });
 }

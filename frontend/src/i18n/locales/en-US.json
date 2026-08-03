@@ -155,6 +155,7 @@
     "popup.status.ready": "Ready",
     "popup.status.detecting": "Detecting…",
     "popup.status.translating": "Translating…",
+    "popup.status.recognizing": "Recognizing text…",
     "popup.status.completed": "Translation complete",
     "popup.status.partial": "Partially complete",
     "popup.status.failed": "Translation failed",

@@ -214,6 +214,7 @@ mod tests {
             TranslationEvent::Finished { .. } => "finished",
             TranslationEvent::Failed { .. } => "failed",
             TranslationEvent::Cancelled { .. } => "cancelled",
+            TranslationEvent::OcrStarted => "ocrStarted",
         }).collect();
 
         assert!(types.contains(&"cancelled"), "应 emit Cancelled: {:?}", types);
@@ -245,6 +246,7 @@ mod tests {
             TranslationEvent::Finished { .. } => "finished",
             TranslationEvent::Failed { .. } => "failed",
             TranslationEvent::Cancelled { .. } => "cancelled",
+            TranslationEvent::OcrStarted => "ocrStarted",
         }).collect();
 
         assert!(types.contains(&"finished"), "未取消应 emit Finished: {:?}", types);

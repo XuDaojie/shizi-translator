@@ -203,6 +203,8 @@ pub enum TranslationEvent {
         #[serde(flatten)]
         service: TranslationServiceMeta,
     },
+    /// 截图翻译：框选提交后、OCR 开始前通知弹窗进入「识别中」。
+    OcrStarted,
 }
 
 #[cfg(test)]
@@ -539,6 +541,13 @@ mod tests {
         assert_eq!(payload["sessionId"], "session-cancel-1");
         assert_eq!(payload["serviceInstanceId"], "test");
         assert!(payload.get("session_id").is_none());
+    }
+
+    #[test]
+    fn ocr_started_event_serializes_as_type_only() {
+        let payload =
+            serde_json::to_value(TranslationEvent::OcrStarted).expect("事件应可序列化");
+        assert_eq!(payload, serde_json::json!({ "type": "ocrStarted" }));
     }
 
     #[test]

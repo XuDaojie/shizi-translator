@@ -8,6 +8,8 @@ function makeHarness(listenOverride?: ReturnType<typeof vi.fn>) {
   const state = { isTranslating: false, batchId: null as string | null }
   const calls = {
     started: [] as Array<{ payload: TranslationEventPayload; isNewBatch: boolean }>,
+    ocrStarted: 0,
+    globalFailed: [] as string[],
     batchStatus: 0,
     detected: [] as Array<string | null>,
     config: [] as Array<unknown>,
@@ -27,6 +29,8 @@ function makeHarness(listenOverride?: ReturnType<typeof vi.fn>) {
     getCurrentBatchId: () => state.batchId,
     setCurrentBatchId: (id) => { state.batchId = id },
     onStarted: (payload, isNewBatch) => { calls.started.push({ payload, isNewBatch }); state.isTranslating = true },
+    onOcrStarted: () => { calls.ocrStarted++ },
+    onGlobalFailed: (msg) => { calls.globalFailed.push(msg) },
     onBatchStatusChange: () => { calls.batchStatus++ },
     onDetectedLang: (lang) => { calls.detected.push(lang) },
     onConfigChanged: (cfg) => { calls.config.push(cfg) },
@@ -119,6 +123,24 @@ describe('useTranslationEvents.dispatch', () => {
     h.dispatch({ type: 'started', sessionId: 'batch-1:svc-b', serviceInstanceId: 'svc-b', serviceName: 'B', serviceType: 'claude' })
     expect(h.cards.get('svc-a')!.text).toBe('保留')
     expect(h.cards.get('svc-b')!.status).toBe('translating')
+  })
+
+  it('ocrStarted 重置卡片并回调 onOcrStarted', () => {
+    const h = makeHarness()
+    h.dispatch({ type: 'started', sessionId: 'batch-1:svc-a', serviceInstanceId: 'svc-a', serviceName: 'A', serviceType: 'openai' })
+    h.dispatch({ type: 'delta', sessionId: 'batch-1:svc-a', serviceInstanceId: 'svc-a', text: '旧' })
+    h.dispatch({ type: 'ocrStarted' })
+    expect(h.calls.ocrStarted).toBe(1)
+    expect(h.state.batchId).toBeNull()
+    expect(h.state.isTranslating).toBe(false)
+    expect(h.cards.get('svc-a')!.text).toBe('')
+    expect(h.cards.get('svc-a')!.status).toBe('pending')
+  })
+
+  it('无 batch 的全局 failed 走 onGlobalFailed', () => {
+    const h = makeHarness()
+    h.dispatch({ type: 'failed', sessionId: 'selection-error', serviceInstanceId: 'default', message: 'OCR 识别失败' })
+    expect(h.calls.globalFailed).toEqual(['OCR 识别失败'])
   })
 })
 

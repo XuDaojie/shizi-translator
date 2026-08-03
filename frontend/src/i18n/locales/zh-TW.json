@@ -170,6 +170,7 @@
     "popup.status.ready": "準備好了",
     "popup.status.detecting": "檢測…",
     "popup.status.translating": "翻譯…",
+    "popup.status.recognizing": "正在識別文字…",
     "popup.status.completed": "翻譯完成",
     "popup.status.partial": "部分完成",
     "popup.status.failed": "翻譯失敗",

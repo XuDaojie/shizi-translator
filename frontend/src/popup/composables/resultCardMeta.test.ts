@@ -59,6 +59,7 @@ describe('resultCardMeta', () => {
       ready: 'popup.status.ready',
       detecting: 'popup.status.detecting',
       translating: 'popup.status.translating',
+      recognizing: 'popup.status.recognizing',
       emptySource: 'popup.error.emptySource',
       retry: 'popup.button.retry',
       cancel: 'popup.button.cancel',

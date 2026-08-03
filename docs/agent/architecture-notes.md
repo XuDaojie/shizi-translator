@@ -52,6 +52,7 @@
 - `Alt+D` 划词翻译：主键释放后等修饰键全松再 Ctrl+C；成功取词才 show 弹窗。
 - `Alt+S` 截图 OCR 翻译；独立文字识别默认无快捷键（托盘入口；用户可在设置绑定，不翻译、不写历史）。
 - `CapturePurpose`：`Translate` | `RecognizeOnly`，在 `submit_capture_region` 分叉。
+- **截图翻译（Translate）空窗消除**：框选提交后**立刻** `show_translation_popup` + emit `translation:event` `ocrStarted`，再 await OCR；成功后 `start_translation_from_input`。OCR 占用独立 `ocr_pipeline_generation` / `ocr_cancel_token`（不占 `translation_busy`）；`finish_capture` 在 OCR 前释放。关窗 hide/destroy、`cancel_ocr`、新一轮截图均 `cancel_current_ocr`（递增 generation），已取消任务不得进入翻译。规格：`docs/superpowers/specs/2026-08-03-screenshot-ocr-popup-early-show-design.md`。
 - 启动注册 best-effort，冲突记入 `shortcut_conflicts`；保存路径 all-or-nothing。新快捷键须同步 `capabilities/default.json`。
 
 ## 前后端通信（摘要）
@@ -61,7 +62,8 @@
 - 日志：`write_frontend_log` / `export_logs`；Edge：`save_edge_translate_env`
 - 更新：`check_for_update`（可选 `channel`；缺省读 `AppConfig.updateChannel`）；启动 `spawn_startup_update_check`（`autoCheckUpdate` 时系统 dialog + `open_url`）。通道仅 `stable`/`beta`；CI 滚动 `nightly`（`.github/workflows/nightly.yml`，tag `nightly` 非 semver；包版本 `*-nightly.*`）。`evaluate_check` 对当前版本 pre 首段为 `nightly` 直接 `up_to_date`，避免 semver 误报「可升级到同号正式版」。有可用更新时 `releaseUrl` **优先** GitHub asset 中的轻量 NSIS（`*-setup.exe` 且不含 `full`），无 asset 时回退 release 页。
 - 发版双包：轻量 `*-setup.exe`（`webviewInstallMode: downloadBootstrapper`，`tauri.conf.json`）+ 完整 `*-setup-full.exe`（`offlineInstaller`，合并 `tauri.conf.full.json`，构建后改名）。本地/CI：`npm run tauri:build:dual`（`scripts/build-nsis-dual.js`）；`.github/workflows/release.yml` 上传双包；`nightly.yml` 仅轻量。完整包装系统级 Evergreen Runtime，非 Fixed/应用私有。
-- 事件：`translation:event` → `Started` / `Delta` / `Finished` / `Failed`
+- 事件：`translation:event` → `Started` / `Delta` / `Finished` / `Failed` / `Cancelled` / `OcrStarted`（截图译识别中）
+- 取消：`cancel_translation`（翻译中）/ `cancel_ocr`（截图译识别中）
 
 ## 历史与日志
 

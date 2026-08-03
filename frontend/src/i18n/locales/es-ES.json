@@ -170,6 +170,7 @@
     "popup.status.ready": "Listo",
     "popup.status.detecting": "Detectando…",
     "popup.status.translating": "Traduciendo…",
+    "popup.status.recognizing": "Reconociendo texto…",
     "popup.status.completed": "Traducción completa",
     "popup.status.partial": "Parcialmente completo",
     "popup.status.failed": "La traducción falló",

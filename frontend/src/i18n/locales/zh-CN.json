@@ -155,6 +155,7 @@
     "popup.status.ready": "就绪",
     "popup.status.detecting": "检测中…",
     "popup.status.translating": "翻译中…",
+    "popup.status.recognizing": "正在识别文字…",
     "popup.status.completed": "翻译完成",
     "popup.status.partial": "部分完成",
     "popup.status.failed": "翻译失败",

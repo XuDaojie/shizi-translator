@@ -356,6 +356,12 @@ pub async fn cancel_translation(state: tauri::State<'_, AppState>) -> Result<(),
     state.cancel_current_translation()
 }
 
+/// 取消截图翻译的 OCR 阶段（识别中 StatusBar「取消」/ 与关窗语义一致）。
+#[tauri::command]
+pub async fn cancel_ocr(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    state.cancel_current_ocr()
+}
+
 #[tauri::command]
 pub async fn retry_translation(
     app: tauri::AppHandle,

@@ -4,8 +4,12 @@ use crate::{
     app::state::{AppState, CapturePurpose},
     core::config::AppConfig,
     core::ocr::OcrHints,
+    core::translation::TranslationEvent,
     platform::{recognize_cropped_full, recognize_region},
-    ui::web_popup::{show_translation_error, show_translation_popup, start_translation_from_input},
+    ui::web_popup::{
+        emit_translation_event, show_translation_error, show_translation_popup,
+        start_translation_from_input,
+    },
 };
 
 pub const OVERLAY_LABEL: &str = "screenshot-overlay";
@@ -151,16 +155,51 @@ pub async fn submit_capture_region(
     let purpose = state.capture_purpose();
     match purpose {
         CapturePurpose::Translate => {
-            let result =
-                recognize_region(&frame, region, OcrHints::default(), &config.ocr_services).await;
+            // 尽早释放截图锁：OCR 不再占用 capture，允许识别中再开截图（会 cancel 旧 OCR）。
             let _ = state.finish_capture();
+
+            let cancel = tokio_util::sync::CancellationToken::new();
+            let generation = match state.begin_ocr_overriding(cancel.clone()) {
+                Ok(g) => g,
+                Err(e) => {
+                    show_translation_error(&app, e);
+                    return Ok(());
+                }
+            };
+
+            // 先开弹窗再 OCR，消除空窗；识别中态由 OcrStarted 驱动。
+            let _ = show_translation_popup(&app, &config);
+            let _ = emit_translation_event(&app, TranslationEvent::OcrStarted);
+
+            let result = tokio::select! {
+                _ = cancel.cancelled() => {
+                    let _ = state.finish_ocr_if_current(generation);
+                    return Ok(());
+                }
+                r = recognize_region(
+                    &frame,
+                    region,
+                    OcrHints::default(),
+                    &config.ocr_services,
+                ) => r,
+            };
+
+            // 关窗 / 新一轮 OCR 会 cancel 并递增 generation：丢弃结果，禁止进入翻译。
+            if cancel.is_cancelled() || !state.is_ocr_generation_current(generation) {
+                let _ = state.finish_ocr_if_current(generation);
+                return Ok(());
+            }
+            let _ = state.finish_ocr_if_current(generation);
+            if !state.is_ocr_generation_current(generation) {
+                return Ok(());
+            }
+
             let app_state = state.inner();
             match result {
                 // recognize_cropped_for_translation 永不返回 Ok(None)（空文本走 Err(EmptyResult)）；
                 // 此分支若被触达即契约违反，报错而非静默吞掉。
                 Ok(None) => show_translation_error(&app, "未识别到文本"),
                 Ok(Some(input)) => {
-                    let _ = show_translation_popup(&app, &config);
                     if let Err(error) = start_translation_from_input(input, app.clone(), app_state) {
                         show_translation_error(&app, error);
                     }

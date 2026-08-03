@@ -26,7 +26,7 @@ export interface CardState {
 }
 
 export interface TranslationEventPayload {
-  type: 'started' | 'delta' | 'finished' | 'failed' | 'cancelled'
+  type: 'started' | 'delta' | 'finished' | 'failed' | 'cancelled' | 'ocrStarted'
   sessionId?: string
   serviceInstanceId?: string
   serviceName?: string
@@ -50,6 +50,10 @@ export interface UseTranslationEventsOptions {
   setCurrentBatchId: (id: string | null) => void
   /** started 事件（含 isNewBatch 标志）-- 由父组件回填 sourceText/sourceBadge/langBadge/状态栏。 */
   onStarted: (payload: TranslationEventPayload, isNewBatch: boolean) => void
+  /** 截图翻译 OCR 开始：弹窗进入「识别中」。 */
+  onOcrStarted: () => void
+  /** 无匹配卡片的全局失败（如 OCR 失败 selection-error）→ 状态栏展示。 */
+  onGlobalFailed?: (message: string) => void
   /** finished/failed/cancelled 后调用--由父组件更新状态栏（updateBatchStatus）。 */
   onBatchStatusChange: () => void
   /** source=auto 且收到 detectedSourceLang 时上抛（更新 .lang-badge）。 */
@@ -110,6 +114,14 @@ export interface UseTranslationEventsReturn {
 export function useTranslationEvents(opts: UseTranslationEventsOptions): UseTranslationEventsReturn {
   const dispatch = (payload: TranslationEventPayload): void => {
     switch (payload.type) {
+      case 'ocrStarted': {
+        opts.logger.info('截图 OCR 识别开始')
+        opts.setCurrentBatchId(null)
+        opts.setIsTranslating(false)
+        opts.cards.forEach(resetCardForNewBatch)
+        opts.onOcrStarted()
+        break
+      }
       case 'started': {
         const batchId = batchIdFromSession(payload.sessionId)
         const isNewBatch = batchId !== opts.getCurrentBatchId()
@@ -167,10 +179,22 @@ export function useTranslationEvents(opts: UseTranslationEventsOptions): UseTran
         break
       }
       case 'failed': {
-        if (batchIdFromSession(payload.sessionId) !== opts.getCurrentBatchId()) return
+        const batchId = batchIdFromSession(payload.sessionId)
+        const currentBatch = opts.getCurrentBatchId()
+        // 无冒号 session（如 selection-error）且当前无翻译 batch：OCR/入口级全局失败
+        if (batchId !== currentBatch) {
+          if (batchId == null && currentBatch == null) {
+            opts.logger.warn('全局失败', { message: payload.message })
+            opts.onGlobalFailed?.(payload.message ?? '')
+          }
+          return
+        }
         opts.logger.warn('翻译失败', { session: payload.sessionId, message: payload.message })
         const card = opts.cards.get(payload.serviceInstanceId ?? 'default')
-        if (!card) return
+        if (!card) {
+          opts.onGlobalFailed?.(payload.message ?? '')
+          return
+        }
         card.errorMessage = payload.message ?? ''
         card.errorTitleKey = 'popup.error.translationFailed'
         card.status = 'failed'

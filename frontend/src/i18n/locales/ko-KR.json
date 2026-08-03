@@ -170,6 +170,7 @@
     "popup.status.ready": "준비",
     "popup.status.detecting": "감지 중…",
     "popup.status.translating": "번역 중…",
+    "popup.status.recognizing": "텍스트 인식 중…",
     "popup.status.completed": "번역 완료",
     "popup.status.partial": "부분적으로 완료됨",
     "popup.status.failed": "번역 실패",

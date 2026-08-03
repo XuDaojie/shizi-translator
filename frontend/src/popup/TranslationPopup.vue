@@ -80,6 +80,8 @@ const sourceText = ref('')
 const sessionSourceLang = ref('auto')
 const sessionTargetLang = ref('zh-CN')
 const isTranslating = ref(false)
+/** 截图翻译 OCR 阶段（先于 isTranslating） */
+const isRecognizing = ref(false)
 const currentBatchId = ref<string | null>(null)
 const cards = reactive<Map<string, CardState>>(new Map())
 const pinned = ref(false)
@@ -139,6 +141,7 @@ const detectedOrLabel = computed(() => {
 
 /* === batchStatus（复刻旧 updateBatchStatus） === */
 const updateBatchStatus = (): void => {
+  if (isRecognizing.value) return
   const list = Array.from(cards.values())
   if (list.length === 0) return
   const allFinished = list.every((c) => c.status === 'finished')
@@ -175,6 +178,7 @@ const updateBatchStatus = (): void => {
 /* === 事件分派 === */
 const onStarted = (payload: TranslationEventPayload, isNewBatch: boolean): void => {
   if (isNewBatch) {
+    isRecognizing.value = false
     sourceRevision += 1
     if (payload.sourceText !== undefined) {
       const raw = payload.sourceText
@@ -206,6 +210,31 @@ const onStarted = (payload: TranslationEventPayload, isNewBatch: boolean): void 
     setStatus(POPUP_MESSAGE_KEYS.translating, true, { key: POPUP_MESSAGE_KEYS.cancel, onClick: cancelTranslation })
   }
 }
+
+const onOcrStarted = (): void => {
+  isRecognizing.value = true
+  sourceRevision += 1
+  sourceText.value = ''
+  charCount.value = 0
+  sourceBadge.value = 'ocrText'
+  detectedLangBadge.value = ''
+  pendingStripRetranslateText = null
+  setStatus(POPUP_MESSAGE_KEYS.recognizing, true, {
+    key: POPUP_MESSAGE_KEYS.cancel,
+    onClick: cancelOcr,
+  })
+}
+
+const onGlobalFailed = (message: string): void => {
+  isRecognizing.value = false
+  isTranslating.value = false
+  currentBatchId.value = null
+  setStatus('popup.status.failed', false, null)
+  if (message) {
+    toast.error(message)
+  }
+}
+
 const onDetectedLang = (lang: string | null): void => {
   if (sessionSourceLang.value === 'auto' && lang) detectedLangBadge.value = lang
 }
@@ -217,6 +246,8 @@ const events = useTranslationEvents({
   getCurrentBatchId: () => currentBatchId.value,
   setCurrentBatchId: (id) => { currentBatchId.value = id },
   onStarted,
+  onOcrStarted,
+  onGlobalFailed,
   onBatchStatusChange: updateBatchStatus,
   onDetectedLang,
   onConfigChanged: (cfg) => {
@@ -345,6 +376,19 @@ async function cancelTranslation(): Promise<void> {
   } catch (e) {
     toast.error(t('popup.error.cancelFailed'), String(e))
     logger.warn('取消翻译失败', String(e))
+  }
+}
+
+async function cancelOcr(): Promise<void> {
+  const apis = getTauriApis()
+  if (!apis) return
+  try {
+    await apis.invoke('cancel_ocr')
+    isRecognizing.value = false
+    setStatus(POPUP_MESSAGE_KEYS.ready, false, null)
+  } catch (e) {
+    toast.error(t('popup.error.cancelFailed'), String(e))
+    logger.warn('取消 OCR 失败', String(e))
   }
 }
 

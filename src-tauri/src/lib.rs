@@ -38,8 +38,9 @@ use ui::{
     service_probe::{list_service_models, validate_service_credential},
     update::check_for_update,
     web_popup::{
-        cancel_translation, get_session_languages, retry_translation, save_edge_translate_env,
-        set_session_languages, start_translation, take_pending_source_text,
+        cancel_ocr, cancel_translation, get_session_languages, retry_translation,
+        save_edge_translate_env, set_session_languages, start_translation,
+        take_pending_source_text,
     },
 };
 
@@ -93,6 +94,7 @@ pub fn run() {
             pick_and_recognize_image,
             rerecognize_last_image,
             cancel_translation,
+            cancel_ocr,
             retry_translation,
             get_session_languages,
             set_session_languages,

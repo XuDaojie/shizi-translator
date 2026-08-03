@@ -170,6 +170,7 @@
     "popup.status.ready": "Bereit",
     "popup.status.detecting": "Erkennen…",
     "popup.status.translating": "Übersetzen…",
+    "popup.status.recognizing": "Text wird erkannt…",
     "popup.status.completed": "Übersetzung abgeschlossen",
     "popup.status.partial": "Teilweise vollständig",
     "popup.status.failed": "Die Übersetzung ist fehlgeschlagen",

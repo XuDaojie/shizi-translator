@@ -22,6 +22,8 @@ pub async fn start_translation_from_ocr(app: tauri::AppHandle, state: AppState) 
         show_translation_error(&app, message);
         return;
     }
+    // 新一轮截图：取消仍在跑的 OCR，避免框选期间旧识别结果写回弹窗。
+    let _ = state.cancel_current_ocr();
     // Alt+S / 弹窗截图翻译入口：提交后走翻译链路，禁止纯识别分叉。
     let _ = state.set_capture_purpose(CapturePurpose::Translate);
 

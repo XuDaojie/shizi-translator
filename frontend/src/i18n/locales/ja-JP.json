@@ -170,6 +170,7 @@
     "popup.status.ready": "準備完了",
     "popup.status.detecting": "検出中…",
     "popup.status.translating": "翻訳中…",
+    "popup.status.recognizing": "文字を認識中…",
     "popup.status.completed": "翻訳が完了しました",
     "popup.status.partial": "部分的に完了",
     "popup.status.failed": "翻訳に失敗しました",

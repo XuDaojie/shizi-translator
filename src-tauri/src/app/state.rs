@@ -41,6 +41,10 @@ pub struct AppState {
     // 当前翻译的取消信号。begin 时存入，翻译自然结束 clear、用户取消 cancel。
     // cancel 取出并触发；幂等：无 token 或已清空返回 Ok 无操作。
     current_cancel_token: Arc<Mutex<Option<CancellationToken>>>,
+    // 截图翻译 OCR 管线（与 translation_busy 解耦）：框选提交后、翻译 begin 前。
+    // generation 用于丢弃已取消任务的 OCR 结果，避免关窗后仍 start 翻译。
+    ocr_pipeline_generation: Arc<Mutex<u64>>,
+    ocr_cancel_token: Arc<Mutex<Option<CancellationToken>>>,
     // 最近一次成功开始的翻译输入，供重试复用。begin 成功后存入，retry 时 take。
     last_translation_input: Arc<Mutex<Option<TranslationInput>>>,
     // 最近一次纯识别成功的源图（进程内单槽），供 OCR 窗「重新识别」。
@@ -82,6 +86,8 @@ impl AppState {
             capture_purpose: Arc::new(Mutex::new(CapturePurpose::Translate)),
             pending_capture: Arc::new(Mutex::new(None)),
             current_cancel_token: Arc::new(Mutex::new(None)),
+            ocr_pipeline_generation: Arc::new(Mutex::new(0)),
+            ocr_cancel_token: Arc::new(Mutex::new(None)),
             last_translation_input: Arc::new(Mutex::new(None)),
             last_ocr_image: Arc::new(Mutex::new(None)),
             ocr_session_service_id: Arc::new(Mutex::new(None)),
@@ -272,6 +278,71 @@ impl AppState {
         if let Some(token) = token {
             token.cancel();
         }
+        Ok(())
+    }
+
+    /// 开始截图翻译的 OCR 阶段：取消进行中的旧 OCR，登记新 token，generation 递增。
+    pub fn begin_ocr_overriding(
+        &self,
+        cancel_token: CancellationToken,
+    ) -> Result<u64, String> {
+        let mut generation = self
+            .ocr_pipeline_generation
+            .lock()
+            .map_err(|_| "OCR 代次状态锁已损坏".to_string())?;
+        let mut token_slot = self
+            .ocr_cancel_token
+            .lock()
+            .map_err(|_| "OCR 取消信号状态锁已损坏".to_string())?;
+        if let Some(old) = token_slot.take() {
+            old.cancel();
+        }
+        *token_slot = Some(cancel_token);
+        *generation += 1;
+        Ok(*generation)
+    }
+
+    /// OCR 正常结束：仅当 generation 仍为当前时清除 token。
+    pub fn finish_ocr_if_current(&self, generation: u64) -> Result<(), String> {
+        let current = self
+            .ocr_pipeline_generation
+            .lock()
+            .map_err(|_| "OCR 代次状态锁已损坏".to_string())?;
+        if *current != generation {
+            return Ok(());
+        }
+        drop(current);
+        let mut token_slot = self
+            .ocr_cancel_token
+            .lock()
+            .map_err(|_| "OCR 取消信号状态锁已损坏".to_string())?;
+        *token_slot = None;
+        Ok(())
+    }
+
+    /// 进行中的 OCR 是否仍为当前代（取消会递增 generation，使旧任务 stale）。
+    pub fn is_ocr_generation_current(&self, generation: u64) -> bool {
+        self.ocr_pipeline_generation
+            .lock()
+            .map(|g| *g == generation)
+            .unwrap_or(false)
+    }
+
+    /// 取消当前 OCR：触发 token 并递增 generation，使进行中任务无法进入翻译。
+    /// 幂等：无 token 时仍递增 generation（保证 stale 门闩）。
+    pub fn cancel_current_ocr(&self) -> Result<(), String> {
+        let mut generation = self
+            .ocr_pipeline_generation
+            .lock()
+            .map_err(|_| "OCR 代次状态锁已损坏".to_string())?;
+        let mut token_slot = self
+            .ocr_cancel_token
+            .lock()
+            .map_err(|_| "OCR 取消信号状态锁已损坏".to_string())?;
+        if let Some(token) = token_slot.take() {
+            token.cancel();
+        }
+        *generation += 1;
         Ok(())
     }
 
@@ -638,6 +709,72 @@ mod tests {
             .set_capture_purpose(CapturePurpose::Translate)
             .expect("设回翻译");
         assert_eq!(state.capture_purpose(), CapturePurpose::Translate);
+    }
+
+    #[test]
+    fn begin_ocr_overriding_cancels_previous_token_and_bumps_generation() {
+        let state = app_state();
+        let old = CancellationToken::new();
+        let old_gen = state
+            .begin_ocr_overriding(old.clone())
+            .expect("旧 OCR");
+        let new = CancellationToken::new();
+        let new_gen = state
+            .begin_ocr_overriding(new.clone())
+            .expect("新 OCR 接管");
+        assert!(old.is_cancelled(), "接管应取消旧 OCR token");
+        assert!(!new.is_cancelled());
+        assert!(new_gen > old_gen);
+        assert!(state.is_ocr_generation_current(new_gen));
+        assert!(!state.is_ocr_generation_current(old_gen));
+    }
+
+    #[test]
+    fn cancel_current_ocr_cancels_token_and_stales_generation() {
+        let state = app_state();
+        let token = CancellationToken::new();
+        let gen = state.begin_ocr_overriding(token.clone()).expect("OCR begin");
+        state.cancel_current_ocr().expect("取消 OCR");
+        assert!(token.is_cancelled());
+        assert!(!state.is_ocr_generation_current(gen));
+    }
+
+    #[test]
+    fn finish_ocr_if_current_clears_token_only_for_current_generation() {
+        let state = app_state();
+        let old_token = CancellationToken::new();
+        let old_gen = state
+            .begin_ocr_overriding(old_token.clone())
+            .expect("旧 OCR");
+        let new_token = CancellationToken::new();
+        let new_gen = state
+            .begin_ocr_overriding(new_token.clone())
+            .expect("新 OCR");
+        state
+            .finish_ocr_if_current(old_gen)
+            .expect("stale finish");
+        // 旧 finish 不得清掉新 token：取消应仍能打到新 token
+        state.cancel_current_ocr().expect("取消");
+        assert!(new_token.is_cancelled());
+        assert!(!state.is_ocr_generation_current(new_gen));
+    }
+
+    #[test]
+    fn finish_ocr_if_current_clears_active_token() {
+        let state = app_state();
+        let token = CancellationToken::new();
+        let gen = state.begin_ocr_overriding(token.clone()).expect("OCR");
+        state.finish_ocr_if_current(gen).expect("finish");
+        // token 已 clear；再 cancel 只 stale generation，token 本身若已 drop 无引用
+        assert!(!token.is_cancelled(), "finish 仅 clear 槽位，不主动 cancel");
+        assert!(state.is_ocr_generation_current(gen));
+    }
+
+    #[test]
+    fn cancel_current_ocr_is_idempotent() {
+        let state = app_state();
+        state.cancel_current_ocr().expect("空闲取消");
+        state.cancel_current_ocr().expect("再次取消");
     }
 
     #[test]
