@@ -218,7 +218,7 @@ export const BUILTIN_SERVICES: ServiceMeta[] = [
     hasModelApi: true,
     category: 'llm',
     keyRequired: true,
-    // 默认按量方舟 API；Coding / Agent Plan 用 endpointPresets 切换（协议同为 openai_chat）。
+    // 默认按量方舟 API；Coding / Agent Plan 的 Base URL 写在 endpointPresets，供接口地址说明展示。
     protocols: [
       OPENAI_CHAT(
         'https://ark.cn-beijing.volces.com/api/v3',

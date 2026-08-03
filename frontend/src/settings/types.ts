@@ -157,13 +157,13 @@ export type ServiceProtocolMeta = {
 
 /**
  * 同一 OpenAI 兼容协议下的多条官方 Base URL 预设（如火山方舟按量 / Coding Plan / Agent Plan）。
- * 选中后写入实例 `endpoint`；用户仍可手改 endpoint。
+ * 仅用于服务详情「接口地址」说明展示；用户自行填写 endpoint。
  */
 export type ServiceEndpointPreset = {
   id: string
   label: string
   endpoint: string
-  /** 可选：切换预设时若模型仍空，填入该默认模型。 */
+  /** 可选：该路径的推荐默认模型（说明用，不自动写入）。 */
   defaultModel?: string
 }
 

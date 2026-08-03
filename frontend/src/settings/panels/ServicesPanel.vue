@@ -53,7 +53,6 @@ import {
 import { useSettings } from '../stores/settings'
 import { useDevMode } from '../composables/useDevMode'
 import { validateServiceForEnable } from '@/settings/service-validation'
-import { applyEndpointPreset, matchEndpointPreset } from '@/settings/endpoint-presets'
 import { t, type MessageKey } from '@/i18n'
 
 /** 任务 9 再落入 locale 文件；此处 cast 避免 MessageKey 严格校验阻塞 typecheck。 */
@@ -178,13 +177,8 @@ const activeService = computed(() =>
   activeInstance.value ? serviceById(activeInstance.value.type) : undefined,
 )
 
-/** 火山引擎等：官方多 Base URL 预设。 */
+/** 火山引擎等：官方多 Base URL 预设（仅作接口地址说明与 placeholder）。 */
 const activeEndpointPresets = computed(() => activeService.value?.endpointPresets ?? [])
-const matchedEndpointPresetId = computed(() => {
-  const inst = activeInstance.value
-  if (!inst) return ''
-  return matchEndpointPreset(inst.endpoint, activeEndpointPresets.value)?.id ?? ''
-})
 
 /** 当前实例协议展示名（标题旁协议徽标 / 单协议文案）。 */
 const activeProtocolLabel = computed(() => {
@@ -228,22 +222,6 @@ const showEndpointField = computed(() => {
     (meta.protocols?.length ?? 0) > 0
   )
 })
-
-const onEndpointPresetChange = (presetId: string): void => {
-  const inst = activeInstance.value
-  if (!inst || !presetId) return
-  const presets = activeEndpointPresets.value
-  const preset = presets.find((p) => p.id === presetId)
-  if (!preset) return
-  const prev = matchEndpointPreset(inst.endpoint, presets)
-  const next = applyEndpointPreset(
-    preset,
-    { endpoint: inst.endpoint, model: inst.model },
-    { previousPresetDefaultModel: prev?.defaultModel },
-  )
-  inst.endpoint = next.endpoint
-  inst.model = next.model
-}
 
 const activeOcrInstance = computed(() =>
   props.state.ocrServices.find((s) => s.id === activeOcrInstanceId.value),
@@ -1459,29 +1437,6 @@ const onDragEnd = (): void => {
               class="flex h-9 w-full rounded-md border border-input bg-background px-3 text-xs"
             >
               <option v-for="p in activeService.protocols" :key="p.id" :value="p.id">
-                {{ p.label }}
-              </option>
-            </select>
-          </SettingRow>
-          <SettingRow
-            v-if="activeEndpointPresets.length > 0"
-            :title="t(msgKey('settings.field.endpointPath'))"
-            :description="t(msgKey('settings.description.endpointPath'))"
-            vertical
-          >
-            <select
-              class="flex h-9 w-full rounded-md border border-input bg-background px-3 text-xs"
-              :value="matchedEndpointPresetId"
-              @change="onEndpointPresetChange(($event.target as HTMLSelectElement).value)"
-            >
-              <option v-if="!matchedEndpointPresetId" value="" disabled>
-                {{ t(msgKey('settings.option.customEndpoint')) }}
-              </option>
-              <option
-                v-for="p in activeEndpointPresets"
-                :key="p.id"
-                :value="p.id"
-              >
                 {{ p.label }}
               </option>
             </select>
