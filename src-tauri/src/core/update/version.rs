@@ -131,52 +131,20 @@ pub fn is_update_available(current: &str, latest: &str) -> bool {
 }
 
 /// CI Nightly 版本形如 `0.7.0-nightly.YYYYMMDD.sha`（pre 首段为 `nightly`）。
-/// semver 下 `0.7.0-nightly.*` < `0.7.0`，若仍走常规比较会误报「有正式版可更新」。
-pub fn is_nightly_build(version: &str) -> bool {
+#[cfg(test)]
+fn is_nightly_build(version: &str) -> bool {
     parse_tag_version(version)
         .map(|v| version_has_nightly_pre(&v))
         .unwrap_or(false)
 }
 
-/// 通道内是否应提示可更新。
-/// - stable：纯 semver 比较
-/// - nightly：当前已是 nightly 时用 semver；当前是正式/其它版本时，只要有候选 nightly 即提示切换
-fn should_offer_update(current_version: &str, latest: &str, channel: UpdateChannel) -> bool {
-    match channel {
-        UpdateChannel::Stable => is_update_available(current_version, latest),
-        UpdateChannel::Nightly => {
-            if is_nightly_build(current_version) {
-                is_update_available(current_version, latest)
-            } else {
-                // 正式版用户改选每日构建：semver 上 nightly 常 < 同号正式版，不能用 > 比较
-                true
-            }
-        }
-    }
-}
-
+/// 按通道选最新候选，再用 semver 与当前版本比较。
+/// 通道只决定候选池；是否可更新与当前是正式版还是每日构建无关。
 pub fn evaluate_check(
     current_version: &str,
     releases: &[ReleaseInfo],
     channel: UpdateChannel,
 ) -> CheckUpdateResult {
-    // 运行中的是每日构建，但通道仍为正式版：避免 semver 误报「可升级到同号正式版」。
-    // 跟随每日构建需把通道改为 nightly。
-    if channel == UpdateChannel::Stable && is_nightly_build(current_version) {
-        return CheckUpdateResult {
-            status: "up_to_date".into(),
-            current_version: current_version.to_string(),
-            latest_version: None,
-            release_name: None,
-            release_url: Some(RELEASES_PAGE_FALLBACK.to_string()),
-            is_prerelease: Some(true),
-            message: Some(
-                "当前为每日构建：更新通道为「正式版」时不会提示升级。若要跟随每日构建，请将通道改为「每日构建」。"
-                    .into(),
-            ),
-        };
-    }
-
     let Some(latest) = select_latest_for_channel(releases, channel) else {
         return CheckUpdateResult {
             status: "up_to_date".into(),
@@ -192,7 +160,7 @@ pub fn evaluate_check(
     let latest_str = latest.version.to_string();
     // 始终优先轻量包直链（应用更新不需要完整包内嵌的 WebView2 安装器）。
     let release_url = Some(latest.download_url);
-    if should_offer_update(current_version, &latest_str, channel) {
+    if is_update_available(current_version, &latest_str) {
         CheckUpdateResult {
             status: "update_available".into(),
             current_version: current_version.to_string(),
@@ -450,31 +418,55 @@ mod tests {
     }
 
     #[test]
-    fn evaluate_check_stable_channel_skips_prompt_for_nightly_current() {
+    fn evaluate_check_stable_channel_offers_same_base_stable_from_nightly() {
+        // 正式版通道：当前每日构建，同号正式版在 semver 上更高，应提示可更新
+        let slim = "https://github.com/XuDaojie/shizi-translator/releases/download/v0.7.0/Shizi_0.7.0_x64-setup.exe";
         let releases = vec![ReleaseInfo {
             tag_name: "v0.7.0".into(),
             name: Some("stable".into()),
             html_url: "https://github.com/XuDaojie/shizi-translator/releases/tag/v0.7.0".into(),
             prerelease: false,
             draft: false,
-            assets: vec![],
+            assets: vec![asset("Shizi_0.7.0_x64-setup.exe", slim)],
         }];
         let result = evaluate_check(
             "0.7.0-nightly.20260721.813a439",
             &releases,
             UpdateChannel::Stable,
         );
-        assert_eq!(result.status, "up_to_date");
-        assert!(result.latest_version.is_none());
-        assert!(result
-            .message
-            .as_deref()
-            .is_some_and(|m| m.contains("每日构建")));
-        // 若未拦截，semver 会判定 0.7.0 > nightly 从而误报
-        assert!(is_update_available(
+        assert_eq!(result.status, "update_available");
+        assert_eq!(result.latest_version.as_deref(), Some("0.7.0"));
+        assert_eq!(result.release_url.as_deref(), Some(slim));
+    }
+
+    #[test]
+    fn evaluate_check_stable_channel_offers_newer_stable_from_nightly() {
+        // 正式版通道与当前是否为每日构建无关：有更高正式版即提示
+        let slim = "https://github.com/XuDaojie/shizi-translator/releases/download/v0.8.0/Shizi_0.8.0_x64-setup.exe";
+        let releases = vec![
+            release(
+                "v0.7.0",
+                "https://github.com/XuDaojie/shizi-translator/releases/tag/v0.7.0",
+                false,
+                false,
+                vec![],
+            ),
+            release(
+                "v0.8.0",
+                "https://github.com/XuDaojie/shizi-translator/releases/tag/v0.8.0",
+                false,
+                false,
+                vec![asset("Shizi_0.8.0_x64-setup.exe", slim)],
+            ),
+        ];
+        let result = evaluate_check(
             "0.7.0-nightly.20260721.813a439",
-            "0.7.0"
-        ));
+            &releases,
+            UpdateChannel::Stable,
+        );
+        assert_eq!(result.status, "update_available");
+        assert_eq!(result.latest_version.as_deref(), Some("0.8.0"));
+        assert_eq!(result.release_url.as_deref(), Some(slim));
     }
 
     #[test]
@@ -505,8 +497,8 @@ mod tests {
     }
 
     #[test]
-    fn evaluate_check_nightly_channel_offers_switch_from_stable() {
-        // 同号正式版 semver > nightly，但仍应提示切换到每日构建
+    fn evaluate_check_nightly_channel_up_to_date_when_stable_current_same_base() {
+        // 每日构建通道：同号 nightly 在 semver 上低于正式版，不算「更高」
         let slim = "https://github.com/XuDaojie/shizi-translator/releases/download/nightly/Shizi_0.8.0-nightly.20260803.abc_x64-setup.exe";
         let releases = vec![ReleaseInfo {
             tag_name: "nightly".into(),
@@ -520,13 +512,35 @@ mod tests {
             )],
         }];
         let result = evaluate_check("0.8.0", &releases, UpdateChannel::Nightly);
-        assert_eq!(result.status, "update_available");
+        assert_eq!(result.status, "up_to_date");
         assert_eq!(
             result.latest_version.as_deref(),
             Some("0.8.0-nightly.20260803.abc")
         );
-        // 纯 semver 不会认为有更新
         assert!(!is_update_available("0.8.0", "0.8.0-nightly.20260803.abc"));
+    }
+
+    #[test]
+    fn evaluate_check_nightly_channel_offers_higher_base_from_stable() {
+        // 正式版用户选每日构建：仅当 nightly 的 semver 更高才提示
+        let slim = "https://github.com/XuDaojie/shizi-translator/releases/download/nightly/Shizi_0.9.0-nightly.20260803.abc_x64-setup.exe";
+        let releases = vec![ReleaseInfo {
+            tag_name: "nightly".into(),
+            name: Some("Nightly".into()),
+            html_url: "https://github.com/XuDaojie/shizi-translator/releases/tag/nightly".into(),
+            prerelease: true,
+            draft: false,
+            assets: vec![asset(
+                "Shizi_0.9.0-nightly.20260803.abc_x64-setup.exe",
+                slim,
+            )],
+        }];
+        let result = evaluate_check("0.8.0", &releases, UpdateChannel::Nightly);
+        assert_eq!(result.status, "update_available");
+        assert_eq!(
+            result.latest_version.as_deref(),
+            Some("0.9.0-nightly.20260803.abc")
+        );
     }
 
     #[test]
