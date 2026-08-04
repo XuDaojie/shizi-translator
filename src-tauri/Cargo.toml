@@ -31,7 +31,7 @@ log = "0.4"
 tauri-plugin-log = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-mcp-bridge = "0.12"
-zip = "2"
+zip = "8"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 sys-locale = "0.3"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "bmp"] }
