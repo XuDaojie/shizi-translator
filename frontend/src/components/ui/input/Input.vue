@@ -36,3 +36,11 @@ const classes = computed(() =>
     @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"
   />
 </template>
+
+<style scoped>
+/* Edge/WebView2 密码框自带 reveal 眼睛，与 ApiKeyInput 自定义眼睛叠成两只 */
+input[type='password']::-ms-reveal,
+input[type='password']::-ms-clear {
+  display: none;
+}
+</style>

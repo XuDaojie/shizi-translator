@@ -94,7 +94,11 @@ const canUseWebDav = computed(() => {
   return Boolean(w.url.trim() && w.username.trim() && w.password.trim() && w.remotePath.trim())
 })
 
-const isConnected = computed(() => webdav.value.status === 'connected')
+/**
+ * 备份/恢复：凭证齐全即可操作，不必先点「测试连接」。
+ * 「测试连接」只负责校验与徽标；失败时备份/恢复会 toast 错误信息。
+ */
+const canOperateWebDav = computed(() => canUseWebDav.value)
 
 const statusLabel = computed(() => {
   switch (webdav.value.status as WebDavStatus) {
@@ -119,6 +123,19 @@ const statusVariant = computed(() => {
       return 'warning' as const
     default:
       return 'secondary' as const
+  }
+})
+
+const statusDotClass = computed(() => {
+  switch (webdav.value.status as WebDavStatus) {
+    case 'connected':
+      return 'bg-emerald-500'
+    case 'error':
+      return 'bg-destructive'
+    case 'connecting':
+      return 'bg-amber-500 animate-pulse'
+    default:
+      return 'bg-muted-foreground'
   }
 })
 
@@ -227,7 +244,7 @@ const onTestConnection = async (): Promise<void> => {
 }
 
 const onBackupNow = async (): Promise<void> => {
-  if (!isConnected.value || backingUp.value) return
+  if (!canOperateWebDav.value || backingUp.value) return
   if (!isTauriReady()) {
     toast.error(t('settings.backup.toast.needTauri'))
     return
@@ -237,6 +254,8 @@ const onBackupNow = async (): Promise<void> => {
     webdav.value.remotePath = normalizeRemoteDir(webdav.value.remotePath)
     const result = await invokeBackupToWebDav(connectionArgs.value)
     webdav.value.lastBackupAt = result.lastBackupAt
+    webdav.value.status = 'connected'
+    webdav.value.lastError = ''
     const bits: string[] = []
     if (backup.value.includeHistory) bits.push(t('settings.backup.tag.history'))
     if (backup.value.includeApiKeys) bits.push(t('settings.backup.tag.apiKey'))
@@ -245,6 +264,8 @@ const onBackupNow = async (): Promise<void> => {
       `${result.remotePath}${bits.length ? `（${bits.join(' · ')}）` : ''}`,
     )
   } catch (e) {
+    webdav.value.status = 'error'
+    webdav.value.lastError = String(e)
     toast.error(t('settings.backup.toast.backupFail'), String(e))
   } finally {
     backingUp.value = false
@@ -287,14 +308,18 @@ const selectedBackup = computed(
 )
 
 const onConfirmRestore = async (): Promise<void> => {
-  if (!isConnected.value || restoring.value || !selectedBackup.value) return
+  if (!canOperateWebDav.value || restoring.value || !selectedBackup.value) return
   restoring.value = true
   try {
     await invokeRestoreFromWebDav(connectionArgs.value, selectedBackup.value.path)
     await syncFromBackend()
+    webdav.value.status = 'connected'
+    webdav.value.lastError = ''
     toast.success(t('settings.backup.toast.restoreOk'), selectedBackup.value.name)
     restoreOpen.value = false
   } catch (e) {
+    webdav.value.status = 'error'
+    webdav.value.lastError = String(e)
     toast.error(t('settings.backup.toast.restoreFail'), String(e))
   } finally {
     restoring.value = false
@@ -386,12 +411,7 @@ const onConfirmImport = async (): Promise<void> => {
         <Badge :variant="statusVariant" class="shrink-0">
           <span
             class="inline-block h-1.5 w-1.5 rounded-full"
-            :class="{
-              'bg-emerald-500': webdav.status === 'connected',
-              'bg-destructive': webdav.status === 'error',
-              'bg-amber-500 animate-pulse': webdav.status === 'connecting',
-              'bg-muted-foreground': webdav.status === 'idle',
-            }"
+            :class="statusDotClass"
           />
           {{ statusLabel }}
         </Badge>
@@ -513,7 +533,7 @@ const onConfirmImport = async (): Promise<void> => {
       <div class="flex shrink-0 flex-wrap items-center justify-end gap-2">
         <Button
           size="sm"
-          :disabled="!isConnected || backingUp"
+          :disabled="!canOperateWebDav || backingUp"
           @click="onBackupNow"
         >
           <Loader2 v-if="backingUp" class="h-3.5 w-3.5 animate-spin" />
@@ -530,7 +550,7 @@ const onConfirmImport = async (): Promise<void> => {
             <Button
               variant="outline"
               size="sm"
-              :disabled="!isConnected || restoring"
+              :disabled="!canOperateWebDav || restoring"
             >
               <CloudDownload class="h-3.5 w-3.5" />
               {{ t('settings.backup.restoreFromCloud') }}
