@@ -20,6 +20,10 @@ use ui::{
         get_app_config, get_shortcut_conflicts, is_autostart_launch, open_settings, open_url,
         save_app_config,
     },
+    backup::{
+        backup_to_webdav, export_settings_snapshot, import_settings_snapshot, list_webdav_backups,
+        restore_from_webdav, test_webdav_connection,
+    },
     history::{clear_translation_history, list_translation_history},
     i18n::{
         apply_interface_language, get_interface_language_snapshot, open_language_pack_directory,
@@ -106,6 +110,12 @@ pub fn run() {
             get_shortcut_conflicts,
             list_translation_history,
             clear_translation_history,
+            test_webdav_connection,
+            backup_to_webdav,
+            list_webdav_backups,
+            restore_from_webdav,
+            export_settings_snapshot,
+            import_settings_snapshot,
             open_settings,
             open_url,
             list_service_models,

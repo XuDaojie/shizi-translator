@@ -238,6 +238,72 @@ impl WindowPrecreateConfig {
     }
 }
 
+/// WebDAV 连接与远端备份目录。密码仅本机保存；连接状态不持久化。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WebDavConfig {
+    #[serde(default)]
+    pub url: String,
+    #[serde(default)]
+    pub username: String,
+    #[serde(default)]
+    pub password: String,
+    /// 远端备份目录（非单文件），如 `/shizi/backups/`。
+    #[serde(default = "default_webdav_remote_path")]
+    pub remote_path: String,
+    /// 上次成功测试连接的 ISO 时间；空串表示从未测过。
+    #[serde(default)]
+    pub last_tested_at: String,
+    /// 上次成功备份的 ISO 时间。
+    #[serde(default)]
+    pub last_backup_at: String,
+}
+
+fn default_webdav_remote_path() -> String {
+    "/shizi/backups/".to_string()
+}
+
+impl Default for WebDavConfig {
+    fn default() -> Self {
+        Self {
+            url: String::new(),
+            username: String::new(),
+            password: String::new(),
+            remote_path: default_webdav_remote_path(),
+            last_tested_at: String::new(),
+            last_backup_at: String::new(),
+        }
+    }
+}
+
+/// 备份与同步选项（WebDAV 主路径 + 本机导入/导出共用开关）。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupConfig {
+    #[serde(default)]
+    pub webdav: WebDavConfig,
+    /// 配置变更后约 30s 自动上传到远端；默认关。
+    #[serde(default)]
+    pub auto_sync: bool,
+    /// 备份/导出是否包含翻译历史；默认关。
+    #[serde(default)]
+    pub include_history: bool,
+    /// 备份/导出是否包含 API Key 与 WebDAV 密码；默认开。
+    #[serde(default = "default_true")]
+    pub include_api_keys: bool,
+}
+
+impl Default for BackupConfig {
+    fn default() -> Self {
+        Self {
+            webdav: WebDavConfig::default(),
+            auto_sync: false,
+            include_history: false,
+            include_api_keys: true,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppConfig {
@@ -283,6 +349,9 @@ pub struct AppConfig {
     /// 登录 Windows 后自动启动（HKCU Run；默认关闭，用户显式开启）。
     #[serde(default)]
     pub launch_at_login: bool,
+    /// WebDAV 备份与同步（含本机导入/导出范围开关）。
+    #[serde(default)]
+    pub backup: BackupConfig,
 }
 
 impl ServiceInstanceConfig {
@@ -384,6 +453,7 @@ impl AppConfig {
             update_channel: default_update_channel(),
             auto_check_update: true,
             launch_at_login: false,
+            backup: BackupConfig::default(),
         }
         .normalized()
     }
@@ -410,6 +480,8 @@ impl AppConfig {
         }
         self.log_level = normalize_log_level(self.log_level);
         self.update_channel = normalize_update_channel(self.update_channel);
+        self.backup.webdav.remote_path =
+            normalize_webdav_remote_path(&self.backup.webdav.remote_path);
         self
     }
 
@@ -452,6 +524,38 @@ fn normalize_log_level(value: String) -> String {
         "error" | "warn" | "info" | "debug" => value.trim().to_string(),
         _ => "info".to_string(),
     }
+}
+
+/// 远端备份目录：统一成以 `/` 开头并以 `/` 结尾；旧单文件路径回退父目录。
+pub fn normalize_webdav_remote_path(raw: &str) -> String {
+    let default = default_webdav_remote_path();
+    let mut p = raw.trim().to_string();
+    if p.is_empty() {
+        return default;
+    }
+    // 旧默认值是文件路径，回落到其父目录
+    if p.rsplit_once('/')
+        .map(|(_, name)| name.contains('.') && !name.ends_with('/'))
+        .unwrap_or(false)
+        && (p.ends_with(".json") || p.ends_with(".zip") || p.ends_with(".JSON") || p.ends_with(".ZIP"))
+    {
+        if let Some(i) = p.rfind('/') {
+            p = if i > 0 {
+                p[..=i].to_string()
+            } else {
+                default.clone()
+            };
+        } else {
+            p = default.clone();
+        }
+    }
+    if !p.starts_with('/') {
+        p = format!("/{p}");
+    }
+    if !p.ends_with('/') {
+        p.push('/');
+    }
+    p
 }
 
 #[cfg(test)]
@@ -831,6 +935,38 @@ mod tests {
     fn defaults_collect_usage_true() {
         let config = AppConfig::default();
         assert!(config.collect_usage);
+    }
+
+    #[test]
+    fn defaults_backup_include_api_keys_true() {
+        let config = AppConfig::default();
+        assert!(config.backup.include_api_keys);
+        assert!(!config.backup.include_history);
+        assert!(!config.backup.auto_sync);
+        assert_eq!(config.backup.webdav.remote_path, "/shizi/backups/");
+    }
+
+    #[test]
+    fn normalize_webdav_remote_path_handles_file_and_dir() {
+        assert_eq!(
+            normalize_webdav_remote_path("/shizi/backups/settings.json"),
+            "/shizi/backups/"
+        );
+        assert_eq!(
+            normalize_webdav_remote_path("shizi/backups"),
+            "/shizi/backups/"
+        );
+        assert_eq!(normalize_webdav_remote_path(""), "/shizi/backups/");
+    }
+
+    #[test]
+    fn deserializes_missing_backup_with_defaults() {
+        let json = r#"{"targetLang":"zh-CN"}"#;
+        let config: AppConfig = serde_json::from_str::<AppConfig>(json)
+            .unwrap()
+            .normalized();
+        assert!(config.backup.include_api_keys);
+        assert_eq!(config.backup.webdav.remote_path, "/shizi/backups/");
     }
 
     #[test]

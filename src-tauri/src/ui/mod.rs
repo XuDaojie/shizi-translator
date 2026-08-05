@@ -1,3 +1,4 @@
+pub mod backup;
 pub mod config;
 pub mod history;
 pub mod i18n;

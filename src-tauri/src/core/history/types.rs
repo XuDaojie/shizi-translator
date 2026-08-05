@@ -3,7 +3,7 @@ use crate::core::{
     translation::{TranslationInput, TranslationRequest},
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum HistoryTrigger {
     Manual,
@@ -11,7 +11,7 @@ pub enum HistoryTrigger {
     Screenshot,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum HistoryResultStatus {
     Pending,
@@ -41,7 +41,7 @@ pub struct NewHistoryResult {
     pub model_name: String,
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HistoryResultDto {
     pub service_instance_id: String,
@@ -50,13 +50,14 @@ pub struct HistoryResultDto {
     pub protocol: String,
     pub model_name: String,
     pub translation: String,
+    #[serde(default)]
     pub error_message: String,
     pub status: HistoryResultStatus,
     pub input_tokens: Option<u64>,
     pub output_tokens: Option<u64>,
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HistorySessionDto {
     pub id: String,
@@ -65,6 +66,7 @@ pub struct HistorySessionDto {
     pub source_lang: String,
     pub target_lang: String,
     pub source: String,
+    #[serde(default)]
     pub results: Vec<HistoryResultDto>,
 }
 

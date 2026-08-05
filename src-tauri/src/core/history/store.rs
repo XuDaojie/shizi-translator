@@ -313,6 +313,58 @@ impl HistoryStore {
             Ok(())
         })
     }
+
+    /// 整库替换：清空后写入快照会话（备份恢复用）。
+    pub fn replace_all(&self, sessions: &[HistorySessionDto]) -> Result<(), HistoryError> {
+        self.with_conn(|conn| {
+            let tx = conn.unchecked_transaction()?;
+            tx.execute("DELETE FROM translation_sessions", [])?;
+            for session in sessions {
+                tx.execute(
+                    "
+                    INSERT OR REPLACE INTO translation_sessions
+                        (id, batch_id, trigger, source_lang, target_lang, source_text, created_at)
+                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                    ",
+                    params![
+                        session.id,
+                        session.id,
+                        trigger_to_str(session.trigger),
+                        session.source_lang,
+                        session.target_lang,
+                        session.source,
+                        session.timestamp,
+                    ],
+                )?;
+                for result in &session.results {
+                    tx.execute(
+                        "
+                        INSERT OR REPLACE INTO translation_results
+                            (session_id, service_instance_id, service_name, service_type, protocol,
+                             model_name, status, translated_text, error_message, input_tokens, output_tokens, finished_at)
+                        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+                        ",
+                        params![
+                            session.id,
+                            result.service_instance_id,
+                            result.service_name,
+                            result.service_type,
+                            result.protocol,
+                            result.model_name,
+                            status_to_str(result.status),
+                            result.translation,
+                            result.error_message,
+                            result.input_tokens.map(|v| v as i64),
+                            result.output_tokens.map(|v| v as i64),
+                            now_iso(),
+                        ],
+                    )?;
+                }
+            }
+            tx.commit()?;
+            Ok(())
+        })
+    }
 }
 
 fn results_for_conn(
@@ -375,6 +427,15 @@ fn status_from_str(value: &str) -> rusqlite::Result<HistoryResultStatus> {
         "error" => Ok(HistoryResultStatus::Error),
         "cancelled" => Ok(HistoryResultStatus::Cancelled),
         _ => Err(invalid_history_value(value)),
+    }
+}
+
+fn status_to_str(status: HistoryResultStatus) -> &'static str {
+    match status {
+        HistoryResultStatus::Pending => "pending",
+        HistoryResultStatus::Success => "success",
+        HistoryResultStatus::Error => "error",
+        HistoryResultStatus::Cancelled => "cancelled",
     }
 }
 
