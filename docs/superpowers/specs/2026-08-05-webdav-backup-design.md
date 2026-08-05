@@ -1,7 +1,7 @@
 # WebDAV 备份与同步
 
 > 日期：2026-08-05  
-> 状态：已批准，实现中  
+> 状态：已实现  
 > 规模：M  
 > 原型源：`OpenDesignProjects/shizi`（`AdvancedPanel.vue` / `settings-advanced-backup.html`）
 

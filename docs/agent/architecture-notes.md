@@ -22,7 +22,7 @@
 
 - 事实来源：`config.json` 的 `services[]`（`protocol` / `endpoint` / `model` / `apiKey` / `enabled`）。旧单 provider 路径已废弃。
 - 协议 id：`openai_chat` / `claude_messages` / `mock` / `microsoft_edge`。映射在 `core/translation/protocol.rs` 的 `provider_for_service`；未知协议报错。`microsoft_edge` 经 `BatchTranslateProvider` + `StreamingAdapter` 适配流式。
-- `AppConfig` 另含 `updateChannel`（`stable`/`nightly`；历史 `beta` 迁移为 `nightly`）、`autoCheckUpdate`（默认 `true`）、`launchAtLogin`（默认 `false`）、`markdownRender`（默认 `true`，控制弹窗/历史结果 Markdown 渲染）、`removeBlankLines`（默认 `false`，弹窗「去除空行」偏好）、`showCloseButton`（默认 `true`，弹窗工具栏关闭按钮）、`showInTaskbar`（默认 `false`，弹窗任务栏/Alt+Tab 显隐）；前后端经 `projectToAppConfig` / `syncFromBackend` 同步。
+- `AppConfig` 另含 `updateChannel`（`stable`/`nightly`；历史 `beta` 迁移为 `nightly`）、`autoCheckUpdate`（默认 `true`）、`launchAtLogin`（默认 `false`）、`markdownRender`（默认 `true`，控制弹窗/历史结果 Markdown 渲染）、`removeBlankLines`（默认 `false`，弹窗「去除空行」偏好）、`showCloseButton`（默认 `true`，弹窗工具栏关闭按钮）、`showInTaskbar`（默认 `false`，弹窗任务栏/Alt+Tab 显隐）、`backup`（WebDAV 与导入/导出范围：`includeApiKeys` 默认 `true`，`includeHistory`/`autoSync` 默认 `false`）；前后端经 `projectToAppConfig` / `syncFromBackend` 同步。
 - 翻译弹窗工具栏「关闭」：`destroy` 销毁 WebView（非 hide）；设置项 `showCloseButton` 控制显隐。系统 CloseRequested 仍经 `attach_close_to_hide` 改为 hide（无系统标题栏时主要影响程序化 close）。
 - 弹窗任务栏：`build_popup` 用 `skip_taskbar(!show_in_taskbar)`；`save_app_config` 调用 `apply_popup_taskbar_visibility` 热更新已存在窗口。
 - 开机自启：`launchAtLogin` → `app/autostart.rs` 写 HKCU `...\Run\Shizi`（命令带 `--autostart`）；`save_app_config` 与启动 setup 均同步；托盘/关窗 hide 为硬编码产品行为，设置页不再提供「最小化启动 / 托盘显隐 / 关闭行为」开关。
@@ -71,8 +71,9 @@
 
 ## 历史与日志
 
-- 历史：`HistoryStore` → `history.sqlite3`；统一翻译入口写 session/result；设置页 `list_translation_history` / `clear_translation_history`。
+- 历史：`HistoryStore` → `history.sqlite3`；统一翻译入口写 session/result；设置页 `list_translation_history` / `clear_translation_history`；备份恢复可 `replace_all` 整库替换。
 - 日志：`logs/Shizi.log`（tauri-plugin-log）与 `frontend.log`（append command）分文件；`logLevel` 可运行时切换；API Key 与正文脱敏；失败 best-effort。
+- **WebDAV 备份**（设置 → 高级）：主路径 Basic + PROPFIND/MKCOL/PUT/GET；远端 `shizi-backup-*.zip`（manifest + settings + 可选 history）；本机 JSON 导入/导出兜底。命令：`test_webdav_connection` / `backup_to_webdav` / `list_webdav_backups` / `restore_from_webdav` / `export_settings_snapshot` / `import_settings_snapshot`。UI 顺序：连接 → 含历史 → 含 API Key → 手动同步 → 自动备份（约 30s）。规格：`docs/superpowers/specs/2026-08-05-webdav-backup-design.md`。
 
 ## 目录索引（实现时优先打开）
 
@@ -80,6 +81,7 @@
 |------|------|
 | 装配 / 托盘 / 快捷键 | `src-tauri/src/lib.rs`、`app/` |
 | 配置 | `src-tauri/src/core/config/` |
+| WebDAV 备份 | `src-tauri/src/core/backup/`、`src-tauri/src/ui/backup.rs`、设置 `AdvancedPanel` |
 | 翻译 / 协议 | `src-tauri/src/core/translation/` |
 | LLM / MT | `src-tauri/src/core/llm/`、`core/mt/` |
 | 检查更新 | `src-tauri/src/core/update/`、`ui/update.rs` |
