@@ -4,7 +4,14 @@ const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T
 
 export function exportSettings(state: AppSettings): AppSettings {
   const exported = clone(state)
-  exported.services = exported.services.map((s) => ({ ...s, apiKey: '' }))
+  const includeKeys = exported.advanced?.backup?.includeApiKeys ?? true
+  if (!includeKeys) {
+    exported.services = exported.services.map((s) => ({ ...s, apiKey: '' }))
+    exported.ocrServices = (exported.ocrServices ?? []).map((s) => ({ ...s, apiKey: '' }))
+    if (exported.advanced?.backup?.webdav) {
+      exported.advanced.backup.webdav.password = ''
+    }
+  }
   return exported
 }
 

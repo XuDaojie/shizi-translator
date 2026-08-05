@@ -21,6 +21,7 @@ import {
 } from '../tokens'
 import { projectToAppConfig, validateConfig } from '@/lib/config'
 import {
+  invokeBackupToWebDav,
   invokeGetAppConfig,
   invokeGetInterfaceLanguageSnapshot,
   invokeGetShortcutConflicts,
@@ -38,6 +39,36 @@ import { createLogger } from '@public/logger.js'
 import { t } from '@/i18n'
 const STORAGE_KEY = 'app:settings:v1'
 const logger = createLogger('settings')
+/** 自动备份：保存成功后防抖约 30s。 */
+let autoBackupTimer: ReturnType<typeof setTimeout> | undefined
+
+function scheduleAutoBackupIfNeeded(): void {
+  if (!isTauriReady()) return
+  const b = state.advanced.backup
+  if (!b.autoSync) return
+  const w = b.webdav
+  if (!w.url.trim() || !w.username.trim() || !w.password.trim() || !w.remotePath.trim()) return
+  if (autoBackupTimer) clearTimeout(autoBackupTimer)
+  autoBackupTimer = setTimeout(() => {
+    void (async () => {
+      if (!state.advanced.backup.autoSync) return
+      const web = state.advanced.backup.webdav
+      try {
+        const result = await invokeBackupToWebDav({
+          url: web.url,
+          username: web.username,
+          password: web.password,
+          remotePath: web.remotePath,
+        })
+        web.lastBackupAt = result.lastBackupAt
+        web.status = 'connected'
+      } catch (e) {
+        toast.error(t('settings.backup.toast.autoFail'), String(e))
+        logger.warn('自动备份失败', String(e))
+      }
+    })()
+  }, 30_000)
+}
 
 /** 配置通道：`nightly`；历史 `beta` 迁到每日构建。 */
 function normalizeUpdateChannel(value: unknown): UpdateChannel {
@@ -237,6 +268,21 @@ const buildDefaults = (): AppSettings => {
       betaLookup: false,
       betaVoice: false,
       collectUsage: true,
+      backup: {
+        webdav: {
+          url: '',
+          username: '',
+          password: '',
+          remotePath: '/shizi/backups/',
+          lastTestedAt: '',
+          lastBackupAt: '',
+          status: 'idle',
+          lastError: '',
+        },
+        autoSync: false,
+        includeHistory: false,
+        includeApiKeys: true,
+      },
     },
   }
 }
@@ -499,7 +545,21 @@ const loadFromStorage = (): AppSettings => {
         return normalizeOcrList(hydrated)
       })(),
       customServiceTypes: parsed.customServiceTypes ?? [],
-      advanced: { ...defaults.advanced, ...parsed.advanced },
+      advanced: {
+        ...defaults.advanced,
+        ...parsed.advanced,
+        backup: {
+          ...defaults.advanced.backup,
+          ...(parsed.advanced?.backup ?? {}),
+          webdav: {
+            ...defaults.advanced.backup.webdav,
+            ...(parsed.advanced?.backup?.webdav ?? {}),
+            // 运行时状态不从 localStorage 恢复
+            status: 'idle' as const,
+            lastError: '',
+          },
+        },
+      },
     }
   } catch {
     return buildDefaults()
@@ -610,6 +670,7 @@ const persist = (notify = false): Promise<void> => {
       if (isTauriReady()) {
         await invokeSaveAppConfig(config)
         if (notify) toast.success(t('settings.toast.saved'))
+        scheduleAutoBackupIfNeeded()
       } else if (notify) {
         toast.info(t('settings.toast.saved'), t('settings.status.localPreference'))
       }
@@ -795,6 +856,25 @@ export const useSettings = () => ({
       state.shortcut.bindings = mergeBackendIntoShortcuts(state.shortcut.bindings, backend.shortcuts ?? {})
       state.advanced.logLevel = applyBackendLogLevel(state.advanced.logLevel, backend.logLevel)
       logger.setLevel(state.advanced.logLevel)
+      if (backend.backup) {
+        const b = backend.backup
+        const prevStatus = state.advanced.backup.webdav.status
+        const prevError = state.advanced.backup.webdav.lastError
+        state.advanced.backup.autoSync = b.autoSync ?? false
+        state.advanced.backup.includeHistory = b.includeHistory ?? false
+        state.advanced.backup.includeApiKeys = b.includeApiKeys ?? true
+        state.advanced.backup.webdav = {
+          url: b.webdav?.url ?? '',
+          username: b.webdav?.username ?? '',
+          password: b.webdav?.password ?? '',
+          remotePath: b.webdav?.remotePath || '/shizi/backups/',
+          lastTestedAt: b.webdav?.lastTestedAt ?? '',
+          lastBackupAt: b.webdav?.lastBackupAt ?? '',
+          // status 不落盘，同步时保留内存态
+          status: prevStatus,
+          lastError: prevError,
+        }
+      }
       const synced = cloneSettings(state)
       await refreshShortcutConflicts()
       commitBaseline(synced)

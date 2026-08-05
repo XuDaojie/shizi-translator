@@ -44,16 +44,40 @@ const baseState: AppSettings = {
     betaLookup: false,
     betaVoice: false,
     collectUsage: false,
+    backup: {
+      webdav: {
+        url: '',
+        username: '',
+        password: '',
+        remotePath: '/shizi/backups/',
+        lastTestedAt: '',
+        lastBackupAt: '',
+        status: 'idle',
+        lastError: '',
+      },
+      autoSync: false,
+      includeHistory: false,
+      includeApiKeys: true,
+    },
   },
 }
 
+const cloneBase = (): AppSettings => JSON.parse(JSON.stringify(baseState)) as AppSettings
+
 describe('config-io', () => {
-  it('导出配置时剔除 API Key', () => {
-    const exported = exportSettings(baseState)
+  it('includeApiKeys=false 时导出剔除 API Key', () => {
+    const state = cloneBase()
+    state.advanced.backup.includeApiKeys = false
+    const exported = exportSettings(state)
     for (const svc of exported.services) {
       expect(svc.apiKey).toBe('')
     }
     expect(exported.services[0].name).toBe('DeepSeek')
+  })
+
+  it('includeApiKeys=true（默认）时导出保留 API Key', () => {
+    const exported = exportSettings(baseState)
+    expect(exported.services[0].apiKey).toBe('sk-live-aaa')
   })
 
   it('导入配置时保留本地已有服务的 API Key', () => {

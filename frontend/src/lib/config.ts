@@ -1,5 +1,5 @@
 import type { AppConfig, ServiceProtocolId } from '@/types/config';
-import { DEFAULT_WINDOW_PRECREATE } from '@/types/config';
+import { DEFAULT_BACKUP_CONFIG, DEFAULT_WINDOW_PRECREATE } from '@/types/config';
 import type { AppSettings } from '@/settings/types';
 
 const AVAILABLE_PROTOCOLS: readonly ServiceProtocolId[] = ['openai_chat', 'claude_messages', 'microsoft_edge', 'mock'];
@@ -82,6 +82,19 @@ export function projectToAppConfig(state: AppSettings): AppConfig {
     updateChannel: state.general.updateChannel,
     autoCheckUpdate: state.general.autoCheckUpdate,
     launchAtLogin: state.general.launchAtLogin,
+    backup: {
+      webdav: {
+        url: state.advanced.backup.webdav.url.trim(),
+        username: state.advanced.backup.webdav.username.trim(),
+        password: state.advanced.backup.webdav.password,
+        remotePath: state.advanced.backup.webdav.remotePath.trim() || DEFAULT_BACKUP_CONFIG.webdav.remotePath,
+        lastTestedAt: state.advanced.backup.webdav.lastTestedAt,
+        lastBackupAt: state.advanced.backup.webdav.lastBackupAt,
+      },
+      autoSync: state.advanced.backup.autoSync,
+      includeHistory: state.advanced.backup.includeHistory,
+      includeApiKeys: state.advanced.backup.includeApiKeys,
+    },
     shortcuts: Object.fromEntries(
       state.shortcut.bindings.map((binding) => [binding.id, binding.keys.trim()]),
     ),

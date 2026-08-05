@@ -55,7 +55,27 @@ const makeState = (services: ServiceInstance[]): AppSettings => ({
   services,
   ocrServices: [],
   customServiceTypes: [],
-  advanced: { logLevel: 'info', betaLookup: false, betaVoice: false, collectUsage: true },
+  advanced: {
+    logLevel: 'info',
+    betaLookup: false,
+    betaVoice: false,
+    collectUsage: true,
+    backup: {
+      webdav: {
+        url: '',
+        username: '',
+        password: '',
+        remotePath: '/shizi/backups/',
+        lastTestedAt: '',
+        lastBackupAt: '',
+        status: 'idle',
+        lastError: '',
+      },
+      autoSync: false,
+      includeHistory: false,
+      includeApiKeys: true,
+    },
+  },
 });
 
 describe('projectToAppConfig', () => {

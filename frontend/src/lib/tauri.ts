@@ -75,6 +75,70 @@ export async function invokeExportLogs(): Promise<string> {
   return requireInvoke()<string>('export_logs');
 }
 
+export interface WebDavConnectionArgs {
+  url: string
+  username: string
+  password: string
+  remotePath: string
+}
+
+export interface WebDavTestResult {
+  lastTestedAt: string
+  remotePath: string
+}
+
+export interface WebDavBackupResult {
+  lastBackupAt: string
+  remotePath: string
+  fileName: string
+}
+
+export interface RemoteBackupItemDto {
+  id: string
+  name: string
+  path: string
+  createdAt: string
+  sizeLabel: string
+  includeHistory: boolean
+  includeApiKeys: boolean
+}
+
+export async function invokeTestWebDavConnection(
+  args: WebDavConnectionArgs,
+): Promise<WebDavTestResult> {
+  return requireInvoke()<WebDavTestResult>('test_webdav_connection', { args })
+}
+
+export async function invokeBackupToWebDav(
+  args: WebDavConnectionArgs,
+): Promise<WebDavBackupResult> {
+  return requireInvoke()<WebDavBackupResult>('backup_to_webdav', { args })
+}
+
+export async function invokeListWebDavBackups(
+  args: WebDavConnectionArgs,
+): Promise<RemoteBackupItemDto[]> {
+  return requireInvoke()<RemoteBackupItemDto[]>('list_webdav_backups', { args })
+}
+
+export async function invokeRestoreFromWebDav(
+  args: WebDavConnectionArgs,
+  remoteFilePath: string,
+): Promise<AppConfig> {
+  return requireInvoke()<AppConfig>('restore_from_webdav', {
+    args,
+    remoteFilePath,
+  })
+}
+
+export async function invokeExportSettingsSnapshot(): Promise<string> {
+  return requireInvoke()<string>('export_settings_snapshot')
+}
+
+export async function invokeImportSettingsSnapshot(json: string): Promise<AppConfig> {
+  return requireInvoke()<AppConfig>('import_settings_snapshot', { json })
+}
+
 export type HistoryTrigger = 'selection' | 'manual' | 'screenshot'
 export type HistoryResultStatus = 'success' | 'error' | 'cancelled' | 'pending'
 

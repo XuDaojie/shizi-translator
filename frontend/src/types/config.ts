@@ -52,6 +52,40 @@ export const DEFAULT_WINDOW_PRECREATE: WindowPrecreateConfig = {
   autostart: { popup: false, overlay: false },
 };
 
+/** WebDAV 连接与远端备份目录（密码仅本机；连接状态不持久化）。 */
+export interface WebDavConfig {
+  url: string;
+  username: string;
+  password: string;
+  /** 远端备份目录，如 `/shizi/backups/`。 */
+  remotePath: string;
+  lastTestedAt: string;
+  lastBackupAt: string;
+}
+
+/** 备份与同步（WebDAV + 本机导入/导出共用开关）。 */
+export interface BackupConfig {
+  webdav: WebDavConfig;
+  autoSync: boolean;
+  includeHistory: boolean;
+  /** 默认 true：备份/导出默认包含 API Key。 */
+  includeApiKeys: boolean;
+}
+
+export const DEFAULT_BACKUP_CONFIG: BackupConfig = {
+  webdav: {
+    url: '',
+    username: '',
+    password: '',
+    remotePath: '/shizi/backups/',
+    lastTestedAt: '',
+    lastBackupAt: '',
+  },
+  autoSync: false,
+  includeHistory: false,
+  includeApiKeys: true,
+};
+
 export interface AppConfig {
   interfaceLanguage: string;
   targetLang: string;
@@ -76,5 +110,7 @@ export interface AppConfig {
   autoCheckUpdate: boolean;
   /** 登录系统后自动启动（Windows Run 键）。旧 config 可能缺省。 */
   launchAtLogin?: boolean;
+  /** WebDAV 备份；旧 config 可能缺省。 */
+  backup?: BackupConfig;
   shortcuts: Record<string, string>;
 }

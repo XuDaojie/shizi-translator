@@ -15,12 +15,45 @@ export interface GeneralSettings {
   autoCheckUpdate: boolean
 }
 
+/** WebDAV 连接状态（由「测试连接」驱动；改凭证后回 idle；不持久化）。 */
+export type WebDavStatus = 'idle' | 'connecting' | 'connected' | 'error'
+
+export interface WebDavSettings {
+  url: string
+  username: string
+  password: string
+  remotePath: string
+  lastTestedAt: string
+  lastBackupAt: string
+  status: WebDavStatus
+  lastError: string
+}
+
+export interface BackupSettings {
+  webdav: WebDavSettings
+  autoSync: boolean
+  includeHistory: boolean
+  /** 默认 true。 */
+  includeApiKeys: boolean
+}
+
+export interface RemoteBackupItem {
+  id: string
+  name: string
+  path: string
+  createdAt: string
+  sizeLabel: string
+  includeHistory: boolean
+  includeApiKeys: boolean
+}
+
 export interface AdvancedSettings {
   logLevel: LogLevel
   betaLookup: boolean
   betaVoice: boolean
   /** 是否收集匿名使用统计（后端已实现，接 save_app_config.collectUsage）。 */
   collectUsage: boolean
+  backup: BackupSettings
 }
 
 export type BuiltinServiceId =
