@@ -311,9 +311,8 @@
     "settings.description.importConfig": "从 JSON 恢复并覆盖当前设置；导入前建议先导出一份。",
     "settings.backup.groupTitle": "备份与同步 · WebDAV",
     "settings.backup.groupDesc": "把配置快照推到网盘或私有服务器。适合坚果云、Nextcloud、群晖等。",
-    "settings.backup.status.idle": "未连接",
-    "settings.backup.status.connecting": "连接中…",
-    "settings.backup.status.connected": "已连接",
+    "settings.backup.status.connecting": "测试中…",
+    "settings.backup.status.connected": "已验证",
     "settings.backup.status.error": "连接失败",
     "settings.backup.connection": "连接信息",
     "settings.backup.connectionDesc": "服务器地址支持 HTTPS；密码仅保存在本机。",
@@ -499,6 +498,8 @@
     "popup.tooltip.close": "关闭",
     "popup.error.closeFailed": "关闭弹窗失败",
     "settings.field.showInTaskbar": "在任务栏显示",
-    "settings.description.showInTaskbar": "开启后翻译弹窗会出现在任务栏与 Alt+Tab 中。"
+    "settings.description.showInTaskbar": "开启后翻译弹窗会出现在任务栏与 Alt+Tab 中。",
+    "settings.backup.status.incomplete": "未配置",
+    "settings.backup.status.ready": "已就绪"
   }
 }

@@ -312,9 +312,8 @@
     "settings.description.importConfig": "Restore from JSON and overwrite current settings. Export a copy first if unsure.",
     "settings.backup.groupTitle": "Backup & sync · WebDAV",
     "settings.backup.groupDesc": "Push config snapshots to a drive or private server (Jianguoyun, Nextcloud, Synology, etc.).",
-    "settings.backup.status.idle": "Not connected",
-    "settings.backup.status.connecting": "Connecting…",
-    "settings.backup.status.connected": "Connected",
+    "settings.backup.status.connecting": "Testing…",
+    "settings.backup.status.connected": "Verified",
     "settings.backup.status.error": "Failed",
     "settings.backup.connection": "Connection",
     "settings.backup.connectionDesc": "HTTPS recommended. Password is stored only on this device.",
@@ -499,6 +498,8 @@
     "popup.tooltip.close": "Close",
     "popup.error.closeFailed": "Failed to close popup",
     "settings.field.showInTaskbar": "Show in taskbar",
-    "settings.description.showInTaskbar": "When enabled, the translation popup appears on the taskbar and in Alt+Tab."
+    "settings.description.showInTaskbar": "When enabled, the translation popup appears on the taskbar and in Alt+Tab.",
+    "settings.backup.status.incomplete": "Not configured",
+    "settings.backup.status.ready": "Ready"
   }
 }

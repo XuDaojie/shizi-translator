@@ -449,9 +449,8 @@
     "settings.description.showInTaskbar": "開啟後翻譯彈窗會出現在工作列與 Alt+Tab 中。",
     "settings.backup.groupTitle": "備份與同步 · WebDAV",
     "settings.backup.groupDesc": "把配置快照推到網盤或私有伺服器。適合堅果雲、Nextcloud、群暉等。",
-    "settings.backup.status.idle": "未連線",
-    "settings.backup.status.connecting": "連線中…",
-    "settings.backup.status.connected": "已連線",
+    "settings.backup.status.connecting": "測試中…",
+    "settings.backup.status.connected": "已驗證",
     "settings.backup.status.error": "連線失敗",
     "settings.backup.connection": "連線資訊",
     "settings.backup.connectionDesc": "伺服器位址支援 HTTPS；密碼僅保存在本機。",
@@ -499,6 +498,8 @@
     "settings.backup.toast.parseFail": "無法解析檔案，請選擇有效的 JSON",
     "settings.backup.toast.importOk": "已匯入配置",
     "settings.backup.toast.importFail": "匯入失敗",
-    "settings.backup.toast.autoFail": "自動備份失敗"
+    "settings.backup.toast.autoFail": "自動備份失敗",
+    "settings.backup.status.incomplete": "未配置",
+    "settings.backup.status.ready": "已就緒"
   }
 }

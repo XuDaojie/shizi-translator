@@ -96,7 +96,11 @@ const canUseWebDav = computed(() => {
 
 /**
  * 备份/恢复：凭证齐全即可操作，不必先点「测试连接」。
- * 「测试连接」只负责校验与徽标；失败时备份/恢复会 toast 错误信息。
+ * 右上角徽标表示「配置/会话反馈」，不是常驻在线会话：
+ * - 未填齐 → 未配置
+ * - 已填齐且本会话未测/未成功操作 → 已就绪
+ * - 测连或备份成功 → 已验证
+ * - 失败 → 连接失败
  */
 const canOperateWebDav = computed(() => canUseWebDav.value)
 
@@ -109,7 +113,9 @@ const statusLabel = computed(() => {
     case 'error':
       return t('settings.backup.status.error')
     default:
-      return t('settings.backup.status.idle')
+      return canUseWebDav.value
+        ? t('settings.backup.status.ready')
+        : t('settings.backup.status.incomplete')
   }
 })
 
@@ -122,7 +128,8 @@ const statusVariant = computed(() => {
     case 'connecting':
       return 'warning' as const
     default:
-      return 'secondary' as const
+      // 已就绪用 info，与「已验证」的 success 区分
+      return canUseWebDav.value ? ('info' as const) : ('secondary' as const)
   }
 })
 
@@ -135,7 +142,7 @@ const statusDotClass = computed(() => {
     case 'connecting':
       return 'bg-amber-500 animate-pulse'
     default:
-      return 'bg-muted-foreground'
+      return canUseWebDav.value ? 'bg-sky-500' : 'bg-muted-foreground'
   }
 })
 

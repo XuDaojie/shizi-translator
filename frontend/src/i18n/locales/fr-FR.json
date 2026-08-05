@@ -449,9 +449,8 @@
     "settings.description.showInTaskbar": "Si activé, la fenêtre de traduction apparaît dans la barre des tâches et dans Alt+Tab.",
     "settings.backup.groupTitle": "Backup & sync · WebDAV",
     "settings.backup.groupDesc": "Push config snapshots to a drive or private server (Jianguoyun, Nextcloud, Synology, etc.).",
-    "settings.backup.status.idle": "Not connected",
-    "settings.backup.status.connecting": "Connecting…",
-    "settings.backup.status.connected": "Connected",
+    "settings.backup.status.connecting": "Testing…",
+    "settings.backup.status.connected": "Verified",
     "settings.backup.status.error": "Failed",
     "settings.backup.connection": "Connection",
     "settings.backup.connectionDesc": "HTTPS recommended. Password is stored only on this device.",
@@ -499,6 +498,8 @@
     "settings.backup.toast.parseFail": "Invalid JSON file",
     "settings.backup.toast.importOk": "Settings imported",
     "settings.backup.toast.importFail": "Import failed",
-    "settings.backup.toast.autoFail": "Auto backup failed"
+    "settings.backup.toast.autoFail": "Auto backup failed",
+    "settings.backup.status.incomplete": "Not configured",
+    "settings.backup.status.ready": "Ready"
   }
 }
