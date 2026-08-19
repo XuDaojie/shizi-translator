@@ -52,6 +52,7 @@
 - `Alt+D` 划词翻译：主键释放后等修饰键全松再 Ctrl+C；成功取词才 show 弹窗。
 - `Alt+S` 截图 OCR 翻译；独立文字识别默认无快捷键（托盘入口；用户可在设置绑定，不翻译、不写历史）。
 - `CapturePurpose`：`Translate` | `RecognizeOnly`，在 `submit_capture_region` 分叉。
+- **截图 DPI scale 唯一事实来源**：overlay 自身 `scale_factor`（`overlay_scale_factor`），兜底光标屏 DPI（`cursor_monitor_scale_factor`）；overlay 打开时按光标屏物理边界铺满（`place_overlay_on_cursor_monitor`）。**禁止**改回读 `main` WebView 的 scale——main 可能不存在或位于其它 DPI 屏幕，落到 1.0 会在高 DPI 上只裁到左上角（「截图被放大」历史回归根因；`pending_capture` 不再存储 scale）。
 - **截图翻译（Translate）空窗消除**：框选提交后**立刻** `show_translation_popup` + emit `translation:event` `ocrStarted`，再 await OCR；成功后 `start_translation_from_input`。OCR 占用独立 `ocr_pipeline_generation` / `ocr_cancel_token`（不占 `translation_busy`）；`finish_capture` 在 OCR 前释放。关窗 hide/destroy、`cancel_ocr`、新一轮截图均 `cancel_current_ocr`（递增 generation），已取消任务不得进入翻译。规格：`docs/superpowers/specs/2026-08-03-screenshot-ocr-popup-early-show-design.md`。
 - 启动注册 best-effort，冲突记入 `shortcut_conflicts`；保存路径 all-or-nothing。新快捷键须同步 `capabilities/default.json`。
 

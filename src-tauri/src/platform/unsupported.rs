@@ -58,6 +58,16 @@ pub fn cursor_logical_context(_scale: f64) -> Option<(f64, f64, f64, f64, f64, f
     None
 }
 
+/// 非 Windows 平台无截图功能，scale 固定 1.0。
+pub fn cursor_monitor_scale_factor() -> f64 {
+    1.0
+}
+
+/// 非 Windows 平台无截图功能，返回 `None`。
+pub fn cursor_monitor_physical_bounds() -> Option<(i32, i32, u32, u32)> {
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,11 +1,17 @@
-use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+use tauri::{
+    Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindow,
+    WebviewWindowBuilder, WindowEvent,
+};
 
 use crate::{
     app::state::{AppState, CapturePurpose},
     core::config::AppConfig,
     core::ocr::OcrHints,
     core::translation::TranslationEvent,
-    platform::{recognize_cropped_full, recognize_region},
+    platform::{
+        cursor_monitor_physical_bounds, cursor_monitor_scale_factor, recognize_cropped_full,
+        recognize_region,
+    },
     ui::web_popup::{
         emit_translation_event, show_translation_error, show_translation_popup,
         start_translation_from_input,
@@ -13,6 +19,32 @@ use crate::{
 };
 
 pub const OVERLAY_LABEL: &str = "screenshot-overlay";
+
+/// 把 overlay 对齐到光标所在显示器物理全屏（与抓帧同源）。
+/// 仅 `.fullscreen(true)` 在多屏/DPI 下常落到主屏或尺寸不对，表现为「只盖住左上角」。
+fn place_overlay_on_cursor_monitor(window: &WebviewWindow) {
+    let Some((x, y, w, h)) = cursor_monitor_physical_bounds() else {
+        let _ = window.set_fullscreen(true);
+        return;
+    };
+    let _ = window.set_fullscreen(false);
+    let _ = window.set_position(PhysicalPosition::new(x, y));
+    let _ = window.set_size(PhysicalSize::new(w, h));
+}
+
+/// 截图 scale 唯一事实来源：overlay 自身 scale_factor（铺满被抓屏时即该屏 DPI）。
+/// **不可取 main WebView 的 scale**——main 可能不存在（托盘/纯识别）或位于其它 DPI 屏幕，
+/// 落到 1.0 会在高 DPI 上只裁到左上角（历史反复回归的根因）。
+fn overlay_scale_factor(app: &tauri::AppHandle) -> f64 {
+    if let Some(window) = app.get_webview_window(OVERLAY_LABEL) {
+        if let Ok(scale) = window.scale_factor() {
+            if scale.is_finite() && scale > 0.0 {
+                return scale;
+            }
+        }
+    }
+    cursor_monitor_scale_factor()
+}
 
 fn build_overlay(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, String> {
     let window = WebviewWindowBuilder::new(app, OVERLAY_LABEL, WebviewUrl::App("overlay.html".into()))
@@ -27,6 +59,7 @@ fn build_overlay(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, String>
         .visible(false)
         .build()
         .map_err(|e| e.to_string())?;
+    place_overlay_on_cursor_monitor(&window);
     // 兜底：overlay 被外部关闭或异常销毁时（非 submit/cancel 正常路径），
     // 释放 pending_capture 帧与 capture 锁，避免锁永久占用导致后续截图快捷键被拒。
     let app_handle = app.clone();
@@ -63,6 +96,7 @@ pub fn ensure_overlay(app: &tauri::AppHandle) -> Result<(), String> {
 /// 打开 overlay：已存在则 reload 读新帧，否则创建。用完 hide 复用（见 hide_overlay）。
 pub fn open_overlay(app: &tauri::AppHandle, _config: &AppConfig) -> Result<(), String> {
     if let Some(window) = app.get_webview_window(OVERLAY_LABEL) {
+        place_overlay_on_cursor_monitor(&window);
         let _ = window.eval("location.reload()");
         return Ok(());
     }
@@ -80,9 +114,13 @@ fn hide_overlay(app: &tauri::AppHandle) {
 
 #[tauri::command]
 pub async fn get_capture_frame_meta(
+    app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<Option<(u32, u32, f64)>, String> {
-    state.pending_capture_meta()
+    let Some((w, h)) = state.pending_capture_meta()? else {
+        return Ok(None);
+    };
+    Ok(Some((w, h, overlay_scale_factor(&app))))
 }
 
 #[tauri::command]
@@ -129,11 +167,11 @@ pub async fn submit_capture_region(
 
     hide_overlay(&app);
 
-    let Some((frame, scale)) = state.take_pending_capture()? else {
+    let Some(frame) = state.take_pending_capture()? else {
         // 帧已被取消/消费（cancel 或前一次 submit 已 take 并释放 capture 锁），静默。
         return Ok(());
     };
-    let region = css_rect_to_physical(x, y, w, h, scale);
+    let region = css_rect_to_physical(x, y, w, h, overlay_scale_factor(&app));
     if region.2 == 0 || region.3 == 0 {
         // 选区过小：take 已成功，须释放 start_translation_from_ocr 占的 capture 锁。
         let _ = state.finish_capture();

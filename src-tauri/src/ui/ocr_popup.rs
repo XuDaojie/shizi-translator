@@ -8,7 +8,6 @@ use crate::{
     ui::{overlay, web_popup::show_translation_error},
 };
 
-use tauri::Manager;
 
 pub async fn start_translation_from_ocr(app: tauri::AppHandle, state: AppState) {
     // 不检查 translation_busy：与划词/手动入口一致，最新输入优先。
@@ -42,13 +41,7 @@ pub async fn start_translation_from_ocr(app: tauri::AppHandle, state: AppState) 
         }
     };
 
-    // scale_factor 取主窗口缩放（MVP 简化；多屏精确缩放留后续）
-    let scale = app
-        .get_webview_window("main")
-        .and_then(|w| w.scale_factor().ok())
-        .unwrap_or(1.0);
-
-    if let Err(error) = state.set_pending_capture(frame, scale) {
+    if let Err(error) = state.set_pending_capture(frame) {
         let _ = state.finish_capture();
         show_translation_error(&app, error);
         return;

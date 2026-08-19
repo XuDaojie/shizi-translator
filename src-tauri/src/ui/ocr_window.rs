@@ -1,4 +1,4 @@
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::{
@@ -80,12 +80,7 @@ pub async fn start_ocr_capture_flow(app: AppHandle, state: AppState) {
         }
     };
 
-    let scale = app
-        .get_webview_window("main")
-        .and_then(|w| w.scale_factor().ok())
-        .unwrap_or(1.0);
-
-    if let Err(error) = state.set_pending_capture(frame, scale) {
+    if let Err(error) = state.set_pending_capture(frame) {
         let _ = state.finish_capture();
         emit_ocr_recognize_failed(&app, error);
         return;

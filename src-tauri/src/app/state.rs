@@ -37,7 +37,7 @@ pub struct AppState {
     // overlay 提交用途：Translate → 翻译弹窗；RecognizeOnly → OCR 窗事件。
     capture_purpose: Arc<Mutex<CapturePurpose>>,
     // overlay 截图链路：抓到的整屏帧 + 显示器 scale_factor，等待框选裁剪。
-    pending_capture: Arc<Mutex<Option<(CapturedImage, f64)>>>,
+    pending_capture: Arc<Mutex<Option<CapturedImage>>>,
     // 当前翻译的取消信号。begin 时存入，翻译自然结束 clear、用户取消 cancel。
     // cancel 取出并触发；幂等：无 token 或已清空返回 Ok 无操作。
     current_cancel_token: Arc<Mutex<Option<CancellationToken>>>,
@@ -234,21 +234,21 @@ impl AppState {
             .unwrap_or(CapturePurpose::Translate)
     }
 
-    pub fn set_pending_capture(&self, frame: CapturedImage, scale_factor: f64) -> Result<(), String> {
+    pub fn set_pending_capture(&self, frame: CapturedImage) -> Result<(), String> {
         let mut slot = self
             .pending_capture
             .lock()
             .map_err(|_| "截图帧状态锁已损坏".to_string())?;
-        *slot = Some((frame, scale_factor));
+        *slot = Some(frame);
         Ok(())
     }
 
-    pub fn pending_capture_meta(&self) -> Result<Option<(u32, u32, f64)>, String> {
+    pub fn pending_capture_meta(&self) -> Result<Option<(u32, u32)>, String> {
         let slot = self
             .pending_capture
             .lock()
             .map_err(|_| "截图帧状态锁已损坏".to_string())?;
-        Ok(slot.as_ref().map(|(frame, scale)| (frame.width, frame.height, *scale)))
+        Ok(slot.as_ref().map(|frame| (frame.width, frame.height)))
     }
 
     pub fn pending_capture_bytes(&self) -> Result<Option<Vec<u8>>, String> {
@@ -256,10 +256,10 @@ impl AppState {
             .pending_capture
             .lock()
             .map_err(|_| "截图帧状态锁已损坏".to_string())?;
-        Ok(slot.as_ref().map(|(frame, _)| frame.bytes.clone()))
+        Ok(slot.as_ref().map(|frame| frame.bytes.clone()))
     }
 
-    pub fn take_pending_capture(&self) -> Result<Option<(CapturedImage, f64)>, String> {
+    pub fn take_pending_capture(&self) -> Result<Option<CapturedImage>, String> {
         let mut slot = self
             .pending_capture
             .lock()
@@ -614,16 +614,16 @@ mod tests {
             format: CapturedImageFormat::Bgra8,
         };
 
-        state.set_pending_capture(frame.clone(), 1.5).expect("写入截图帧");
+        state.set_pending_capture(frame.clone()).expect("写入截图帧");
 
         let meta = state.pending_capture_meta().expect("读取 meta").expect("应有 meta");
-        assert_eq!(meta, (1, 1, 1.5));
+        assert_eq!(meta, (1, 1));
 
         assert_eq!(state.pending_capture_bytes().expect("读取 bytes").as_deref(), Some(&[1, 2, 3, 4][..]));
 
         let taken = state.take_pending_capture().expect("取出帧").expect("应有帧");
-        assert_eq!(taken.0, frame);
-        assert_eq!(taken.1, 1.5);
+        assert_eq!(taken, frame);
+
 
         assert!(state.take_pending_capture().expect("再次取出").is_none());
     }
@@ -645,12 +645,12 @@ mod tests {
             format: CapturedImageFormat::Bgra8,
         };
 
-        state.set_pending_capture(first, 1.0).expect("写入第一帧");
-        state.set_pending_capture(second.clone(), 2.0).expect("覆盖第二帧");
+        state.set_pending_capture(first).expect("写入第一帧");
+        state.set_pending_capture(second.clone()).expect("覆盖第二帧");
 
         let taken = state.take_pending_capture().expect("取出").expect("应有帧");
-        assert_eq!(taken.0, second);
-        assert_eq!(taken.1, 2.0);
+        assert_eq!(taken, second);
+
     }
 
     #[test]
