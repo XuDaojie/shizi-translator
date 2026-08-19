@@ -6,10 +6,44 @@
   <link rel="icon" href="/favicon.png" type="image/png" sizes="32x32" />
   <title>Shizi 截图</title>
   <style>
-    html, body { margin: 0; padding: 0; overflow: hidden; cursor: crosshair; user-select: none; }
-    #frame { position: fixed; top: 0; left: 0; }
-    #mask { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.35); }
-    #sel { position: fixed; border: 1px solid #38bdf8; background: rgba(56,189,248,0.12); display: none; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      cursor: crosshair;
+      user-select: none;
+      width: 100vw;
+      height: 100vh;
+      background: transparent;
+    }
+    #frame {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: transparent;
+    }
+    #mask {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.35);
+      opacity: 0;
+      transition: opacity 120ms cubic-bezier(0.16, 1, 0.3, 1);
+      pointer-events: none;
+    }
+    #mask.active {
+      opacity: 1;
+    }
+    #sel {
+      position: fixed;
+      border: 1px solid #38bdf8;
+      background: rgba(56, 189, 248, 0.12);
+      display: none;
+    }
   </style>
 </head>
 <body>
@@ -21,10 +55,11 @@
     const logger = createLogger('overlay');
     const invoke = window.__TAURI__.core.invoke;
     const canvas = document.getElementById('frame');
+    const mask = document.getElementById('mask');
     const sel = document.getElementById('sel');
     let downX = 0, downY = 0, moving = false, down = false;
 
-    async function init() {
+    async function loadFrame() {
       try {
         const config = await invoke('get_app_config');
         if (config?.logLevel) logger.setLevel(config.logLevel);
@@ -32,7 +67,10 @@
         logger.warn('读取配置失败', String(e));
       }
       const meta = await invoke('get_capture_frame_meta');
-      if (!meta) { await invoke('cancel_capture'); return; }
+      if (!meta) {
+        await invoke('cancel_capture');
+        return;
+      }
       const [w, h, scale] = meta;
       const buf = await invoke('get_capture_frame_bytes'); // ArrayBuffer，BGRA
       const bgra = new Uint8Array(buf);
@@ -43,12 +81,20 @@
         rgba[i*4+2] = bgra[i*4];   // B <- R
         rgba[i*4+3] = bgra[i*4+3]; // A
       }
-      canvas.width = w; canvas.height = h;            // 物理像素
-      canvas.style.width = (w / scale) + 'px';        // CSS 逻辑像素
-      canvas.style.height = (h / scale) + 'px';
+      canvas.width = w;
+      canvas.height = h;
       canvas.getContext('2d').putImageData(new ImageData(rgba, w, h), 0, 0);
-      // 内容就绪后再让后端显示窗口，消除 WebView2 默认白底占位闪烁。
-      await invoke('show_overlay');
+
+      // 双 rAF 确保 WebView2 完成当前 Canvas 帧的光栅化与提交，再通知后端显示窗口，消除首帧闪烁与白屏
+      requestAnimationFrame(() => {
+        requestAnimationFrame(async () => {
+          await invoke('show_overlay');
+          // 窗口呈现后触发遮罩平滑淡入（150ms 缓动），平滑过渡到暗化状态
+          requestAnimationFrame(() => {
+            mask.classList.add('active');
+          });
+        });
+      });
     }
 
     function updateSel(x1, y1, x2, y2) {
@@ -66,6 +112,7 @@
         // 右键/中键取消：重置拖拽状态，避免后续 mouseup 误提交。
         logger.info('框选取消：非左键');
         down = false; moving = false;
+        mask.classList.remove('active');
         invoke('cancel_capture');
         return;
       }
@@ -83,15 +130,27 @@
       down = false;
       const x = Math.min(downX, e.clientX), y = Math.min(downY, e.clientY);
       const w = Math.abs(e.clientX - downX), h = Math.abs(e.clientY - downY);
-      if (!moving || w < 3 || h < 3) { logger.info('框选取消：区域过小'); invoke('cancel_capture'); return; }
+      mask.classList.remove('active');
+      if (!moving || w < 3 || h < 3) {
+        logger.info('框选取消：区域过小');
+        invoke('cancel_capture');
+        return;
+      }
       logger.info('框选提交', { x, y, w, h });
       invoke('submit_capture_region', { x, y, w, h });
     });
     window.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') { logger.info('框选取消：Escape'); invoke('cancel_capture'); }
+      if (e.key === 'Escape') {
+        logger.info('框选取消：Escape');
+        mask.classList.remove('active');
+        invoke('cancel_capture');
+      }
     });
 
-    init().catch((e) => { logger.error('overlay 初始化失败', String(e)); invoke('cancel_capture'); });
+    loadFrame().catch((e) => {
+      logger.error('overlay 初始化失败', String(e));
+      invoke('cancel_capture');
+    });
   </script>
 </body>
 </html>

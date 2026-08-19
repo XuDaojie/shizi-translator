@@ -1,7 +1,4 @@
-use tauri::{
-    Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindow,
-    WebviewWindowBuilder, WindowEvent,
-};
+use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 
 use crate::{
     app::state::{AppState, CapturePurpose},
@@ -20,18 +17,6 @@ use crate::{
 
 pub const OVERLAY_LABEL: &str = "screenshot-overlay";
 
-/// 把 overlay 对齐到光标所在显示器物理全屏（与抓帧同源）。
-/// 仅 `.fullscreen(true)` 在多屏/DPI 下常落到主屏或尺寸不对，表现为「只盖住左上角」。
-fn place_overlay_on_cursor_monitor(window: &WebviewWindow) {
-    let Some((x, y, w, h)) = cursor_monitor_physical_bounds() else {
-        let _ = window.set_fullscreen(true);
-        return;
-    };
-    let _ = window.set_fullscreen(false);
-    let _ = window.set_position(PhysicalPosition::new(x, y));
-    let _ = window.set_size(PhysicalSize::new(w, h));
-}
-
 /// 截图 scale 唯一事实来源：overlay 自身 scale_factor（铺满被抓屏时即该屏 DPI）。
 /// **不可取 main WebView 的 scale**——main 可能不存在（托盘/纯识别）或位于其它 DPI 屏幕，
 /// 落到 1.0 会在高 DPI 上只裁到左上角（历史反复回归的根因）。
@@ -47,21 +32,32 @@ fn overlay_scale_factor(app: &tauri::AppHandle) -> f64 {
 }
 
 fn build_overlay(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, String> {
+    let (phys_x, phys_y, phys_w, phys_h) =
+        cursor_monitor_physical_bounds().unwrap_or((0, 0, 1920, 1080));
+    let scale = cursor_monitor_scale_factor().max(0.5);
+
+    let logical_x = phys_x as f64 / scale;
+    let logical_y = phys_y as f64 / scale;
+    let logical_w = phys_w as f64 / scale;
+    let logical_h = phys_h as f64 / scale;
+
     let window = WebviewWindowBuilder::new(app, OVERLAY_LABEL, WebviewUrl::App("overlay.html".into()))
         .title("Shizi 截图")
         .decorations(false)
+        .transparent(true)
         .always_on_top(true)
         .skip_taskbar(true)
         .resizable(false)
+        .position(logical_x, logical_y)
+        .inner_size(logical_w, logical_h)
         .fullscreen(true)
-        // 创建时不可见：WebView2 加载 HTML + canvas putImageData 期间会显示默认白底，
-        // 由前端在内容就绪后 invoke('show_overlay') 让后端显示，消除占位闪烁。
+        // 创建时不可见：WebView2 加载 HTML + canvas putImageData 期间会显示默认透明，
+        // 由前端在双 rAF 提交 GPU 帧后 invoke('show_overlay') 显示，消除白底与帧闪烁。
         .visible(false)
         .build()
         .map_err(|e| e.to_string())?;
-    place_overlay_on_cursor_monitor(&window);
-    // 兜底：overlay 被外部关闭或异常销毁时（非 submit/cancel 正常路径），
-    // 释放 pending_capture 帧与 capture 锁，避免锁永久占用导致后续截图快捷键被拒。
+
+    // 兜底：overlay 被外部关闭或异常销毁时，释放 pending_capture 帧与 capture 锁
     let app_handle = app.clone();
     window.on_window_event(move |event| {
         if let WindowEvent::Destroyed = event {
@@ -73,42 +69,29 @@ fn build_overlay(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, String>
     Ok(window)
 }
 
-/// 启动时按当前启动路径的 `windowPrecreate.*.overlay` 决定是否预建。
-pub fn ensure_overlay(app: &tauri::AppHandle) -> Result<(), String> {
-    let config = app
-        .state::<AppState>()
-        .config_store
-        .get()
-        .map_err(|e| format!("读取配置失败: {e}"))?;
-    let pair = config
-        .window_precreate
-        .for_launch(crate::app::autostart::is_autostart_process());
-    if !pair.overlay {
-        return Ok(());
-    }
-    if app.get_webview_window(OVERLAY_LABEL).is_some() {
-        return Ok(());
-    }
-    build_overlay(app)?;
+/// 纯冷启动策略：按需创建，用完即销毁，不在启动时预建以节省内存。
+pub fn ensure_overlay(_app: &tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// 打开 overlay：已存在则 reload 读新帧，否则创建。用完 hide 复用（见 hide_overlay）。
+/// 打开 overlay：每次均冷启动构建全屏截图窗口。
 pub fn open_overlay(app: &tauri::AppHandle, _config: &AppConfig) -> Result<(), String> {
     if let Some(window) = app.get_webview_window(OVERLAY_LABEL) {
-        place_overlay_on_cursor_monitor(&window);
-        let _ = window.eval("location.reload()");
-        return Ok(());
+        let _ = window.destroy();
     }
     build_overlay(app)?;
     Ok(())
 }
 
-// 仅 hide 不 close：submit/cancel 响应经 wry PostMessage 回宿主 hwnd；close 会令
-// hwnd 失效。hide 保留窗口，下次 open_overlay 对已有窗 location.reload 读新帧。
-fn hide_overlay(app: &tauri::AppHandle) {
+/// 用完销毁 overlay 窗口，释放 WebView2 进程与全部内存资源。
+fn destroy_overlay(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window(OVERLAY_LABEL) {
         let _ = window.hide();
+        let window_to_destroy = window.clone();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            let _ = window_to_destroy.destroy();
+        });
     }
 }
 
@@ -142,7 +125,7 @@ pub async fn cancel_capture(
     // 释放 capture 锁。幂等：若 submit 已 take 走帧并释放过，此处再清无害。
     // 若 cancel 自己 take 走帧，则此处负责释放 start_translation_from_ocr 占的锁。
     let _ = state.finish_capture();
-    hide_overlay(&app);
+    destroy_overlay(&app);
     // 仅 RecognizeOnly 清会话槽并恢复 OCR 窗；Translate / Alt+S 路径不碰。
     if purpose == CapturePurpose::RecognizeOnly {
         let _ = state.clear_ocr_session_service_id();
@@ -165,13 +148,14 @@ pub async fn submit_capture_region(
 ) -> Result<(), String> {
     use crate::core::capture::css_rect_to_physical;
 
-    hide_overlay(&app);
+    let scale = overlay_scale_factor(&app);
+    destroy_overlay(&app);
 
     let Some(frame) = state.take_pending_capture()? else {
         // 帧已被取消/消费（cancel 或前一次 submit 已 take 并释放 capture 锁），静默。
         return Ok(());
     };
-    let region = css_rect_to_physical(x, y, w, h, overlay_scale_factor(&app));
+    let region = css_rect_to_physical(x, y, w, h, scale);
     if region.2 == 0 || region.3 == 0 {
         // 选区过小：take 已成功，须释放 start_translation_from_ocr 占的 capture 锁。
         let _ = state.finish_capture();
@@ -289,7 +273,6 @@ pub async fn submit_capture_region(
 pub async fn show_overlay(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window(OVERLAY_LABEL) {
         window.show().map_err(|e| e.to_string())?;
-        let _ = window.set_focus();
     }
     Ok(())
 }
