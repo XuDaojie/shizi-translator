@@ -173,8 +173,26 @@ pub async fn submit_capture_region(
     };
 
     // 按入口设置的用途分叉：Translate → 翻译弹窗；RecognizeOnly → OCR 窗事件。
-    // recognize 期间持锁，挡住二次截图快捷键覆盖新帧；两条路径均须 finish_capture。
+    // 耗时 OCR 与翻译/识别处理放入后台任务执行，使 submit_capture_region 立即返回，
+    // 避免 overlay 窗口在 50ms 销毁后因 IPC 响应回传与广播产生「无效窗口句柄」报错。
     let purpose = state.capture_purpose();
+    let app_handle = app.clone();
+    let app_state = state.inner().clone();
+    tauri::async_runtime::spawn(async move {
+        process_captured_region(app_handle, app_state, frame, region, purpose, config).await;
+    });
+
+    Ok(())
+}
+
+async fn process_captured_region(
+    app: tauri::AppHandle,
+    state: AppState,
+    frame: crate::core::capture::CapturedImage,
+    region: (u32, u32, u32, u32),
+    purpose: CapturePurpose,
+    config: AppConfig,
+) {
     match purpose {
         CapturePurpose::Translate => {
             // 尽早释放截图锁：OCR 不再占用 capture，允许识别中再开截图（会 cancel 旧 OCR）。
@@ -185,7 +203,7 @@ pub async fn submit_capture_region(
                 Ok(g) => g,
                 Err(e) => {
                     show_translation_error(&app, e);
-                    return Ok(());
+                    return;
                 }
             };
 
@@ -196,7 +214,7 @@ pub async fn submit_capture_region(
             let result = tokio::select! {
                 _ = cancel.cancelled() => {
                     let _ = state.finish_ocr_if_current(generation);
-                    return Ok(());
+                    return;
                 }
                 r = recognize_region(
                     &frame,
@@ -209,20 +227,19 @@ pub async fn submit_capture_region(
             // 关窗 / 新一轮 OCR 会 cancel 并递增 generation：丢弃结果，禁止进入翻译。
             if cancel.is_cancelled() || !state.is_ocr_generation_current(generation) {
                 let _ = state.finish_ocr_if_current(generation);
-                return Ok(());
+                return;
             }
             let _ = state.finish_ocr_if_current(generation);
             if !state.is_ocr_generation_current(generation) {
-                return Ok(());
+                return;
             }
 
-            let app_state = state.inner();
             match result {
                 // recognize_cropped_for_translation 永不返回 Ok(None)（空文本走 Err(EmptyResult)）；
                 // 此分支若被触达即契约违反，报错而非静默吞掉。
                 Ok(None) => show_translation_error(&app, "未识别到文本"),
                 Ok(Some(input)) => {
-                    if let Err(error) = start_translation_from_input(input, app.clone(), app_state) {
+                    if let Err(error) = start_translation_from_input(input, app.clone(), &state) {
                         show_translation_error(&app, error);
                     }
                 }
@@ -264,7 +281,6 @@ pub async fn submit_capture_region(
             }
         }
     }
-    Ok(())
 }
 
 /// 前端 canvas 渲染完成后调用，让 overlay 窗口可见。
