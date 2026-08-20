@@ -2,6 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <link rel="icon" href="/favicon.png" type="image/png" sizes="32x32" />
   <title>Shizi 截图</title>
@@ -23,6 +24,11 @@
       width: 100vw;
       height: 100vh;
       background: transparent;
+      display: block;
+      /* 强制像素级点对点清晰渲染，禁用浏览器在 ClearType 亚像素位图上的双线性重采样平滑 */
+      image-rendering: -webkit-optimize-contrast;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
     }
     #mask {
       position: fixed;
@@ -30,7 +36,7 @@
       left: 0;
       right: 0;
       bottom: 0;
-      background: rgba(0, 0, 0, 0.35);
+      background: rgba(0, 0, 0, 0.28);
       opacity: 0;
       transition: opacity 120ms cubic-bezier(0.16, 1, 0.3, 1);
       pointer-events: none;
@@ -40,9 +46,13 @@
     }
     #sel {
       position: fixed;
-      border: 1px solid #38bdf8;
-      background: rgba(56, 189, 248, 0.12);
+      border: 1.5px solid #38bdf8;
+      box-sizing: border-box;
+      /* 选区内部 100% 透明露出高清原图，外部由巨大 box-shadow 形成暗色遮罩 */
+      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.28);
+      background: transparent;
       display: none;
+      pointer-events: none;
     }
   </style>
 </head>
@@ -72,6 +82,7 @@
         return;
       }
       const [w, h, scale] = meta;
+      const dpr = window.devicePixelRatio || scale || 1;
       const buf = await invoke('get_capture_frame_bytes'); // ArrayBuffer，BGRA
       const bgra = new Uint8Array(buf);
       const rgba = new Uint8ClampedArray(w * h * 4);
@@ -79,17 +90,20 @@
         rgba[i*4]   = bgra[i*4+2]; // R <- B
         rgba[i*4+1] = bgra[i*4+1]; // G
         rgba[i*4+2] = bgra[i*4];   // B <- R
-        rgba[i*4+3] = bgra[i*4+3]; // A
+        rgba[i*4+3] = 255;         // 强制不透明，消除透明窗口下的合成虚影与穿透
       }
       canvas.width = w;
       canvas.height = h;
+      // 精确绑定 CSS 显示尺寸为物理像素 / dpr，杜绝浮点舍入导致的视口拉伸重采样
+      canvas.style.width = (w / dpr) + 'px';
+      canvas.style.height = (h / dpr) + 'px';
       canvas.getContext('2d').putImageData(new ImageData(rgba, w, h), 0, 0);
 
       // 双 rAF 确保 WebView2 完成当前 Canvas 帧的光栅化与提交，再通知后端显示窗口，消除首帧闪烁与白屏
       requestAnimationFrame(() => {
         requestAnimationFrame(async () => {
           await invoke('show_overlay');
-          // 窗口呈现后触发遮罩平滑淡入（150ms 缓动），平滑过渡到暗化状态
+          // 窗口呈现后触发遮罩平滑淡入（120ms 缓动），平滑过渡到暗化状态
           requestAnimationFrame(() => {
             mask.classList.add('active');
           });
@@ -97,9 +111,19 @@
       });
     }
 
+    function resetOverlayState() {
+      down = false;
+      moving = false;
+      sel.style.display = 'none';
+      mask.style.display = '';
+      mask.classList.remove('active');
+    }
+
     function updateSel(x1, y1, x2, y2) {
       const left = Math.min(x1, x2), top = Math.min(y1, y2);
       const width = Math.abs(x2 - x1), height = Math.abs(y2 - y1);
+      // 框选时隐藏全屏 mask，由 sel 自身的 box-shadow 提供镂空四周遮罩，选区内部 100% 原始对比度
+      mask.style.display = 'none';
       sel.style.display = 'block';
       sel.style.left = left + 'px';
       sel.style.top = top + 'px';
@@ -111,27 +135,31 @@
       if (e.button !== 0) {
         // 右键/中键取消：重置拖拽状态，避免后续 mouseup 误提交。
         logger.info('框选取消：非左键');
-        down = false; moving = false;
-        mask.classList.remove('active');
+        resetOverlayState();
         invoke('cancel_capture');
         return;
       }
-      down = true; moving = false; downX = e.clientX; downY = e.clientY;
+      down = true;
+      moving = false;
+      downX = e.clientX;
+      downY = e.clientY;
     });
     // 抑制右键菜单与拖拽默认行为，框选交互不被打断。
     window.addEventListener('contextmenu', (e) => e.preventDefault());
     window.addEventListener('dragstart', (e) => e.preventDefault());
     window.addEventListener('mousemove', (e) => {
       if (!down) return;
-      moving = true; updateSel(downX, downY, e.clientX, e.clientY);
+      moving = true;
+      updateSel(downX, downY, e.clientX, e.clientY);
     });
     window.addEventListener('mouseup', (e) => {
       if (!down) return;
       down = false;
       const x = Math.min(downX, e.clientX), y = Math.min(downY, e.clientY);
       const w = Math.abs(e.clientX - downX), h = Math.abs(e.clientY - downY);
-      mask.classList.remove('active');
-      if (!moving || w < 3 || h < 3) {
+      const isSubstantive = moving && w >= 3 && h >= 3;
+      resetOverlayState();
+      if (!isSubstantive) {
         logger.info('框选取消：区域过小');
         invoke('cancel_capture');
         return;
@@ -142,7 +170,7 @@
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         logger.info('框选取消：Escape');
-        mask.classList.remove('active');
+        resetOverlayState();
         invoke('cancel_capture');
       }
     });
