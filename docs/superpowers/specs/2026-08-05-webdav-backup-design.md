@@ -23,7 +23,7 @@
 | status / lastError | 仅 UI 运行时，不持久化 |
 | 备份/恢复启用条件 | **凭证齐全即可**（不必先点「测试连接」）；测试只更新徽标 |
 | 右上角徽标语义 | 非常驻在线会话：未配置 / 已就绪 / 测试中 / 已验证 / 连接失败 |
-| 自动备份 | 配置保存成功后防抖约 30s 仅上传；恢复一律手动 |
+| 自动备份 | 配置保存成功后防抖约 30s 仅上传一次；`lastBackupAt` / `lastTestedAt` / 连接状态回写不重新调度；恢复一律手动 |
 | 密码 | 随 `config.json` 本机保存；导出/备份在 `includeApiKeys=false` 时剥离 |
 
 ### UI 行顺序（WebDAV 组内）
@@ -60,7 +60,7 @@
 ```text
 AppConfig.backup:
   webdav:
-    url, username, password, remotePath  # 目录，默认 /shizi/backups/
+    url, username, password, remotePath  # 目录，默认 /shizi/
     lastTestedAt, lastBackupAt           # ISO 或空串
   autoSync: bool                         # 默认 false
   includeHistory: bool                   # 默认 false
@@ -77,7 +77,7 @@ AppConfig.backup:
 
 | Command | 行为 |
 |---------|------|
-| `test_webdav_connection` | 校验 http(s)；Basic；对目录 PROPFIND；成功写 `lastTestedAt` |
+| `test_webdav_connection` | 校验 http(s)；Basic；对目录 PROPFIND。目录不存在（含 404，以及坚果云对缺失祖先返回的 409 `AncestorsNotFound`）则逐级 MKCOL 后再 PROPFIND；成功写 `lastTestedAt` |
 | `backup_to_webdav` | 组包 → MKCOL → PUT → 写 `lastBackupAt` |
 | `list_webdav_backups` | PROPFIND Depth:1，筛 `shizi-backup-*.zip` |
 | `restore_from_webdav` | GET → 解压 → 覆盖 config；含历史则整库替换 |
@@ -89,6 +89,8 @@ AppConfig.backup:
 - 路径规范化（文件路径回退目录、补 `/`）  
 - manifest 读写与 Key 剥离  
 - PROPFIND 列表解析  
+- 测试连接：PROPFIND 409 AncestorsNotFound（祖先目录不存在）时逐级建目录后成功；401 仍失败  
+- 自动备份：配置变更防抖 30s 只上传一次；lastBackupAt 回写不触发下一轮；之后的真实配置变更仍会再备份  
 - `includeApiKeys` 默认 true  
 - 前端 config-io / 默认 backup 结构  
 

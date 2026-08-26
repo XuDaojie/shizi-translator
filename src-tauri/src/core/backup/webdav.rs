@@ -293,7 +293,7 @@ fn urlencoding_minimal(s: &str) -> String {
     out
 }
 
-/// 逐级 MKCOL 创建目录（如 `/shizi/backups/`）。
+/// 逐级 MKCOL 创建目录（如 `/shizi/`）。
 pub async fn mkcol_recursive(client: &WebDavClient, dir: &str) -> Result<(), WebDavError> {
     let dir = normalize_webdav_remote_path(dir);
     let parts: Vec<&str> = dir.split('/').filter(|p| !p.is_empty()).collect();
@@ -306,27 +306,30 @@ pub async fn mkcol_recursive(client: &WebDavClient, dir: &str) -> Result<(), Web
     Ok(())
 }
 
+/// PROPFIND 失败是否表示远端集合尚未就绪（应先 MKCOL）。
+/// 坚果云对缺失祖先路径返回 409 AncestorsNotFound，而不是 404。
+fn propfind_indicates_missing_collection(err: &WebDavError) -> bool {
+    match err {
+        WebDavError::Message(m) if m.contains("不存在") => true,
+        WebDavError::Http { status: 404 | 409, .. } => true,
+        WebDavError::Http { body, .. }
+            if body.to_ascii_lowercase().contains("ancestorsnotfound") =>
+        {
+            true
+        }
+        _ => false,
+    }
+}
+
 pub async fn test_connection(client: &WebDavClient, remote_dir: &str) -> Result<(), WebDavError> {
     let dir = normalize_webdav_remote_path(remote_dir);
     match client.propfind(&dir, 0).await {
         Ok(_) => Ok(()),
-        Err(WebDavError::Message(m)) if m.contains("不存在") => {
-            // 目录不存在：尝试创建后 PROPFIND
+        Err(e) if propfind_indicates_missing_collection(&e) => {
             mkcol_recursive(client, &dir).await?;
             client.propfind(&dir, 0).await.map(|_| ())
         }
-        Err(e) => {
-            // 部分服务对 depth 0 的空目录返回 404：仍尝试创建
-            if matches!(
-                e,
-                WebDavError::Http { status: 404, .. }
-            ) {
-                mkcol_recursive(client, &dir).await?;
-                client.propfind(&dir, 0).await.map(|_| ())
-            } else {
-                Err(e)
-            }
-        }
+        Err(e) => Err(e),
     }
 }
 
@@ -506,6 +509,174 @@ pub fn format_size_label(size: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
+    use std::io::{Read, Write};
+    use std::net::{TcpListener, TcpStream};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    use std::thread;
+    use std::time::Duration;
+
+    fn http_reply(status: u16, reason: &str, body: &str) -> Vec<u8> {
+        format!(
+            "HTTP/1.1 {status} {reason}\r\nContent-Type: application/xml\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        )
+        .into_bytes()
+    }
+
+    fn read_request(stream: &mut TcpStream) -> Option<(String, String)> {
+        stream
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .ok()?;
+        let mut buf = vec![0u8; 16384];
+        let n = stream.read(&mut buf).ok()?;
+        if n == 0 {
+            return None;
+        }
+        let text = String::from_utf8_lossy(&buf[..n]);
+        let first = text.lines().next()?;
+        let mut parts = first.split_whitespace();
+        let method = parts.next()?.to_string();
+        let path = parts.next()?.to_string();
+        Some((method, path))
+    }
+
+    fn parent_collection(path: &str) -> String {
+        let trimmed = path.trim_end_matches('/');
+        if trimmed.is_empty() {
+            return "/".to_string();
+        }
+        match trimmed.rsplit_once('/') {
+            Some(("", _)) | None => "/".to_string(),
+            Some((parent, _)) => format!("{parent}/"),
+        }
+    }
+
+    fn normalize_col(path: &str) -> String {
+        let mut p = path.split('?').next().unwrap_or(path).to_string();
+        if !p.starts_with('/') {
+            p.insert(0, '/');
+        }
+        if !p.ends_with('/') {
+            p.push('/');
+        }
+        p
+    }
+
+    /// 坚果云风格：祖先不存在时 PROPFIND 返回 409 AncestorsNotFound，而非 404。
+    fn spawn_jianguoyun_like_dav() -> (String, Arc<AtomicBool>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind mock dav");
+        let addr = listener.local_addr().expect("local addr");
+        let stop = Arc::new(AtomicBool::new(false));
+        let stop_flag = stop.clone();
+        thread::spawn(move || {
+            listener
+                .set_nonblocking(true)
+                .expect("nonblocking mock dav");
+            let mut cols: HashSet<String> = HashSet::from(["/".to_string()]);
+            while !stop_flag.load(Ordering::SeqCst) {
+                match listener.accept() {
+                    Ok((mut stream, _)) => {
+                        let Some((method, raw_path)) = read_request(&mut stream) else {
+                            continue;
+                        };
+                        let path = normalize_col(&raw_path);
+                        let reply = match method.as_str() {
+                            "PROPFIND" => {
+                                if cols.contains(&path) {
+                                    http_reply(
+                                        207,
+                                        "Multi-Status",
+                                        r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:"><d:response><d:href>/shizi/backups/</d:href><d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop></d:propstat></d:response></d:multistatus>"#,
+                                    )
+                                } else if !cols.contains(&parent_collection(&path)) {
+                                    http_reply(
+                                        409,
+                                        "Conflict",
+                                        r#"<?xml version="1.0" encoding="UTF-8" standalone="no"?><d:error xmlns:d="DAV:" xmlns:s="http://ns.jianguoyun.com"><s:exception>AncestorsNotFound</s:exception><s:message>The ancestors of this location do not exist</s:message></d:error>"#,
+                                    )
+                                } else {
+                                    http_reply(404, "Not Found", "missing")
+                                }
+                            }
+                            "MKCOL" => {
+                                if cols.contains(&path) {
+                                    http_reply(405, "Method Not Allowed", "")
+                                } else if !cols.contains(&parent_collection(&path)) {
+                                    http_reply(
+                                        409,
+                                        "Conflict",
+                                        r#"<s:exception>AncestorsNotFound</s:exception>"#,
+                                    )
+                                } else {
+                                    cols.insert(path);
+                                    http_reply(201, "Created", "")
+                                }
+                            }
+                            _ => http_reply(405, "Method Not Allowed", ""),
+                        };
+                        let _ = stream.write_all(&reply);
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        thread::sleep(Duration::from_millis(5));
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
+        (format!("http://{addr}"), stop)
+    }
+
+    fn spawn_always_unauthorized() -> (String, Arc<AtomicBool>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind mock dav");
+        let addr = listener.local_addr().expect("local addr");
+        let stop = Arc::new(AtomicBool::new(false));
+        let stop_flag = stop.clone();
+        thread::spawn(move || {
+            listener
+                .set_nonblocking(true)
+                .expect("nonblocking mock dav");
+            while !stop_flag.load(Ordering::SeqCst) {
+                match listener.accept() {
+                    Ok((mut stream, _)) => {
+                        if read_request(&mut stream).is_some() {
+                            let reply = http_reply(401, "Unauthorized", "no");
+                            let _ = stream.write_all(&reply);
+                        }
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        thread::sleep(Duration::from_millis(5));
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
+        (format!("http://{addr}"), stop)
+    }
+
+    #[tokio::test]
+    async fn test_connection_creates_nested_dir_when_propfind_returns_409() {
+        let (url, stop) = spawn_jianguoyun_like_dav();
+        let client = WebDavClient::new(&url, "user", "app-password").unwrap();
+        let result = test_connection(&client, "/shizi/backups/").await;
+        stop.store(true, Ordering::SeqCst);
+        result.expect("坚果云在祖先目录不存在时对 PROPFIND 返回 409，测试连接应逐级建目录后成功");
+    }
+
+    #[tokio::test]
+    async fn test_connection_still_fails_on_unauthorized() {
+        let (url, stop) = spawn_always_unauthorized();
+        let client = WebDavClient::new(&url, "user", "wrong").unwrap();
+        let result = test_connection(&client, "/shizi/backups/").await;
+        stop.store(true, Ordering::SeqCst);
+        let err = result.expect_err("认证失败不应被当成目录缺失");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("认证失败") || msg.contains("401"),
+            "unexpected error: {msg}"
+        );
+    }
 
     #[test]
     fn join_url_encodes_path() {

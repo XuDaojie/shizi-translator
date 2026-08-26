@@ -45,7 +45,7 @@ import { cn } from '@/lib/utils'
 import { t } from '@/i18n'
 
 const HOMEPAGE_URL = 'https://github.com/XuDaojie/shizi-translator'
-const DEFAULT_REMOTE_DIR = '/shizi/backups/'
+const DEFAULT_REMOTE_DIR = '/shizi/'
 
 const props = defineProps<{
   state: AppSettings
@@ -470,7 +470,7 @@ const onConfirmImport = async (): Promise<void> => {
           <SettingInput
             id="webdav-path"
             v-model="state.advanced.backup.webdav.remotePath"
-            placeholder="/shizi/backups/"
+            placeholder="/shizi/"
             class="font-mono"
           />
           <p class="text-[11px] text-muted-foreground">

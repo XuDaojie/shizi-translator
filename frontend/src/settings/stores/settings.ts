@@ -41,13 +41,29 @@ const STORAGE_KEY = 'app:settings:v1'
 const logger = createLogger('settings')
 /** 自动备份：保存成功后防抖约 30s。 */
 let autoBackupTimer: ReturnType<typeof setTimeout> | undefined
+/** 上次已调度/已备份的配置内容指纹（不含 lastBackupAt / lastTestedAt）。 */
+let lastAutoBackupFingerprint: string | null = null
 
-function scheduleAutoBackupIfNeeded(): void {
+/** 排除备份时间戳后的配置指纹，避免元数据回写再次触发自动备份。 */
+function backupContentFingerprint(config: AppConfig): string {
+  const cloned: AppConfig = JSON.parse(JSON.stringify(config)) as AppConfig
+  cloned.backup.webdav.lastBackupAt = ''
+  cloned.backup.webdav.lastTestedAt = ''
+  return JSON.stringify(cloned)
+}
+
+function scheduleAutoBackupIfNeeded(config: AppConfig): void {
   if (!isTauriReady()) return
   const b = state.advanced.backup
-  if (!b.autoSync) return
+  if (!b.autoSync) {
+    if (autoBackupTimer) clearTimeout(autoBackupTimer)
+    autoBackupTimer = undefined
+    return
+  }
   const w = b.webdav
   if (!w.url.trim() || !w.username.trim() || !w.password.trim() || !w.remotePath.trim()) return
+  const fp = backupContentFingerprint(config)
+  if (fp === lastAutoBackupFingerprint) return
   if (autoBackupTimer) clearTimeout(autoBackupTimer)
   autoBackupTimer = setTimeout(() => {
     void (async () => {
@@ -60,6 +76,9 @@ function scheduleAutoBackupIfNeeded(): void {
           password: web.password,
           remotePath: web.remotePath,
         })
+        lastAutoBackupFingerprint = backupContentFingerprint(
+          projectToAppConfig(cloneSettings(state)),
+        )
         web.lastBackupAt = result.lastBackupAt
         web.status = 'connected'
       } catch (e) {
@@ -273,7 +292,7 @@ const buildDefaults = (): AppSettings => {
           url: '',
           username: '',
           password: '',
-          remotePath: '/shizi/backups/',
+          remotePath: '/shizi/',
           lastTestedAt: '',
           lastBackupAt: '',
           status: 'idle',
@@ -670,7 +689,7 @@ const persist = (notify = false): Promise<void> => {
       if (isTauriReady()) {
         await invokeSaveAppConfig(config)
         if (notify) toast.success(t('settings.toast.saved'))
-        scheduleAutoBackupIfNeeded()
+        scheduleAutoBackupIfNeeded(config)
       } else if (notify) {
         toast.info(t('settings.toast.saved'), t('settings.status.localPreference'))
       }
@@ -867,7 +886,7 @@ export const useSettings = () => ({
           url: b.webdav?.url ?? '',
           username: b.webdav?.username ?? '',
           password: b.webdav?.password ?? '',
-          remotePath: b.webdav?.remotePath || '/shizi/backups/',
+          remotePath: b.webdav?.remotePath || '/shizi/',
           lastTestedAt: b.webdav?.lastTestedAt ?? '',
           lastBackupAt: b.webdav?.lastBackupAt ?? '',
           // status 不落盘，同步时保留内存态
@@ -898,6 +917,9 @@ export const useSettings = () => ({
     return flight
   },
   reset(): void {
+    if (autoBackupTimer) clearTimeout(autoBackupTimer)
+    autoBackupTimer = undefined
+    lastAutoBackupFingerprint = null
     const defaults = buildDefaults()
     Object.assign(state, defaults)
   },

@@ -65,7 +65,7 @@ const makeState = (services: ServiceInstance[]): AppSettings => ({
         url: '',
         username: '',
         password: '',
-        remotePath: '/shizi/backups/',
+        remotePath: '/shizi/',
         lastTestedAt: '',
         lastBackupAt: '',
         status: 'idle',

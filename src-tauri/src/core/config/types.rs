@@ -248,7 +248,7 @@ pub struct WebDavConfig {
     pub username: String,
     #[serde(default)]
     pub password: String,
-    /// 远端备份目录（非单文件），如 `/shizi/backups/`。
+    /// 远端备份目录（非单文件），如 `/shizi/`。
     #[serde(default = "default_webdav_remote_path")]
     pub remote_path: String,
     /// 上次成功测试连接的 ISO 时间；空串表示从未测过。
@@ -260,7 +260,7 @@ pub struct WebDavConfig {
 }
 
 fn default_webdav_remote_path() -> String {
-    "/shizi/backups/".to_string()
+    "/shizi/".to_string()
 }
 
 impl Default for WebDavConfig {
@@ -943,7 +943,7 @@ mod tests {
         assert!(config.backup.include_api_keys);
         assert!(!config.backup.include_history);
         assert!(!config.backup.auto_sync);
-        assert_eq!(config.backup.webdav.remote_path, "/shizi/backups/");
+        assert_eq!(config.backup.webdav.remote_path, "/shizi/");
     }
 
     #[test]
@@ -956,7 +956,8 @@ mod tests {
             normalize_webdav_remote_path("shizi/backups"),
             "/shizi/backups/"
         );
-        assert_eq!(normalize_webdav_remote_path(""), "/shizi/backups/");
+        assert_eq!(normalize_webdav_remote_path("shizi"), "/shizi/");
+        assert_eq!(normalize_webdav_remote_path(""), "/shizi/");
     }
 
     #[test]
@@ -966,7 +967,7 @@ mod tests {
             .unwrap()
             .normalized();
         assert!(config.backup.include_api_keys);
-        assert_eq!(config.backup.webdav.remote_path, "/shizi/backups/");
+        assert_eq!(config.backup.webdav.remote_path, "/shizi/");
     }
 
     #[test]

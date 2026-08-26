@@ -57,7 +57,7 @@ export interface WebDavConfig {
   url: string;
   username: string;
   password: string;
-  /** 远端备份目录，如 `/shizi/backups/`。 */
+  /** 远端备份目录，如 `/shizi/`。 */
   remotePath: string;
   lastTestedAt: string;
   lastBackupAt: string;
@@ -77,7 +77,7 @@ export const DEFAULT_BACKUP_CONFIG: BackupConfig = {
     url: '',
     username: '',
     password: '',
-    remotePath: '/shizi/backups/',
+    remotePath: '/shizi/',
     lastTestedAt: '',
     lastBackupAt: '',
   },

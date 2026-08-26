@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { applyBackendLogLevel, applyShortcutConflicts, mergeBackendIntoOcrServices, mergeBackendIntoServices, useSettings } from './settings';
 import { DEFAULT_PROMPTS } from '../tokens';
 import type { AppConfig, OcrServiceInstanceConfig, ServiceInstanceConfig } from '@/types/config';
-import { invokeGetAppConfig, invokeGetInterfaceLanguageSnapshot, invokeGetShortcutConflicts, invokeRefreshInterfaceLanguages, invokeSaveAppConfig, isTauriReady } from '@/lib/tauri';
+import { invokeBackupToWebDav, invokeGetAppConfig, invokeGetInterfaceLanguageSnapshot, invokeGetShortcutConflicts, invokeRefreshInterfaceLanguages, invokeSaveAppConfig, isTauriReady } from '@/lib/tauri';
 import type { AppSettings, OcrServiceInstance, ServiceInstance } from '../types';
 import type { InterfaceLanguageSnapshot } from '@/lib/tauri';
 
@@ -11,6 +11,7 @@ import type { InterfaceLanguageSnapshot } from '@/lib/tauri';
 vi.mock('@/lib/tauri', () => ({
   invokeGetAppConfig: vi.fn(),
   invokeSaveAppConfig: vi.fn(),
+  invokeBackupToWebDav: vi.fn(),
   invokeGetShortcutConflicts: vi.fn().mockResolvedValue([]),
   invokeGetInterfaceLanguageSnapshot: vi.fn(),
   invokeRefreshInterfaceLanguages: vi.fn(),
@@ -1406,3 +1407,63 @@ describe('ocrServices store', () => {
     expect(s.state.ocrServices[1].model).toBe('gpt-4o-mini');
   });
 });
+
+describe('auto backup debounce', () => {
+  const fillWebDav = (settings: ReturnType<typeof useSettings>) => {
+    settings.state.advanced.backup.autoSync = true
+    settings.state.advanced.backup.webdav.url = 'https://dav.example.com/dav'
+    settings.state.advanced.backup.webdav.username = 'user'
+    settings.state.advanced.backup.webdav.password = 'pass'
+    settings.state.advanced.backup.webdav.remotePath = '/shizi/'
+  }
+
+  it('配置保存后约 30s 只上传一次，lastBackupAt 回写不再触发下一轮', async () => {
+    vi.useFakeTimers()
+    vi.mocked(isTauriReady).mockReturnValue(true)
+    vi.mocked(invokeSaveAppConfig).mockImplementation(async (config) => config)
+    vi.mocked(invokeBackupToWebDav).mockResolvedValue({
+      lastBackupAt: '2026-08-27T00:00:00.000Z',
+      remotePath: '/shizi/shizi-backup-20260827-000000.zip',
+      fileName: 'shizi-backup-20260827-000000.zip',
+    })
+
+    const settings = useSettings()
+    fillWebDav(settings)
+    await vi.advanceTimersByTimeAsync(300)
+
+    expect(invokeSaveAppConfig).toHaveBeenCalled()
+    expect(invokeBackupToWebDav).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(invokeBackupToWebDav).toHaveBeenCalledTimes(1)
+
+    // 备份成功会写 lastBackupAt / status，autosave 再 persist
+    await vi.advanceTimersByTimeAsync(300)
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(invokeBackupToWebDav).toHaveBeenCalledTimes(1)
+  })
+
+  it('备份完成后若配置再次变更，仍会再上传一次', async () => {
+    vi.useFakeTimers()
+    vi.mocked(isTauriReady).mockReturnValue(true)
+    vi.mocked(invokeSaveAppConfig).mockImplementation(async (config) => config)
+    vi.mocked(invokeBackupToWebDav).mockResolvedValue({
+      lastBackupAt: '2026-08-27T00:00:00.000Z',
+      remotePath: '/shizi/shizi-backup-20260827-000000.zip',
+      fileName: 'shizi-backup-20260827-000000.zip',
+    })
+
+    const settings = useSettings()
+    fillWebDav(settings)
+    await vi.advanceTimersByTimeAsync(300)
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(invokeBackupToWebDav).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(300)
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(invokeBackupToWebDav).toHaveBeenCalledTimes(1)
+
+    settings.state.advanced.logLevel = 'debug'
+    await vi.advanceTimersByTimeAsync(300)
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(invokeBackupToWebDav).toHaveBeenCalledTimes(2)
+  })
+})

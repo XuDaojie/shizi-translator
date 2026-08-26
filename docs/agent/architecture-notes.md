@@ -74,7 +74,7 @@
 
 - 历史：`HistoryStore` → `history.sqlite3`；统一翻译入口写 session/result；设置页 `list_translation_history` / `clear_translation_history`；备份恢复可 `replace_all` 整库替换。
 - 日志：`logs/Shizi.log`（tauri-plugin-log）与 `frontend.log`（append command）分文件；`logLevel` 可运行时切换；API Key 与正文脱敏；失败 best-effort。
-- **WebDAV 备份**（设置 → 高级）：主路径 Basic + PROPFIND/MKCOL/PUT/GET；远端 `shizi-backup-*.zip`（manifest + settings + 可选 history）；本机 JSON 导入/导出兜底。命令：`test_webdav_connection` / `backup_to_webdav` / `list_webdav_backups` / `restore_from_webdav` / `export_settings_snapshot` / `import_settings_snapshot`。UI 顺序：连接 → 含历史 → 含 API Key → 手动同步 → 自动备份（约 30s）。规格：`docs/superpowers/specs/2026-08-05-webdav-backup-design.md`。
+- **WebDAV 备份**（设置 → 高级）：主路径 Basic + PROPFIND/MKCOL/PUT/GET；远端目录默认 `/shizi/`（一层）；文件为 `shizi-backup-*.zip`（manifest + settings + 可选 history）；本机 JSON 导入/导出兜底。命令：`test_webdav_connection` / `backup_to_webdav` / `list_webdav_backups` / `restore_from_webdav` / `export_settings_snapshot` / `import_settings_snapshot`。测试连接对目录 PROPFIND，若集合不存在（404，或坚果云对缺失祖先返回 409 `AncestorsNotFound`）则逐级 MKCOL 后再探测，不必先手动备份。UI 顺序：连接 → 含历史 → 含 API Key → 手动同步 → 自动备份（配置变更后防抖约 30s 上传一次；备份时间戳回写不重新调度）。规格：`docs/superpowers/specs/2026-08-05-webdav-backup-design.md`。
 
 ## 目录索引（实现时优先打开）
 
