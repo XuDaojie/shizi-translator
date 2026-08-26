@@ -525,21 +525,59 @@ mod tests {
         .into_bytes()
     }
 
+    /// 读完整请求（头 + Content-Length 体）。Windows 上若未读完体就关连接会发 RST，
+    /// reqwest 仍在发送 PROPFIND 体时会报 “error sending request”。
     fn read_request(stream: &mut TcpStream) -> Option<(String, String)> {
         stream
             .set_read_timeout(Some(Duration::from_secs(2)))
             .ok()?;
-        let mut buf = vec![0u8; 16384];
-        let n = stream.read(&mut buf).ok()?;
-        if n == 0 {
-            return None;
-        }
-        let text = String::from_utf8_lossy(&buf[..n]);
-        let first = text.lines().next()?;
+        let mut buf = Vec::new();
+        let mut tmp = [0u8; 2048];
+        let header_end = loop {
+            let n = stream.read(&mut tmp).ok()?;
+            if n == 0 {
+                return None;
+            }
+            buf.extend_from_slice(&tmp[..n]);
+            if let Some(pos) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                break pos;
+            }
+            if buf.len() > 32 * 1024 {
+                return None;
+            }
+        };
+        let headers = String::from_utf8_lossy(&buf[..header_end]);
+        let first = headers.lines().next()?;
         let mut parts = first.split_whitespace();
         let method = parts.next()?.to_string();
         let path = parts.next()?.to_string();
+        let content_length = headers
+            .lines()
+            .find_map(|line| {
+                let (k, v) = line.split_once(':')?;
+                if k.eq_ignore_ascii_case("content-length") {
+                    v.trim().parse::<usize>().ok()
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0);
+        let mut have = buf.len().saturating_sub(header_end + 4);
+        while have < content_length {
+            let n = stream.read(&mut tmp).ok()?;
+            if n == 0 {
+                break;
+            }
+            have += n;
+        }
         Some((method, path))
+    }
+
+    fn accepted_blocking_stream(stream: TcpStream) -> TcpStream {
+        let _ = stream.set_nonblocking(false);
+        let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
+        let _ = stream.set_write_timeout(Some(Duration::from_secs(2)));
+        stream
     }
 
     fn parent_collection(path: &str) -> String {
@@ -577,7 +615,8 @@ mod tests {
             let mut cols: HashSet<String> = HashSet::from(["/".to_string()]);
             while !stop_flag.load(Ordering::SeqCst) {
                 match listener.accept() {
-                    Ok((mut stream, _)) => {
+                    Ok((stream, _)) => {
+                        let mut stream = accepted_blocking_stream(stream);
                         let Some((method, raw_path)) = read_request(&mut stream) else {
                             continue;
                         };
@@ -639,7 +678,8 @@ mod tests {
                 .expect("nonblocking mock dav");
             while !stop_flag.load(Ordering::SeqCst) {
                 match listener.accept() {
-                    Ok((mut stream, _)) => {
+                    Ok((stream, _)) => {
+                        let mut stream = accepted_blocking_stream(stream);
                         if read_request(&mut stream).is_some() {
                             let reply = http_reply(401, "Unauthorized", "no");
                             let _ = stream.write_all(&reply);

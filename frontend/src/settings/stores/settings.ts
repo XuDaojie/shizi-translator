@@ -47,8 +47,11 @@ let lastAutoBackupFingerprint: string | null = null
 /** 排除备份时间戳后的配置指纹，避免元数据回写再次触发自动备份。 */
 function backupContentFingerprint(config: AppConfig): string {
   const cloned: AppConfig = JSON.parse(JSON.stringify(config)) as AppConfig
-  cloned.backup.webdav.lastBackupAt = ''
-  cloned.backup.webdav.lastTestedAt = ''
+  // AppConfig.backup 在旧配置中可能缺省
+  if (cloned.backup?.webdav) {
+    cloned.backup.webdav.lastBackupAt = ''
+    cloned.backup.webdav.lastTestedAt = ''
+  }
   return JSON.stringify(cloned)
 }
 
