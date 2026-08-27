@@ -103,7 +103,13 @@ pub fn ensure_settings_window(app: &tauri::AppHandle) -> Result<WebviewWindow, S
 /// 供 async command / 已脱离主事件回调栈的上下文使用。
 pub fn show_settings_window(app: &tauri::AppHandle) -> Result<(), String> {
     let window = ensure_settings_window(app)?;
-    present_window(&window)
+    present_window(&window)?;
+    // ShowWindow 会冲掉隐藏时写入的 DWM 标题栏色，必须在 show 之后再上。
+    crate::app::caption::apply_window_caption(
+        &window,
+        &crate::app::caption::SETTINGS_LIGHT_CAPTION,
+    );
+    Ok(())
 }
 
 /// 托盘 / 同步快捷键等事件回调用：在独立线程打开，避免 Windows 上首次建窗死锁。

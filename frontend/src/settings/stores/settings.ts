@@ -37,6 +37,7 @@ import {
 import { toast } from '@/lib/toast'
 import { createLogger } from '@public/logger.js'
 import { t } from '@/i18n'
+import { syncSettingsCaptionChrome } from '../captionChrome'
 const STORAGE_KEY = 'app:settings:v1'
 const logger = createLogger('settings')
 /** 自动备份：保存成功后防抖约 30s。 */
@@ -730,17 +731,29 @@ watch(
   { deep: true, flush: 'sync' },
 )
 
+let systemThemeListenerAttached = false
+
 const applyTheme = (): void => {
   if (typeof document === 'undefined') return
   const root = document.documentElement
   const prefersDark =
     typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
     window.matchMedia('(prefers-color-scheme: dark)').matches
   const resolved =
     state.general.theme === 'system' ? (prefersDark ? 'dark' : 'light') : state.general.theme
   root.classList.toggle('dark', resolved === 'dark')
   // 品牌强调色固定橙色；清掉历史 accent-blue
   root.classList.remove('accent-blue')
+  void syncSettingsCaptionChrome(resolved === 'dark')
+  if (
+    !systemThemeListenerAttached &&
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function'
+  ) {
+    systemThemeListenerAttached = true
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme)
+  }
 }
 
 watch(() => state.general.theme, applyTheme, { immediate: true })

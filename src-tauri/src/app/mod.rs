@@ -1,4 +1,5 @@
 pub mod autostart;
+pub mod caption;
 pub mod icon;
 pub mod shortcuts;
 pub mod state;

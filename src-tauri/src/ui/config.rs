@@ -16,6 +16,15 @@ pub async fn open_settings(app: tauri::AppHandle) -> Result<(), String> {
     show_settings_window(&app)
 }
 
+/// 设置当前窗原生标题栏底色（对齐设置页左栏）。非 Win11 时 DWM 调用失败，忽略。
+#[tauri::command]
+pub fn set_window_caption_chrome(
+    window: tauri::WebviewWindow,
+    chrome: crate::app::caption::CaptionChrome,
+) {
+    crate::app::caption::apply_window_caption(&window, &chrome);
+}
+
 /// 用系统默认浏览器打开 https URL（设置页项目主页等）。
 #[tauri::command]
 pub fn open_url(url: String) -> Result<(), String> {

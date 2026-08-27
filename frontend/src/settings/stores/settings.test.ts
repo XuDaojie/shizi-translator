@@ -16,6 +16,7 @@ vi.mock('@/lib/tauri', () => ({
   invokeGetInterfaceLanguageSnapshot: vi.fn(),
   invokeRefreshInterfaceLanguages: vi.fn(),
   invokeOpenLanguagePackDirectory: vi.fn(),
+  invokeSetWindowCaptionChrome: vi.fn(),
   isTauriReady: vi.fn(() => false),
 }));
 

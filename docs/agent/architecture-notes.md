@@ -16,6 +16,7 @@
 - 弹窗：`decorations(false)` + `transparent(true)` + `resizable(false)`；`.toolbar` 用 `data-tauri-drag-region`；`.popup` 宽 420px；高度 `usePopupHeight` + `ResizeObserver` 动态 `setSize`（宽 452，高 h+32，上限屏高 80%）。权限见 `src-tauri/capabilities/default.json`。
 - Overlay：按 `windowPrecreate.*.overlay` 是否启动预建；`open_overlay` 已存在则 `reload`，否则 build；用完 hide 复用。
 - 设置 / OCR：启动不预创建；关闭即销毁。截图识别前 `hide_ocr_window` 仍只 hide。
+- 设置窗原生标题栏：Windows 11 用 `DWMWA_CAPTION_COLOR` 把底色对齐 `--settings-sidebar`（浅色暖白 / 深色暖暗），标题文字对齐 `--foreground`；深色时 `DWMWA_USE_IMMERSIVE_DARK_MODE` 让关闭按钮用浅色图标。色值跟 token 走（不读首帧 computed style，未就绪会落到黑）。`show()` 之后再着色（隐藏时写入会被 ShowWindow 冲掉），设置页 `applyTheme` / 挂载再经 `set_window_caption_chrome` 同步。Win10 无该 API，保持系统默认标题栏。着色后系统底部分隔常消失，布局根用 `border-t border-border` 补一条顶部分隔（左栏右侧仍是原有那条 `border-r`）。
 - **冷启动 splash**（settings / ocr / translate）：入口 HTML 内联 splash；`dismissBootSplash`。`main` hide 再开不重放；settings / ocr 重建再走 splash。
 
 ## 服务、配置与协议

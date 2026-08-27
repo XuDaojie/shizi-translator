@@ -10,6 +10,7 @@ import HistoryPanel from './panels/HistoryPanel.vue'
 import { useSettings } from './stores/settings'
 import { matchShortcutKeys } from '@/lib/matchShortcut'
 import { invokeOpenSettings } from '@/lib/tauri'
+import { syncSettingsCaptionChrome } from './captionChrome'
 import { locale, reloadCurrentLocale, t } from '@/i18n'
 import { createLogger } from '@public/logger.js'
 import { getTauriApis } from '@/popup/composables/utils'
@@ -130,6 +131,8 @@ onMounted(() => {
   void setupLanguageSync()
   void settings.syncFromBackend()
   window.addEventListener('keydown', onAppShortcutKeydown)
+  // store 初始化时着色可能早于 show()；挂载后再跟一次已解析主题。
+  void syncSettingsCaptionChrome(document.documentElement.classList.contains('dark'))
 })
 
 onBeforeUnmount(() => {

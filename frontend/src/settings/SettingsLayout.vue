@@ -35,7 +35,7 @@ const isContainedPanel = computed(
 </script>
 
 <template>
-  <div class="flex h-full min-h-0 bg-background">
+  <div class="flex h-full min-h-0 border-t border-border bg-background">
     <SettingsSidebar
       :model-value="active"
       @update:model-value="(v) => emit('update:active', v)"

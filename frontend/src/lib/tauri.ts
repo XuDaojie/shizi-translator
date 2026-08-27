@@ -1,12 +1,15 @@
 import type { AppConfig } from '@/types/config';
 
 // 不引 @tauri-apps/api；三页统一走 window.__TAURI__.core.invoke（withGlobalTauri: true）。
-const tauriGlobal = typeof window === 'undefined'
-  ? undefined
-  : (window as unknown as { __TAURI__?: { core: { invoke: <T>(cmd: string, args?: Record<string, unknown>) => Promise<T> } } }).__TAURI__;
+function tauriInvoke() {
+  if (typeof window === 'undefined') return undefined
+  return (window as unknown as {
+    __TAURI__?: { core: { invoke: <T>(cmd: string, args?: Record<string, unknown>) => Promise<T> } }
+  }).__TAURI__?.core?.invoke
+}
 
 function requireInvoke() {
-  const invoke = tauriGlobal?.core?.invoke;
+  const invoke = tauriInvoke();
   if (!invoke) {
     throw new Error('Tauri API 未就绪');
   }
@@ -35,6 +38,19 @@ export async function invokeOpenSettings(): Promise<void> {
   return requireInvoke()<void>('open_settings')
 }
 
+export interface WindowCaptionChrome {
+  caption: [number, number, number]
+  text: [number, number, number]
+  darkButtons: boolean
+}
+
+/** Windows 11：把当前窗原生标题栏底色/文字色与关闭按钮明暗对齐设置页左栏。 */
+export async function invokeSetWindowCaptionChrome(
+  chrome: WindowCaptionChrome,
+): Promise<void> {
+  return requireInvoke()<void>('set_window_caption_chrome', { chrome })
+}
+
 /** 用系统默认浏览器打开 https URL。 */
 export async function invokeOpenUrl(url: string): Promise<void> {
   return requireInvoke()<void>('open_url', { url })
@@ -42,7 +58,7 @@ export async function invokeOpenUrl(url: string): Promise<void> {
 
 /** 供组件层判断是否就绪（用于挂载时给出"Tauri API 未就绪"提示）。 */
 export function isTauriReady(): boolean {
-  return Boolean(tauriGlobal?.core?.invoke);
+  return Boolean(tauriInvoke());
 }
 
 export interface ServiceProbeRequest {

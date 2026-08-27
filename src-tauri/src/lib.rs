@@ -18,7 +18,7 @@ use tauri::Manager;
 use ui::{
     config::{
         get_app_config, get_shortcut_conflicts, is_autostart_launch, open_settings, open_url,
-        save_app_config,
+        save_app_config, set_window_caption_chrome,
     },
     backup::{
         backup_to_webdav, export_settings_snapshot, import_settings_snapshot, list_webdav_backups,
@@ -117,6 +117,7 @@ pub fn run() {
             export_settings_snapshot,
             import_settings_snapshot,
             open_settings,
+            set_window_caption_chrome,
             open_url,
             list_service_models,
             validate_service_credential,
