@@ -121,9 +121,7 @@
   gap: 6px;
   cursor: default;
   user-select: none;
-  background: var(--popup-bg-soft);
 }
-.result-card-header:hover { background: var(--popup-bg-soft-2); }
 /* 18×18 容器：尺寸对齐旧字母图标；配色对齐设置页「已启用」服务图标（primary soft + primary 图标） */
 .result-engine-icon {
   width: 18px;
