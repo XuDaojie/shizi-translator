@@ -16,7 +16,8 @@ describe('theme color tokens', () => {
     expect(css).not.toMatch(/--primary:\s*222 70% 48%;/)
   })
 
-  it('keeps sidebar token white to match prototype nav (bg-card/40)', () => {
-    expect(css).toMatch(/--sidebar:\s*0\s+0%\s+100%;/)
+  it('keeps settings sidebar warm-white token for the nav pane', () => {
+    expect(css).toContain('--settings-sidebar: oklch(98.5% 0.004 70);')
+    expect(css).toContain('--color-settings-sidebar: var(--settings-sidebar);')
   })
 })

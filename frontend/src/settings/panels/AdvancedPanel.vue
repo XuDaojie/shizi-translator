@@ -1,21 +1,17 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import {
   Download,
   Upload,
   RotateCcw,
-  FileText,
-  Globe,
-  BookOpen,
-  Sparkles,
   CloudUpload,
   CloudDownload,
   PlugZap,
   Loader2,
   Package,
+  Settings2,
 } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Dialog } from '@/components/ui/dialog'
 import {
   DevOnly,
@@ -26,7 +22,7 @@ import {
   SettingInput,
   ApiKeyInput,
 } from '../components'
-import type { AppSettings, RemoteBackupItem, WebDavStatus } from '../types'
+import type { AppSettings, RemoteBackupItem } from '../types'
 import { useSettings } from '../stores/settings'
 import {
   invokeBackupToWebDav,
@@ -34,17 +30,14 @@ import {
   invokeExportSettingsSnapshot,
   invokeImportSettingsSnapshot,
   invokeListWebDavBackups,
-  invokeOpenUrl,
   invokeRestoreFromWebDav,
   invokeTestWebDavConnection,
   isTauriReady,
 } from '@/lib/tauri'
-import { useDevMode } from '../composables/useDevMode'
 import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import { t } from '@/i18n'
 
-const HOMEPAGE_URL = 'https://github.com/XuDaojie/shizi-translator'
 const DEFAULT_REMOTE_DIR = '/shizi/'
 
 const props = defineProps<{
@@ -52,7 +45,6 @@ const props = defineProps<{
 }>()
 
 const { reset, syncFromBackend } = useSettings()
-const isDev = useDevMode()
 
 const logLevelOptions = computed(() => [
   { label: 'Error', value: 'error' },
@@ -62,6 +54,7 @@ const logLevelOptions = computed(() => [
 ])
 
 const resetOpen = ref(false)
+const webdavOpen = ref(false)
 const restoreOpen = ref(false)
 const importOpen = ref(false)
 const importFileName = ref('')
@@ -76,8 +69,6 @@ const remoteBackups = ref<RemoteBackupItem[]>([])
 const selectedBackupId = ref('')
 const exporting = ref(false)
 const localExporting = ref(false)
-
-const appVersion = ref('…')
 
 const backup = computed(() => props.state.advanced.backup)
 const webdav = computed(() => props.state.advanced.backup.webdav)
@@ -94,57 +85,8 @@ const canUseWebDav = computed(() => {
   return Boolean(w.url.trim() && w.username.trim() && w.password.trim() && w.remotePath.trim())
 })
 
-/**
- * 备份/恢复：凭证齐全即可操作，不必先点「测试连接」。
- * 右上角徽标表示「配置/会话反馈」，不是常驻在线会话：
- * - 未填齐 → 未配置
- * - 已填齐且本会话未测/未成功操作 → 已就绪
- * - 测连或备份成功 → 已验证
- * - 失败 → 连接失败
- */
+/** 备份/恢复：凭证齐全即可操作，不必先点「测试连接」。 */
 const canOperateWebDav = computed(() => canUseWebDav.value)
-
-const statusLabel = computed(() => {
-  switch (webdav.value.status as WebDavStatus) {
-    case 'connecting':
-      return t('settings.backup.status.connecting')
-    case 'connected':
-      return t('settings.backup.status.connected')
-    case 'error':
-      return t('settings.backup.status.error')
-    default:
-      return canUseWebDav.value
-        ? t('settings.backup.status.ready')
-        : t('settings.backup.status.incomplete')
-  }
-})
-
-const statusVariant = computed(() => {
-  switch (webdav.value.status as WebDavStatus) {
-    case 'connected':
-      return 'success' as const
-    case 'error':
-      return 'destructive' as const
-    case 'connecting':
-      return 'warning' as const
-    default:
-      // 已就绪用 info，与「已验证」的 success 区分
-      return canUseWebDav.value ? ('info' as const) : ('secondary' as const)
-  }
-})
-
-const statusDotClass = computed(() => {
-  switch (webdav.value.status as WebDavStatus) {
-    case 'connected':
-      return 'bg-emerald-500'
-    case 'error':
-      return 'bg-destructive'
-    case 'connecting':
-      return 'bg-amber-500 animate-pulse'
-    default:
-      return canUseWebDav.value ? 'bg-sky-500' : 'bg-muted-foreground'
-  }
-})
 
 const formatTime = (iso: string): string => {
   if (!iso) return '—'
@@ -187,26 +129,6 @@ watch(
     }
   },
 )
-
-onMounted(async () => {
-  try {
-    const tauri = (window as unknown as {
-      __TAURI__?: { app?: { getVersion?: () => Promise<string> } }
-    }).__TAURI__
-    const version = await tauri?.app?.getVersion?.()
-    if (version) appVersion.value = version
-  } catch {
-    // 非 Tauri 环境
-  }
-})
-
-async function openHomepage() {
-  try {
-    await invokeOpenUrl(HOMEPAGE_URL)
-  } catch (e) {
-    toast.error(String(e))
-  }
-}
 
 async function handleExportLogs() {
   if (exporting.value) return
@@ -403,265 +325,269 @@ const onConfirmImport = async (): Promise<void> => {
 </script>
 
 <template>
-  <!-- 主路径：WebDAV；顺序：连接 → 含历史 → 含 Key → 手动同步 → 自动备份 -->
-  <SettingGroup>
-    <template #header>
-      <div class="flex items-start justify-between gap-3">
-        <div class="min-w-0">
-          <h3 class="text-[13px] font-semibold text-foreground">
-            {{ t('settings.backup.groupTitle') }}
-          </h3>
-          <p class="mt-1 text-xs text-muted-foreground leading-snug">
-            {{ t('settings.backup.groupDesc') }}
-          </p>
-        </div>
-        <Badge :variant="statusVariant" class="shrink-0">
-          <span
-            class="inline-block h-1.5 w-1.5 rounded-full"
-            :class="statusDotClass"
-          />
-          {{ statusLabel }}
-        </Badge>
-      </div>
-    </template>
-
+  <!-- 备份与同步：WebDAV 收进弹窗，主列表只留一行入口 + 本机导入导出 -->
+  <SettingGroup
+    :title="t('settings.backup.groupTitle')"
+    :description="t('settings.backup.groupDesc')"
+  >
     <SettingRow
-      :title="t('settings.backup.connection')"
-      :description="t('settings.backup.connectionDesc')"
-      vertical
+      :title="t('settings.backup.cloudTitle')"
+      :description="t('settings.backup.cloudDesc')"
     >
-      <div class="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-        <div class="sm:col-span-2 space-y-1">
-          <label class="text-[11px] text-muted-foreground" for="webdav-url">
-            {{ t('settings.backup.url') }}
-          </label>
-          <SettingInput
-            id="webdav-url"
-            v-model="state.advanced.backup.webdav.url"
-            type="url"
-            placeholder="https://dav.jianguoyun.com/dav/"
-            class="font-mono"
-          />
-        </div>
-        <div class="space-y-1">
-          <label class="text-[11px] text-muted-foreground" for="webdav-user">
-            {{ t('settings.backup.username') }}
-          </label>
-          <SettingInput
-            id="webdav-user"
-            v-model="state.advanced.backup.webdav.username"
-            :placeholder="t('settings.backup.usernamePlaceholder')"
-          />
-        </div>
-        <div class="space-y-1">
-          <label class="text-[11px] text-muted-foreground">
-            {{ t('settings.backup.password') }}
-          </label>
-          <ApiKeyInput
-            v-model="state.advanced.backup.webdav.password"
-            :placeholder="t('settings.backup.passwordPlaceholder')"
-            :allow-validate="false"
-          />
-        </div>
-        <div class="sm:col-span-2 space-y-1">
-          <label class="text-[11px] text-muted-foreground" for="webdav-path">
-            {{ t('settings.backup.remotePath') }}
-          </label>
-          <SettingInput
-            id="webdav-path"
-            v-model="state.advanced.backup.webdav.remotePath"
-            placeholder="/shizi/"
-            class="font-mono"
-          />
-          <p class="text-[11px] text-muted-foreground">
-            {{ t('settings.backup.remotePathHelp') }}
-            <code class="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">
-              shizi-backup-20260805-153012.zip
-            </code>
-          </p>
-        </div>
-      </div>
-      <div class="mt-2.5 flex flex-wrap items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          :disabled="!canUseWebDav || testing"
-          @click="onTestConnection"
-        >
-          <Loader2 v-if="testing" class="h-3.5 w-3.5 animate-spin" />
-          <PlugZap v-else class="h-3.5 w-3.5" />
-          {{ t('settings.backup.testConnection') }}
-        </Button>
-        <span v-if="webdav.lastTestedAt" class="text-[11px] text-muted-foreground">
-          {{ t('settings.backup.lastTested') }}：{{ formatTime(webdav.lastTestedAt) }}
-        </span>
-        <span v-else-if="webdav.lastError" class="text-[11px] text-destructive">
-          {{ webdav.lastError }}
-        </span>
-      </div>
-    </SettingRow>
+      <Dialog
+        v-model:open="webdavOpen"
+        :title="t('settings.backup.cloudTitle')"
+        :description="t('settings.backup.dialogDesc')"
+        width="500px"
+        class="max-h-[min(540px,92vh)]"
+      >
+        <template #trigger>
+          <Button variant="outline" size="sm">
+            <Settings2 class="h-3.5 w-3.5" />
+            {{ t('settings.backup.configure') }}
+          </Button>
+        </template>
 
-    <SettingRow
-      :title="t('settings.backup.includeHistory')"
-      :description="t('settings.backup.includeHistoryDesc')"
-    >
-      <SettingSwitch
-        v-model="state.advanced.backup.includeHistory"
-        :aria-label="t('settings.backup.includeHistory')"
-      />
-    </SettingRow>
-
-    <SettingRow
-      :title="t('settings.backup.includeApiKeys')"
-      :description="t('settings.backup.includeApiKeysDesc')"
-    >
-      <SettingSwitch
-        v-model="state.advanced.backup.includeApiKeys"
-        :aria-label="t('settings.backup.includeApiKeys')"
-      />
-    </SettingRow>
-
-    <!-- 手动同步：选项之后的最终操作 -->
-    <div
-      class="flex min-h-[2.375rem] items-center justify-between gap-3 px-2.5 py-2 transition-colors duration-150 hover:bg-muted/40"
-    >
-      <div class="min-w-0 flex-1">
-        <div class="text-[13px] font-medium text-foreground">
-          {{ t('settings.backup.manualSync') }}
-        </div>
-        <p class="mt-0.5 text-[11px] leading-snug text-muted-foreground">
-          {{ t('settings.backup.manualSyncDesc') }}
-        </p>
-        <p class="mt-1.5 text-[11px] text-muted-foreground">
-          {{ t('settings.backup.lastBackup') }}：
-          <span class="font-medium text-foreground">{{ formatTime(webdav.lastBackupAt) }}</span>
-        </p>
-      </div>
-      <div class="flex shrink-0 flex-wrap items-center justify-end gap-2">
-        <Button
-          size="sm"
-          :disabled="!canOperateWebDav || backingUp"
-          @click="onBackupNow"
-        >
-          <Loader2 v-if="backingUp" class="h-3.5 w-3.5 animate-spin" />
-          <CloudUpload v-else class="h-3.5 w-3.5" />
-          {{ t('settings.backup.backupNow') }}
-        </Button>
-        <Dialog
-          v-model:open="restoreOpen"
-          :title="t('settings.backup.restoreTitle')"
-          :description="t('settings.backup.restoreDescription')"
-          width="480px"
-        >
-          <template #trigger>
+        <section class="flex flex-col gap-3">
+          <div class="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+            <div class="sm:col-span-2 space-y-1">
+              <label class="text-[11px] text-muted-foreground" for="webdav-url">
+                {{ t('settings.backup.url') }}
+              </label>
+              <SettingInput
+                id="webdav-url"
+                v-model="state.advanced.backup.webdav.url"
+                type="url"
+                placeholder="https://dav.jianguoyun.com/dav/"
+                class="font-mono"
+              />
+            </div>
+            <div class="space-y-1">
+              <label class="text-[11px] text-muted-foreground" for="webdav-user">
+                {{ t('settings.backup.username') }}
+              </label>
+              <SettingInput
+                id="webdav-user"
+                v-model="state.advanced.backup.webdav.username"
+                :placeholder="t('settings.backup.usernamePlaceholder')"
+              />
+            </div>
+            <div class="space-y-1">
+              <label class="text-[11px] text-muted-foreground">
+                {{ t('settings.backup.password') }}
+              </label>
+              <ApiKeyInput
+                v-model="state.advanced.backup.webdav.password"
+                :placeholder="t('settings.backup.passwordPlaceholder')"
+                :allow-validate="false"
+              />
+            </div>
+            <div class="sm:col-span-2 space-y-1">
+              <label class="text-[11px] text-muted-foreground" for="webdav-path">
+                {{ t('settings.backup.remotePath') }}
+              </label>
+              <SettingInput
+                id="webdav-path"
+                v-model="state.advanced.backup.webdav.remotePath"
+                placeholder="/shizi/"
+                class="font-mono"
+              />
+              <p class="text-[11px] text-muted-foreground">
+                {{ t('settings.backup.remotePathHelp') }}
+                <code class="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">
+                  shizi-backup-20260805-153012.zip
+                </code>
+              </p>
+            </div>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
             <Button
               variant="outline"
               size="sm"
-              :disabled="!canOperateWebDav || restoring"
+              :disabled="!canUseWebDav || testing"
+              @click="onTestConnection"
             >
-              <CloudDownload class="h-3.5 w-3.5" />
-              {{ t('settings.backup.restoreFromCloud') }}
+              <Loader2 v-if="testing" class="h-3.5 w-3.5 animate-spin" />
+              <PlugZap v-else class="h-3.5 w-3.5" />
+              {{ t('settings.backup.testConnection') }}
             </Button>
-          </template>
-
-          <div class="space-y-3">
-            <p class="text-[11px] text-muted-foreground">
-              {{ t('settings.backup.directory') }}
-              <code class="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">{{ remoteDir }}</code>
-            </p>
-
-            <div
-              v-if="listingBackups"
-              class="flex items-center justify-center gap-2 rounded-md border border-border py-10 text-sm text-muted-foreground"
-            >
-              <Loader2 class="h-4 w-4 animate-spin" />
-              {{ t('settings.backup.listing') }}
-            </div>
-
-            <div
-              v-else-if="remoteBackups.length === 0"
-              class="rounded-md border border-dashed border-border py-10 text-center text-sm text-muted-foreground"
-            >
-              {{ t('settings.backup.emptyList') }}
-            </div>
-
-            <ul
-              v-else
-              class="max-h-[280px] space-y-1.5 overflow-y-auto scrollbar-thin pr-0.5"
-              role="listbox"
-              :aria-label="t('settings.backup.listAria')"
-            >
-              <li
-                v-for="item in remoteBackups"
-                :key="item.id"
-                role="option"
-                :aria-selected="selectedBackupId === item.id"
-                :class="cn(
-                  'flex cursor-pointer items-start gap-2.5 rounded-md border px-2.5 py-2 transition-colors',
-                  selectedBackupId === item.id
-                    ? 'border-primary bg-primary/5'
-                    : 'border-border hover:bg-muted/50',
-                )"
-                @click="selectedBackupId = item.id"
-              >
-                <span
-                  class="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border"
-                  :class="
-                    selectedBackupId === item.id
-                      ? 'border-primary'
-                      : 'border-muted-foreground/40'
-                  "
-                >
-                  <span
-                    v-if="selectedBackupId === item.id"
-                    class="h-2 w-2 rounded-full bg-primary"
-                  />
-                </span>
-                <Package class="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                <div class="min-w-0 flex-1">
-                  <p class="truncate font-mono text-[12px] font-medium text-foreground">
-                    {{ item.name }}
-                  </p>
-                  <p class="mt-0.5 text-[11px] text-muted-foreground">
-                    {{ formatTime(item.createdAt) }}
-                    <span class="mx-1 text-border">·</span>
-                    {{ item.sizeLabel }}
-                  </p>
-                </div>
-              </li>
-            </ul>
-
-            <div class="flex justify-end gap-2 pt-1">
-              <Button variant="ghost" @click="restoreOpen = false">{{ t('common.cancel') }}</Button>
-              <Button
-                variant="destructive"
-                :disabled="restoring || listingBackups || !selectedBackup"
-                @click="onConfirmRestore"
-              >
-                <Loader2 v-if="restoring" class="h-3.5 w-3.5 animate-spin" />
-                {{ t('settings.backup.confirmRestore') }}
-              </Button>
-            </div>
+            <span v-if="webdav.lastTestedAt" class="text-[11px] text-muted-foreground">
+              {{ t('settings.backup.lastTested') }}：{{ formatTime(webdav.lastTestedAt) }}
+            </span>
+            <span v-else-if="webdav.lastError" class="text-[11px] text-destructive">
+              {{ webdav.lastError }}
+            </span>
           </div>
-        </Dialog>
-      </div>
-    </div>
+        </section>
 
-    <SettingRow
-      :title="t('settings.backup.autoSync')"
-      :description="t('settings.backup.autoSyncDesc')"
-    >
-      <SettingSwitch
-        v-model="state.advanced.backup.autoSync"
-        :aria-label="t('settings.backup.autoSync')"
-      />
+        <div class="-mx-6 h-px bg-border" role="separator" />
+
+        <section class="flex items-center justify-between gap-3">
+          <div class="min-w-0">
+            <p class="text-[13px] font-medium text-foreground">
+              {{ t('settings.backup.manualSync') }}
+            </p>
+            <p class="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+              {{ t('settings.backup.manualSyncDesc') }}
+            </p>
+            <p class="mt-1 text-[11px] text-muted-foreground">
+              {{ t('settings.backup.lastBackup') }}：
+              <span class="font-medium text-foreground">{{ formatTime(webdav.lastBackupAt) }}</span>
+            </p>
+          </div>
+          <div class="flex shrink-0 items-center gap-2">
+            <Button size="sm" :disabled="!canOperateWebDav || backingUp" @click="onBackupNow">
+              <Loader2 v-if="backingUp" class="h-3.5 w-3.5 animate-spin" />
+              <CloudUpload v-else class="h-3.5 w-3.5" />
+              {{ t('settings.backup.backupNow') }}
+            </Button>
+            <Dialog
+              v-model:open="restoreOpen"
+              :title="t('settings.backup.restoreTitle')"
+              :description="t('settings.backup.restoreDescription')"
+              width="420px"
+            >
+              <template #trigger>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  :disabled="!canOperateWebDav || restoring"
+                >
+                  <CloudDownload class="h-3.5 w-3.5" />
+                  {{ t('settings.backup.restoreFromCloud') }}
+                </Button>
+              </template>
+
+              <div class="space-y-3">
+                <p class="text-[11px] text-muted-foreground">
+                  {{ t('settings.backup.directory') }}
+                  <code class="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">{{ remoteDir }}</code>
+                </p>
+
+                <div
+                  v-if="listingBackups"
+                  class="flex items-center justify-center gap-2 rounded-md border border-border py-10 text-sm text-muted-foreground"
+                >
+                  <Loader2 class="h-4 w-4 animate-spin" />
+                  {{ t('settings.backup.listing') }}
+                </div>
+
+                <div
+                  v-else-if="remoteBackups.length === 0"
+                  class="rounded-md border border-dashed border-border py-10 text-center text-sm text-muted-foreground"
+                >
+                  {{ t('settings.backup.emptyList') }}
+                </div>
+
+                <ul
+                  v-else
+                  class="max-h-[280px] space-y-1.5 overflow-y-auto scrollbar-thin pr-0.5"
+                  role="listbox"
+                  :aria-label="t('settings.backup.listAria')"
+                >
+                  <li
+                    v-for="item in remoteBackups"
+                    :key="item.id"
+                    role="option"
+                    :aria-selected="selectedBackupId === item.id"
+                    :class="cn(
+                      'flex cursor-pointer items-start gap-2.5 rounded-md border px-2.5 py-2 transition-colors',
+                      selectedBackupId === item.id
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border hover:bg-muted/50',
+                    )"
+                    @click="selectedBackupId = item.id"
+                  >
+                    <span
+                      class="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border"
+                      :class="
+                        selectedBackupId === item.id
+                          ? 'border-primary'
+                          : 'border-muted-foreground/40'
+                      "
+                    >
+                      <span
+                        v-if="selectedBackupId === item.id"
+                        class="h-2 w-2 rounded-full bg-primary"
+                      />
+                    </span>
+                    <Package class="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                    <div class="min-w-0 flex-1">
+                      <p class="truncate font-mono text-[12px] font-medium text-foreground">
+                        {{ item.name }}
+                      </p>
+                      <p class="mt-0.5 text-[11px] text-muted-foreground">
+                        {{ formatTime(item.createdAt) }}
+                        <span class="mx-1 text-border">·</span>
+                        {{ item.sizeLabel }}
+                      </p>
+                    </div>
+                  </li>
+                </ul>
+
+                <div class="flex justify-end gap-2 pt-1">
+                  <Button variant="ghost" @click="restoreOpen = false">{{ t('common.cancel') }}</Button>
+                  <Button
+                    variant="destructive"
+                    :disabled="restoring || listingBackups || !selectedBackup"
+                    @click="onConfirmRestore"
+                  >
+                    <Loader2 v-if="restoring" class="h-3.5 w-3.5 animate-spin" />
+                    {{ t('settings.backup.confirmRestore') }}
+                  </Button>
+                </div>
+              </div>
+            </Dialog>
+          </div>
+        </section>
+
+        <section class="divide-y divide-border rounded-md border border-border bg-muted/30 px-3.5">
+          <div class="flex items-center justify-between gap-4 py-2">
+            <div class="min-w-0">
+              <p class="text-[13px] font-medium text-foreground">
+                {{ t('settings.backup.autoSync') }}
+              </p>
+              <p class="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+                {{ t('settings.backup.autoSyncDesc') }}
+              </p>
+            </div>
+            <SettingSwitch
+              v-model="state.advanced.backup.autoSync"
+              :aria-label="t('settings.backup.autoSync')"
+            />
+          </div>
+          <div class="flex items-center justify-between gap-4 py-2">
+            <div class="min-w-0">
+              <p class="text-[13px] font-medium text-foreground">
+                {{ t('settings.backup.includeHistory') }}
+              </p>
+              <p class="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+                {{ t('settings.backup.includeHistoryDesc') }}
+              </p>
+            </div>
+            <SettingSwitch
+              v-model="state.advanced.backup.includeHistory"
+              :aria-label="t('settings.backup.includeHistory')"
+            />
+          </div>
+          <div class="flex items-center justify-between gap-4 py-2">
+            <div class="min-w-0">
+              <p class="text-[13px] font-medium text-foreground">
+                {{ t('settings.backup.includeApiKeys') }}
+              </p>
+              <p class="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+                {{ t('settings.backup.includeApiKeysDesc') }}
+              </p>
+            </div>
+            <SettingSwitch
+              v-model="state.advanced.backup.includeApiKeys"
+              :aria-label="t('settings.backup.includeApiKeys')"
+            />
+          </div>
+        </section>
+      </Dialog>
     </SettingRow>
-  </SettingGroup>
 
-  <SettingGroup
-    :title="t('settings.group.data')"
-    :description="t('settings.description.data')"
-  >
     <SettingRow
       :title="t('settings.field.exportConfig')"
       :description="t('settings.description.exportConfig')"
@@ -779,39 +705,5 @@ const onConfirmImport = async (): Promise<void> => {
         </div>
       </Dialog>
     </SettingRow>
-  </SettingGroup>
-
-  <SettingGroup :title="t('settings.group.about')">
-    <SettingRow :title="t('settings.field.version')" :description="t('settings.description.version')">
-      <span class="text-sm text-muted-foreground font-mono">
-        v{{ appVersion }}{{ isDev ? ' · dev' : '' }}
-      </span>
-    </SettingRow>
-    <SettingRow :title="t('settings.field.homepage')" :description="t('settings.description.homepage')">
-      <Button variant="ghost" size="sm" @click="openHomepage">
-        <Globe class="h-3.5 w-3.5" />
-        {{ t('common.visit') }}
-      </Button>
-    </SettingRow>
-    <DevOnly>
-      <SettingRow :title="t('settings.field.changelog')" :description="t('settings.description.changelog')" status="wip">
-        <Button variant="ghost" size="sm">
-          <FileText class="h-3.5 w-3.5" />
-          {{ t('common.open') }}
-        </Button>
-      </SettingRow>
-      <SettingRow :title="t('settings.field.documentation')" :description="t('settings.description.documentation')" status="wip">
-        <Button variant="ghost" size="sm">
-          <BookOpen class="h-3.5 w-3.5" />
-          {{ t('common.view') }}
-        </Button>
-      </SettingRow>
-      <SettingRow :title="t('settings.field.recommend')" :description="t('settings.description.recommend')" status="wip">
-        <Button variant="ghost" size="sm">
-          <Sparkles class="h-3.5 w-3.5" />
-          {{ t('common.share') }}
-        </Button>
-      </SettingRow>
-    </DevOnly>
   </SettingGroup>
 </template>

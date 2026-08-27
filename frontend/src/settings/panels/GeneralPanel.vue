@@ -8,7 +8,14 @@ import {
 } from '../components'
 import type { AppSettings } from '../types'
 import { computed, onMounted, ref } from 'vue'
-import { FolderOpen, RefreshCw } from '@lucide/vue'
+import {
+  BookOpen,
+  FileText,
+  FolderOpen,
+  Globe,
+  RefreshCw,
+  Sparkles,
+} from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
 import { t } from '@/i18n'
@@ -23,6 +30,8 @@ import { useSettings } from '../stores/settings'
 const props = defineProps<{
   state: AppSettings
 }>()
+
+const HOMEPAGE_URL = 'https://github.com/XuDaojie/shizi-translator'
 
 const { interfaceLanguages, interfaceLanguageErrors, interfaceLanguagesRefreshing, refreshInterfaceLanguages, openLanguagePackDirectory, setInterfaceLanguage } = useSettings()
 
@@ -108,6 +117,14 @@ async function goDownload() {
   }
 }
 
+async function openHomepage() {
+  try {
+    await invokeOpenUrl(HOMEPAGE_URL)
+  } catch (e) {
+    toast.error(String(e))
+  }
+}
+
 const refreshLanguages = async () => {
   try { await refreshInterfaceLanguages() } catch (error) { toast.error(t('settings.toast.refreshFailed'), String(error)) }
 }
@@ -152,7 +169,27 @@ const openDirectory = async () => {
     </DevOnly>
   </SettingGroup>
 
-  <SettingGroup :title="t('settings.group.update')" :description="t('settings.description.update')">
+  <SettingGroup :title="t('settings.group.about')" :description="t('settings.description.about')">
+    <SettingRow
+      :title="t('settings.field.currentAppVersion')"
+      :description="t('settings.description.currentAppVersion')"
+    >
+      <div class="flex items-center gap-2">
+        <span class="text-sm text-muted-foreground font-mono">
+          v{{ appVersion }}
+        </span>
+        <Button
+          variant="ghost"
+          size="sm"
+          :disabled="checking"
+          :aria-label="t('settings.button.checkUpdate')"
+          @click="handleCheckUpdate"
+        >
+          <RefreshCw :class="['h-3.5 w-3.5', checking && 'animate-spin']" />
+          {{ t('settings.button.checkUpdate') }}
+        </Button>
+      </div>
+    </SettingRow>
     <SettingRow
       :title="t('settings.field.updateChannel')"
       :description="t('settings.description.updateChannel')"
@@ -165,18 +202,32 @@ const openDirectory = async () => {
     >
       <SettingSwitch v-model="state.general.autoCheckUpdate" :aria-label="t('settings.field.autoCheckUpdate')" />
     </SettingRow>
-    <SettingRow
-      :title="t('settings.field.currentAppVersion')"
-      :description="t('settings.description.version')"
-    >
-      <span class="text-sm text-muted-foreground font-mono">v{{ appVersion }}</span>
-    </SettingRow>
-    <SettingRow :title="t('settings.button.checkUpdate')" description="">
-      <Button size="sm" :disabled="checking" @click="handleCheckUpdate">
-        <RefreshCw :class="['h-3.5 w-3.5', checking && 'animate-spin']" />
-        {{ t('settings.button.checkUpdate') }}
+    <SettingRow :title="t('settings.field.homepage')" :description="t('settings.description.homepage')">
+      <Button variant="ghost" size="sm" @click="openHomepage">
+        <Globe class="h-3.5 w-3.5" />
+        {{ t('common.visit') }}
       </Button>
     </SettingRow>
+    <DevOnly>
+      <SettingRow :title="t('settings.field.changelog')" :description="t('settings.description.changelog')" status="wip">
+        <Button variant="ghost" size="sm">
+          <FileText class="h-3.5 w-3.5" />
+          {{ t('common.open') }}
+        </Button>
+      </SettingRow>
+      <SettingRow :title="t('settings.field.documentation')" :description="t('settings.description.documentation')" status="wip">
+        <Button variant="ghost" size="sm">
+          <BookOpen class="h-3.5 w-3.5" />
+          {{ t('common.view') }}
+        </Button>
+      </SettingRow>
+      <SettingRow :title="t('settings.field.recommend')" :description="t('settings.description.recommend')" status="wip">
+        <Button variant="ghost" size="sm">
+          <Sparkles class="h-3.5 w-3.5" />
+          {{ t('common.share') }}
+        </Button>
+      </SettingRow>
+    </DevOnly>
     <Dialog
       v-model:open="updateDialogOpen"
       :title="t('settings.dialog.updateTitle')"

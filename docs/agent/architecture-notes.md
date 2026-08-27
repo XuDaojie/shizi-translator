@@ -29,6 +29,7 @@
 - 设置页挂载 `settings.syncFromBackend()`：后端 `services` 空 → 前端 `projectToAppConfig` 覆盖写回；非空 → `mergeBackendIntoServices` 按 id 合并（后端覆盖 enabled/apiKey/endpoint/model/protocol；前端保留 prompts/keyStatus/chainOfThought/pulledModels/note）。
 - `save_app_config` 后广播 `app-config:changed`；弹窗同步卡片（翻译中不新增未参与批次的服务卡）。
 - Dev-only：`ServiceMeta.protocols.length === 0` 与 `<DevOnly>`（`import.meta.env.DEV`）在 release 隐藏、dev 可见。自动检查更新、思维链已落地，**不再**列为 wip / DevOnly（主题 / 反思等仍可能 DevOnly）。
+- **设置页 IA**：版本 / 更新通道 / 自动检测 / 项目主页在 **通用 → 关于**（不再分「更新」组与「高级 → 关于」）。侧栏暖白底 + 品牌头 + 白色浮起 pill 指示器。
 
 ## 国际化
 
@@ -74,7 +75,7 @@
 
 - 历史：`HistoryStore` → `history.sqlite3`；统一翻译入口写 session/result；设置页 `list_translation_history` / `clear_translation_history`；备份恢复可 `replace_all` 整库替换。
 - 日志：`logs/Shizi.log`（tauri-plugin-log）与 `frontend.log`（append command）分文件；`logLevel` 可运行时切换；API Key 与正文脱敏；失败 best-effort。
-- **WebDAV 备份**（设置 → 高级）：主路径 Basic + PROPFIND/MKCOL/PUT/GET；远端目录默认 `/shizi/`（一层）；文件为 `shizi-backup-*.zip`（manifest + settings + 可选 history）；本机 JSON 导入/导出兜底。命令：`test_webdav_connection` / `backup_to_webdav` / `list_webdav_backups` / `restore_from_webdav` / `export_settings_snapshot` / `import_settings_snapshot`。测试连接对目录 PROPFIND，若集合不存在（404，或坚果云对缺失祖先返回 409 `AncestorsNotFound`）则逐级 MKCOL 后再探测，不必先手动备份。UI 顺序：连接 → 含历史 → 含 API Key → 手动同步 → 自动备份（配置变更后防抖约 30s 上传一次；备份时间戳回写不重新调度）。规格：`docs/superpowers/specs/2026-08-05-webdav-backup-design.md`。
+- **WebDAV 备份**（设置 → 高级 → 备份与同步）：主路径 Basic + PROPFIND/MKCOL/PUT/GET；远端目录默认 `/shizi/`（一层）；文件为 `shizi-backup-*.zip`（manifest + settings + 可选 history）；本机 JSON 导入/导出与 WebDAV 同组。命令：`test_webdav_connection` / `backup_to_webdav` / `list_webdav_backups` / `restore_from_webdav` / `export_settings_snapshot` / `import_settings_snapshot`。测试连接对目录 PROPFIND，若集合不存在（404，或坚果云对缺失祖先返回 409 `AncestorsNotFound`）则逐级 MKCOL 后再探测，不必先手动备份。主列表仅「云端备份 · WebDAV」一行入口（「配置」打开弹窗，无常驻连接徽标）+ 导出/导入；弹窗内：连接信息 → 手动同步 → 自动备份 / 含历史 / 含 API Key。配置变更后防抖约 30s 自动上传一次；备份时间戳回写不重新调度。测连结果以弹窗内时间戳 / toast 反馈。规格：`docs/superpowers/specs/2026-08-05-webdav-backup-design.md`。
 
 ## 目录索引（实现时优先打开）
 

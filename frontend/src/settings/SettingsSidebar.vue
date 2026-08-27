@@ -160,19 +160,31 @@ const badgeLabel = (kind: 'wip' | 'new' | undefined): string => {
     状态文字只出现在上半段，看起来「没有上下居中」。
   -->
   <aside
-    class="flex h-full w-[var(--sidebar-width)] shrink-0 flex-col border-r border-border bg-card/40"
+    class="flex h-full w-[var(--sidebar-width)] shrink-0 flex-col border-r border-border bg-settings-sidebar pt-3 pb-0"
   >
-    <div class="px-3 pb-3 pt-3">
-      <h2 class="text-sm font-semibold text-foreground">{{ t('settings.title') }}</h2>
-      <p class="mt-1 text-xs text-muted-foreground">{{ t('settings.subtitle') }}</p>
+    <!-- 品牌头部：图标 + 标题 -->
+    <div class="flex items-center gap-2.5 px-3 pb-3">
+      <img
+        src="/favicon.svg"
+        alt=""
+        class="h-7 w-7 shrink-0 rounded-lg shadow-sm"
+        aria-hidden="true"
+      />
+      <div class="min-w-0">
+        <h2 class="text-sm font-semibold text-foreground">{{ t('settings.title') }}</h2>
+        <p class="mt-0.5 truncate text-[11px] text-muted-foreground">
+          {{ t('settings.subtitle') }}
+        </p>
+      </div>
     </div>
 
-    <nav class="min-h-0 flex-1 overflow-y-auto px-2 scrollbar-thin">
+    <!-- py-0.5：给首/末项的 ring 与阴影留出渲染空间，避免被 overflow 裁剪 -->
+    <nav class="min-h-0 flex-1 overflow-y-auto px-2 py-0.5 scrollbar-thin">
       <ul ref="navListRef" class="relative flex flex-col gap-0.5">
-        <!-- 滑动高亮指示器：整行 pill -->
+        <!-- 滑动高亮指示器：白色浮起 pill -->
         <li
           aria-hidden="true"
-          class="settings-nav-indicator pointer-events-none absolute inset-x-0 z-0 rounded-md bg-accent"
+          class="settings-nav-indicator pointer-events-none absolute inset-x-0 z-0 rounded-md bg-card shadow-sm ring-1 ring-border/70"
           :class="indicatorReady ? 'settings-nav-indicator--ready' : 'opacity-0'"
           :style="indicatorStyle"
         />
@@ -186,7 +198,7 @@ const badgeLabel = (kind: 'wip' | 'new' | undefined): string => {
               'settings-nav-item',
               modelValue === cat.id
                 ? 'text-accent-foreground'
-                : 'hover:bg-accent/40',
+                : 'hover:bg-foreground/5',
             ]"
             :aria-current="modelValue === cat.id ? 'page' : undefined"
             @click="select(cat.id)"
