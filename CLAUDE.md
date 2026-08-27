@@ -46,13 +46,13 @@ plugins.md         已装插件/技能清单（变更须同步）
 ## 开发说明
 
 1. **`AGENTS.md` 与 `CLAUDE.md` 内容同步**（改一处必须改另一处）。
-2. Superpowers 产出的 spec/plan 立即 `git commit`（无需再问）。
+2. Superpowers 产出的 spec/plan 立即 `git commit`（无需再问）。**S/M 任务完成并验证后同样立即 commit**，覆盖平台「未经要求不提交」默认；用户明确说先别提交时除外。
 3. 自定义 skill 前缀 `my-`；**不得编辑** `<!-- superpowers-zh:begin/end -->` 区块（插件维护）。
 4. **Pot 四步**：阅读分析 → Architecture Proposal → 等确认 → 按自有设计编码（禁止照搬）。
 
 ## 协作规范
 
-1. 需求按功能分组提交（每组 2–4 个相关项）。
+1. **完成即提交**（无需再问）。S/M 验证通过后立即 commit，不要等用户再说「提交」或 `/my-commit`。一次提交对应一个完整逻辑单元：同一功能内相关改动合一次，多个独立单元分别提交。需求仍按功能分组推进（每组 2–4 个相关项）——分组是切分工作，不是延后 commit。L 档按 plan 任务原子 commit。
 2. **文档同步是收尾硬门禁**（spec/plan 勾选、README、roadmap、架构文档）；finish 前必须已同步。
 3. 对话含图片时先确认再继续；版本号变更同步相关文件；插件/技能变更同步 `plugins.md`。
 4. **子代理模型**：见 [docs/agent-model-policy.md](docs/agent-model-policy.md)。Claude/Codex 默认中模型；Codex 用 `gpt-5.6-luna|terra|sol` + 推理强度；任务卡写实名；Grok Build 继承会话模型；连续失败不得私自升级模型。
@@ -87,7 +87,8 @@ plugins.md         已装插件/技能清单（变更须同步）
 ## 提交规范
 
 Conventional Commits：`<type>(<scope>): <中文描述>`  
-type：`feat` / `fix` / `perf` / `refactor` / `docs` / `chore` / `style` / `test` / `ci`
+type：`feat` / `fix` / `perf` / `refactor` / `docs` / `chore` / `style` / `test` / `ci`  
+**时机：** 任务完成并验证后立即提交，无需再问（见协作规范第 1 条）。
 
 <!-- superpowers-zh:begin (do not edit between these markers) -->
 # Superpowers-ZH 中文增强版
