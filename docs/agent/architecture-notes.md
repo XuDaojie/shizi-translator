@@ -5,7 +5,7 @@
 ## 分层与窗口
 
 - **核心层（Rust）**：翻译业务、配置、provider 抽象（LLM/MT 平级）、划词、OCR、历史、日志。
-- **UI 层**：① 翻译弹窗 `main` → `translate.html`（Vue，`src/popup/`）② 设置页 `settings` → `settings.html` ③ 截图 overlay（纯静态，永久不迁 Vue）。历史面板右侧复用 `SourceCardView` / `ResultCardView` / `LanguageToolbar`。
+- **UI 层**：① 翻译弹窗 `main` → `translate.html`（Vue，`src/popup/`）② 设置页 `settings` → `settings.html` ③ 文字识别 `ocr` → `ocr.html`（Vue，`src/ocr/`）④ 截图 overlay（纯静态，永久不迁 Vue）。历史面板右侧复用 `SourceCardView` / `ResultCardView` / `LanguageToolbar`。
 - **约束**：核心逻辑不进前端；UI 模块互不耦合。
 
 ## 托盘与窗口生命周期
@@ -13,7 +13,7 @@
 - **三分法**：`main` 关窗 → `prevent_close` + `hide()`（用过后常驻）；`settings` / `ocr` 关窗 → **真正销毁**；托盘「退出」才结束进程。无窗时 `ExitRequested`（无 exit code）`prevent_exit` 以托盘驻留。
 - **`windowPrecreate`**（`AppConfig`，设置 UI 不暴露）：`manual` / `autostart` 各含 `popup` / `overlay`。默认：手动 `popup=true, overlay=false`；自启双 `false`。启动按 `is_autostart_process()` 取对应对；用到时 `ensure` 再建。规格：`docs/superpowers/specs/2026-07-22-window-precreate-by-launch-mode-design.md`。
 - `main`：运行时 `WebviewWindowBuilder`（不在 `tauri.conf` 静态声明）；`popup_window::ensure_popup_exists` / `show_popup`。手动且 `popup=true` 时 setup 预建；前端 `TranslationPopup` ready 后 show（约 2s 超时）；`--autostart` 且未预建时无窗，首次划词/托盘再创建。热唤起：`NearCursor` / `Restore`。
-- 弹窗：`decorations(false)` + `transparent(true)` + `resizable(false)`；`.toolbar` 用 `data-tauri-drag-region`；`.popup` 宽 420px；高度 `usePopupHeight` + `ResizeObserver` 动态 `setSize`（宽 452，高 h+32，上限屏高 80%）。权限见 `capabilities/default.json`。
+- 弹窗：`decorations(false)` + `transparent(true)` + `resizable(false)`；`.toolbar` 用 `data-tauri-drag-region`；`.popup` 宽 420px；高度 `usePopupHeight` + `ResizeObserver` 动态 `setSize`（宽 452，高 h+32，上限屏高 80%）。权限见 `src-tauri/capabilities/default.json`。
 - Overlay：按 `windowPrecreate.*.overlay` 是否启动预建；`open_overlay` 已存在则 `reload`，否则 build；用完 hide 复用。
 - 设置 / OCR：启动不预创建；关闭即销毁。截图识别前 `hide_ocr_window` 仍只 hide。
 - **冷启动 splash**（settings / ocr / translate）：入口 HTML 内联 splash；`dismissBootSplash`。`main` hide 再开不重放；settings / ocr 重建再走 splash。
@@ -90,4 +90,5 @@
 | 截图 / OCR | `src-tauri/src/core/capture/`、`core/ocr/`、`ocr_translation.rs` |
 | UI commands | `src-tauri/src/ui/` |
 | 翻译弹窗前端 | `frontend/src/popup/` |
-| 设置页 | `frontend/src/` + `settings.html` |
+| 文字识别窗口 | `frontend/ocr.html`、`frontend/src/ocr/` |
+| 设置页 | `frontend/src/settings/` + `settings.html` |

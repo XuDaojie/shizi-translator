@@ -10,10 +10,13 @@ Windows 端大模型翻译软件（Tauri 2 + Vue/Vite），目标体验接近 ma
 ## 项目结构（摘要）
 
 ```
-frontend/          Vite：settings.html（设置）、translate.html（弹窗 Vue）、public/overlay.html（OCR 框选，永久静态）
-  src/popup/       翻译弹窗组件与 composable；历史面板复用其卡片组件
-src-tauri/         Rust：lib.rs 装配；app/ 托盘快捷键窗口；core/{config,history,llm,mt,translation,selection,capture,ocr,update}；ui/ commands
-capabilities/      Tauri 权限（改快捷键/窗口 API 须同步）
+frontend/          Vite：settings.html、translate.html、ocr.html；public/overlay.html（OCR 框选，永久静态）
+  src/popup/       翻译弹窗；历史面板复用其卡片
+  src/ocr/         文字识别窗口
+  src/settings/    设置页
+src-tauri/         Rust：lib.rs 装配；app/ 托盘快捷键窗口；
+                   core/{config,history,llm,mt,translation,selection,capture,ocr,backup,i18n,update}；ui/ commands
+  capabilities/    Tauri 权限（改快捷键/窗口 API 须同步）
 plugins.md         已装插件/技能清单（变更须同步）
 ```
 
@@ -30,12 +33,12 @@ plugins.md         已装插件/技能清单（变更须同步）
 
 完整说明见 [docs/agent/architecture-notes.md](docs/agent/architecture-notes.md)。改模块前先读对应小节。
 
-- **分层**：业务在 Rust 核心；UI 仅弹窗 / 设置 / overlay，勿把核心逻辑写进前端、勿让 UI 模块互耦。
+- **分层**：业务在 Rust 核心；UI 仅弹窗 / 设置 / OCR 窗 / overlay，勿把核心逻辑写进前端、勿让 UI 模块互耦。
 - **托盘驻留**：进程托盘驻留；托盘退出才进程结束。`main` 默认不可见，冷启动由前端 show。系统 `CloseRequested` 仍走 hide；工具栏「关闭」按钮 `destroy` 销毁 WebView（下次翻译 `ensure` 重建），是否显示由 `showCloseButton`（默认 `true`）控制。
-- **配置事实来源**：`config.json` 的 `services[]`；协议 `openai_chat` / `claude_messages` / `mock` / `microsoft_edge`（`provider_for_service`）。`AppConfig` 另含 `updateChannel`（`stable`/`nightly`；历史 `beta` 迁移为 `nightly`）、`autoCheckUpdate`（默认 `true`）、`launchAtLogin`（默认 `false`，Windows Run + `--autostart` 静默托盘）、`markdownRender`（默认 `true`，弹窗/历史结果 Markdown 渲染）、`removeBlankLines`（默认 `false`，弹窗「去除空行」偏好，开关切换后写入 config）、`showCloseButton`（默认 `true`，弹窗关闭按钮显隐）、`showInTaskbar`（默认 `false`，弹窗是否出现在任务栏；对应 `skip_taskbar` 取反，保存时热更新已有窗口）、`backup`（WebDAV：`includeApiKeys` 默认 `true`，`includeHistory`/`autoSync` 默认 `false`）。
+- **配置事实来源**：`config.json` 的 `services[]` 与 `ocrServices[]`；协议 `openai_chat` / `claude_messages` / `mock` / `microsoft_edge`（`provider_for_service`）。字段与默认值见 [architecture-notes.md](docs/agent/architecture-notes.md) 与 `src-tauri/src/core/config/types.rs`。
 - **配置同步**：设置页 `syncFromBackend`；`save_app_config` → `app-config:changed` 刷新弹窗卡片。
 - **批次翻译**：启用服务保序并发；事件带 `serviceInstanceId`；单服务失败不影响其他。
-- **快捷键**：`Alt+D` 划词、`Alt+S` 截图译；文字识别默认无快捷键（托盘入口）；新快捷键同步 capabilities。
+- **快捷键**：`Alt+D` 划词、`Alt+S` 截图译、`Ctrl+Shift+C` 剪贴板译、`Ctrl+,` 打开设置；文字识别默认无快捷键（托盘入口）；新快捷键同步 capabilities。
 - **历史 / 日志**：SQLite 历史与分文件日志；失败 best-effort，不挡翻译主路径。
 - **检查更新**：command `check_for_update`（GitHub Releases + 通道过滤 + semver）；设置页手动检查 → toast/Dialog → `open_url` 浏览器下载；启动时若 `autoCheckUpdate` 则后端 best-effort 检查，有更新才弹系统 dialog（「前往下载」/「稍后」），确认后后端 `open_url`。有更新时优先打开**轻量** NSIS 直链（`*-setup.exe`，排除 `*-setup-full.exe`）。不做应用内安装、无 updater 插件。
 - **发版双包**：轻量 `Shizi_*_x64-setup.exe`（默认 `downloadBootstrapper`）+ 完整 `Shizi_*_x64-setup-full.exe`（`offlineInstaller`，系统级 WebView2）。构建：`npm run tauri:build:dual`；Release CI 双包，Nightly 仅轻量。
